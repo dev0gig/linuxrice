@@ -66,26 +66,105 @@ update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator /
 update-alternatives --set x-terminal-emulator /usr/bin/alacritty || true
 "
 
-# 4b. Offizielles Tailscale-APT-Repo hinzufügen und installieren (nicht in Debian-Standard-Repos)
-# WICHTIG: Im frischen Debian sind die CA-Zertifikate für apt noch nicht aktiv — deshalb erst
-# ca-certificates + apt-transport-https installieren und update-ca-certificates laufen lassen,
-# sonst scheitert 'apt update' an 'certificate verify failed'. Fallback: klappt Tailscale nicht,
-# läuft der Rest trotzdem weiter (du kannst es später manuell nachinstallieren).
-echo "🔗 Füge offizielles Tailscale-Repo hinzu und installiere..."
+# 4b. Tailscale wird NICHT automatisch installiert.
+# Grund: Das Tailscale-Repo (CloudFront) verursachte im frischen Debian wiederholt
+# SSL-Zertifikatsfehler ('certificate verify failed'), die den ganzen Setup-Lauf blockierten.
+# Tailscale ist nicht kritisch fürs Grundsystem — daher komplett als EIN optionaler Befehl
+# ausgelagert. Nach dem Setup im Debian einfach 'setup-tailscale' tippen: das installiert
+# Tailscale UND richtet Autostart (userspace-networking + SOCKS5-Proxy) UND die
+# Firefox-Proxy-Config in einem Rutsch ein. Ohne diesen Befehl ist das System tailscale-frei.
+echo "🔗 Lege optionalen Tailscale-Installer als Befehl 'setup-tailscale' an..."
 proot-distro login debian -- bash -c "
+cat << 'TAILSCALE_EOF' > /usr/local/bin/setup-tailscale
+#!/usr/bin/env bash
+# Optionaler Tailscale-Komplett-Installer. Bei Bedarf aufrufen: setup-tailscale
+# Richtet ein: Tailscale-Paket, Autostart-Skript, SOCKS5-Proxy für CLI + Firefox.
+set -e
 export DEBIAN_FRONTEND=noninteractive
+
+echo '🔗 [1/4] Installiere Tailscale-Paket...'
 apt install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold ca-certificates apt-transport-https
 update-ca-certificates
-if curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg &&
-   curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list &&
-   apt update &&
-   apt install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold tailscale; then
-  echo '✅ Tailscale installiert.'
-else
-  echo '⚠ Tailscale-Installation fehlgeschlagen — überspringe (Rest läuft weiter, später manuell nachrüstbar).'
-  rm -f /etc/apt/sources.list.d/tailscale.list
-  apt update || true
+curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list
+apt update
+apt install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold tailscale
+
+echo '🔗 [2/4] Richte Autostart-Skript ein (userspace-networking, kein TUN in proot)...'
+mkdir -p /root/.config/autostart
+cat << 'STARTEOF' > /root/start-tailscale.sh
+#!/bin/bash
+mkdir -p /var/lib/tailscale /var/run/tailscale
+if ! pgrep -x tailscaled > /dev/null; then
+  nohup tailscaled \\
+    --state=/var/lib/tailscale/tailscaled.state \\
+    --socket=/var/run/tailscale/tailscaled.sock \\
+    --tun=userspace-networking \\
+    --socks5-server=localhost:1055 \\
+    --outbound-http-proxy-listen=localhost:1055 \\
+    > /var/log/tailscaled.log 2>&1 &
+  sleep 2
 fi
+if ! tailscale status > /dev/null 2>&1; then
+  echo 'Tailscale laeuft, aber noch nicht eingeloggt.'
+  echo 'Bitte einmalig ausfuehren: tailscale up'
+fi
+STARTEOF
+chmod +x /root/start-tailscale.sh
+
+cat << 'DESKTOPEOF' > /root/.config/autostart/tailscale.desktop
+[Desktop Entry]
+Encoding=UTF-8
+Version=0.94
+Type=Application
+Name=Tailscale Autostart
+Comment=Startet tailscaled im Hintergrund mit SOCKS5-Proxy
+Exec=/root/start-tailscale.sh
+OnlyShowIn=XFCE;
+StartupNotify=false
+Terminal=false
+Hidden=false
+DESKTOPEOF
+
+echo '🔗 [3/4] Setze SOCKS5-Proxy fuer CLI-Tools in .bashrc...'
+if ! grep -q 'ALL_PROXY=socks5h://localhost:1055' /root/.bashrc; then
+  cat << 'BASHEOF' >> /root/.bashrc
+
+# Tailscale SOCKS5-Proxy fuer CLI-Tools (userspace-networking, kein TUN in proot)
+export ALL_PROXY=socks5h://localhost:1055
+export HTTPS_PROXY=socks5h://localhost:1055
+export HTTP_PROXY=socks5h://localhost:1055
+export NO_PROXY=localhost,127.0.0.1
+BASHEOF
+fi
+
+echo '🔗 [4/4] Lege Firefox-Proxy-Konfigurator an...'
+cat << 'FFEOF' > /root/configure-firefox-proxy.sh
+#!/bin/bash
+PROFILE_DIR=\$(find /root/.mozilla/firefox -maxdepth 1 -name '*.default-esr' 2>/dev/null | head -1)
+if [ -z \"\$PROFILE_DIR\" ]; then
+  echo 'Kein Firefox-Profil gefunden. Firefox bitte einmal oeffnen und dann dieses Script erneut ausfuehren.'
+  exit 1
+fi
+cat << 'PROXYEOF' >> \"\$PROFILE_DIR/user.js\"
+user_pref(\"network.proxy.type\", 1);
+user_pref(\"network.proxy.socks\", \"localhost\");
+user_pref(\"network.proxy.socks_port\", 1055);
+user_pref(\"network.proxy.socks_version\", 5);
+user_pref(\"network.proxy.socks_remote_dns\", true);
+user_pref(\"network.proxy.no_proxies_on\", \"localhost, 127.0.0.1\");
+PROXYEOF
+echo 'Firefox-Proxy-Config gesetzt in: '\$PROFILE_DIR
+FFEOF
+chmod +x /root/configure-firefox-proxy.sh
+
+echo ''
+echo '✅ Tailscale komplett eingerichtet. Naechste Schritte:'
+echo '   1. /root/start-tailscale.sh   (Daemon starten)'
+echo '   2. tailscale up               (Login-Link im Browser oeffnen)'
+echo '   3. Firefox einmal oeffnen, dann /root/configure-firefox-proxy.sh'
+TAILSCALE_EOF
+chmod +x /usr/local/bin/setup-tailscale
 "
 
 # 5. Nerd Font (Space Mono) für korrekte Claude Code Symbole installieren
@@ -379,311 +458,4 @@ cat << 'EOF' > /root/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
       <property name=\"position-search-alternate\" type=\"bool\" value=\"true\"/>
     </property>
     <property name=\"plugin-3\" type=\"string\" value=\"separator\"/>
-    <property name=\"plugin-4\" type=\"string\" value=\"launcher\">
-      <property name=\"items\" type=\"array\">
-        <value type=\"string\" value=\"17837956301.desktop\"/>
-      </property>
-    </property>
-    <property name=\"plugin-5\" type=\"string\" value=\"launcher\">
-      <property name=\"items\" type=\"array\">
-        <value type=\"string\" value=\"17837956322.desktop\"/>
-      </property>
-    </property>
-    <property name=\"plugin-6\" type=\"string\" value=\"launcher\">
-      <property name=\"items\" type=\"array\">
-        <value type=\"string\" value=\"17837956343.desktop\"/>
-      </property>
-    </property>
-    <property name=\"plugin-7\" type=\"string\" value=\"launcher\">
-      <property name=\"items\" type=\"array\">
-        <value type=\"string\" value=\"17837956404.desktop\"/>
-      </property>
-    </property>
-    <property name=\"plugin-8\" type=\"string\" value=\"separator\">
-      <property name=\"style\" type=\"uint\" value=\"0\"/>
-      <property name=\"expand\" type=\"bool\" value=\"true\"/>
-    </property>
-    <property name=\"plugin-9\" type=\"string\" value=\"thunar-tpa\"/>
-    <property name=\"plugin-11\" type=\"string\" value=\"xfce4-clipman-plugin\"/>
-    <property name=\"plugin-12\" type=\"string\" value=\"separator\"/>
-    <property name=\"plugin-13\" type=\"string\" value=\"separator\">
-      <property name=\"style\" type=\"uint\" value=\"0\"/>
-    </property>
-    <property name=\"plugin-14\" type=\"string\" value=\"clock\">
-      <property name=\"mode\" type=\"uint\" value=\"2\"/>
-      <property name=\"digital-layout\" type=\"uint\" value=\"3\"/>
-      <property name=\"digital-date-format\" type=\"string\" value=\"%a., %d.%m.\"/>
-      <property name=\"digital-time-font\" type=\"string\" value=\"SpaceMono Nerd Font 18\"/>
-      <property name=\"digital-date-font\" type=\"string\" value=\"SpaceMono Nerd Font Medium 8\"/>
-      <property name=\"digital-time-format\" type=\"string\" value=\"%H\"/>
-    </property>
-    <property name=\"plugin-17\" type=\"string\" value=\"separator\">
-      <property name=\"style\" type=\"uint\" value=\"0\"/>
-    </property>
-    <property name=\"plugin-19\" type=\"string\" value=\"separator\">
-      <property name=\"style\" type=\"uint\" value=\"0\"/>
-    </property>
-    <property name=\"plugin-20\" type=\"string\" value=\"separator\">
-      <property name=\"style\" type=\"uint\" value=\"0\"/>
-    </property>
-    <property name=\"plugin-21\" type=\"string\" value=\"separator\">
-      <property name=\"style\" type=\"uint\" value=\"0\"/>
-    </property>
-    <property name=\"plugin-22\" type=\"string\" value=\"separator\"/>
-    <property name=\"plugin-25\" type=\"string\" value=\"separator\">
-      <property name=\"style\" type=\"uint\" value=\"0\"/>
-      <property name=\"expand\" type=\"bool\" value=\"false\"/>
-    </property>
-    <property name=\"plugin-26\" type=\"string\" value=\"separator\">
-      <property name=\"expand\" type=\"bool\" value=\"false\"/>
-      <property name=\"style\" type=\"uint\" value=\"0\"/>
-    </property>
-    <property name=\"plugin-27\" type=\"string\" value=\"clock\">
-      <property name=\"mode\" type=\"uint\" value=\"2\"/>
-      <property name=\"digital-layout\" type=\"uint\" value=\"3\"/>
-      <property name=\"digital-time-format\" type=\"string\" value=\"%M\"/>
-      <property name=\"digital-time-font\" type=\"string\" value=\"SpaceMono Nerd Font 18\"/>
-    </property>
-    <property name=\"plugin-28\" type=\"string\" value=\"clock\">
-      <property name=\"mode\" type=\"uint\" value=\"2\"/>
-      <property name=\"digital-layout\" type=\"uint\" value=\"2\"/>
-      <property name=\"digital-date-font\" type=\"string\" value=\"SpaceMono Nerd Font Mono 14\"/>
-      <property name=\"digital-date-format\" type=\"string\" value=\"%a\"/>
-    </property>
-    <property name=\"plugin-29\" type=\"string\" value=\"clock\">
-      <property name=\"mode\" type=\"uint\" value=\"2\"/>
-      <property name=\"digital-layout\" type=\"uint\" value=\"2\"/>
-      <property name=\"digital-date-font\" type=\"string\" value=\"SpaceMono Nerd Font Mono 10\"/>
-      <property name=\"digital-date-format\" type=\"string\" value=\"%d.%m\"/>
-    </property>
-    <property name=\"plugin-30\" type=\"string\" value=\"clock\">
-      <property name=\"mode\" type=\"uint\" value=\"2\"/>
-      <property name=\"digital-layout\" type=\"uint\" value=\"2\"/>
-      <property name=\"digital-date-format\" type=\"string\" value=\"%Y\"/>
-      <property name=\"digital-date-font\" type=\"string\" value=\"SpaceMono Nerd Font Mono 11\"/>
-    </property>
-  </property>
-  <property name=\"configver\" type=\"int\" value=\"2\"/>
-</channel>
-EOF
-
-mkdir -p /root/.config/xfce4/panel/launcher-4
-cat << 'EOF' > /root/.config/xfce4/panel/launcher-4/17837956301.desktop
-[Desktop Entry]
-Version=1.0
-Type=Application
-Exec=exo-open --launch FileManager %u
-Icon=org.xfce.filemanager
-StartupNotify=true
-Terminal=false
-Categories=Utility;X-XFCE;X-Xfce-Toplevel;
-Keywords=file;manager;explorer;browse;filesystem;directory;folder;xfce;
-OnlyShowIn=XFCE;
-X-XFCE-MimeType=inode/directory;x-scheme-handler/trash;
-X-AppStream-Ignore=True
-Name=File Manager
-Comment=Browse the file system
-X-XFCE-Source=file:///usr/share/applications/xfce4-file-manager.desktop
-EOF
-
-mkdir -p /root/.config/xfce4/panel/launcher-5
-cat << 'EOF' > /root/.config/xfce4/panel/launcher-5/17837956322.desktop
-[Desktop Entry]
-Version=1.0
-Type=Application
-Exec=exo-open --launch WebBrowser %u
-Icon=org.xfce.webbrowser
-StartupNotify=true
-Terminal=false
-Categories=Network;X-XFCE;X-Xfce-Toplevel;
-Keywords=internet;web;browser;surf;explore;xfce;
-OnlyShowIn=XFCE;
-X-XFCE-MimeType=x-scheme-handler/http;x-scheme-handler/https;
-X-AppStream-Ignore=True
-Name=Web Browser
-Comment=Browse the web
-X-XFCE-Source=file:///usr/share/applications/xfce4-web-browser.desktop
-EOF
-
-mkdir -p /root/.config/xfce4/panel/launcher-6
-cat << 'EOF' > /root/.config/xfce4/panel/launcher-6/17837956343.desktop
-[Desktop Entry]
-Version=1.0
-Type=Application
-Exec=exo-open --launch TerminalEmulator
-Icon=org.xfce.terminalemulator
-StartupNotify=true
-Terminal=false
-Categories=Utility;X-XFCE;X-Xfce-Toplevel;
-Keywords=terminal;command line;shell;console;xfce;
-OnlyShowIn=XFCE;
-X-AppStream-Ignore=True
-Name=Terminal Emulator
-Comment=Use the command line
-X-XFCE-Source=file:///usr/share/applications/xfce4-terminal-emulator.desktop
-EOF
-
-mkdir -p /root/.config/xfce4/panel/launcher-7
-cat << 'EOF' > /root/.config/xfce4/panel/launcher-7/17837956404.desktop
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Notes
-Comment=Ideal for your quick notes
-TryExec=xfce4-notes
-Exec=xfce4-notes
-Icon=org.xfce.notes
-Terminal=false
-Categories=GTK;Utility;TrayIcon;
-OnlyShowIn=XFCE;GNOME;
-StartupNotify=false
-X-XFCE-Source=file:///usr/share/applications/xfce4-notes.desktop
-EOF
-"
-
-# 13b. Standardanwendungen fest setzen, da die Panel-Launcher via exo-open die konfigurierten
-# Standardanwendungen öffnen (nicht direkt Thunar/Firefox/Alacritty aufrufen)
-echo "🔧 Setze Standardanwendungen (FileManager=Thunar, WebBrowser=Firefox, Terminal=Alacritty)..."
-proot-distro login debian -- bash -c "
-mkdir -p /root/.config/xfce4
-cat << 'EOF' > /root/.config/xfce4/helpers.rc
-FileManager=thunar
-WebBrowser=firefox-esr
-TerminalEmulator=alacritty
-EOF
-"
-
-# 14. Xarchiver (Archiv-Manager) installieren
-echo "📦 Installiere Xarchiver..."
-proot-distro login debian -- bash -c "
-export DEBIAN_FRONTEND=noninteractive
-apt install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold xarchiver
-"
-
-# 15. Tailscale-Autostart einrichten (userspace-networking, kein TUN-Zugriff in proot möglich)
-# WICHTIG: Login-Schritt (OAuth im Browser) bleibt einmalig manuell nötig — kann nicht
-# automatisiert werden, da Tailscale das aus Sicherheitsgründen erfordert.
-echo "🔗 Richte Tailscale-Autostart ein (userspace-networking + SOCKS5-Proxy)..."
-proot-distro login debian -- bash -c "
-mkdir -p /root/.config/autostart
-cat << 'EOF' > /root/start-tailscale.sh
-#!/bin/bash
-# Tailscale im Hintergrund starten (kein systemd in proot verfügbar)
-mkdir -p /var/lib/tailscale /var/run/tailscale
-if ! pgrep -x tailscaled > /dev/null; then
-  nohup tailscaled \\
-    --state=/var/lib/tailscale/tailscaled.state \\
-    --socket=/var/run/tailscale/tailscaled.sock \\
-    --tun=userspace-networking \\
-    --socks5-server=localhost:1055 \\
-    --outbound-http-proxy-listen=localhost:1055 \\
-    > /var/log/tailscaled.log 2>&1 &
-  sleep 2
-fi
-if ! tailscale status > /dev/null 2>&1; then
-  echo 'Tailscale läuft, aber noch nicht eingeloggt.'
-  echo 'Bitte einmalig ausführen: tailscale up'
-fi
-EOF
-chmod +x /root/start-tailscale.sh
-
-cat << 'EOF' > /root/.config/autostart/tailscale.desktop
-[Desktop Entry]
-Encoding=UTF-8
-Version=0.94
-Type=Application
-Name=Tailscale Autostart
-Comment=Startet tailscaled im Hintergrund mit SOCKS5-Proxy
-Exec=/root/start-tailscale.sh
-OnlyShowIn=XFCE;
-StartupNotify=false
-Terminal=false
-Hidden=false
-EOF
-
-if ! grep -q 'ALL_PROXY=socks5h://localhost:1055' /root/.bashrc; then
-  cat << 'EOF' >> /root/.bashrc
-
-# Tailscale SOCKS5-Proxy für CLI-Tools (userspace-networking, kein TUN in proot)
-export ALL_PROXY=socks5h://localhost:1055
-export HTTPS_PROXY=socks5h://localhost:1055
-export HTTP_PROXY=socks5h://localhost:1055
-export NO_PROXY=localhost,127.0.0.1
-EOF
-fi
-"
-
-# 15b. Firefox SOCKS5-Proxy-Config vorbereiten (Profil wird beim ersten Start erzeugt,
-# daher als Script, das das Profil danach patcht statt es fest zu verdrahten)
-echo "🦊 Bereite Firefox-Proxy-Konfiguration vor (Profil-Pfad ändert sich pro Setup)..."
-proot-distro login debian -- bash -c "
-cat << 'EOF' > /root/configure-firefox-proxy.sh
-#!/bin/bash
-PROFILE_DIR=\$(find /root/.mozilla/firefox -maxdepth 1 -name '*.default-esr' 2>/dev/null | head -1)
-if [ -z \"\$PROFILE_DIR\" ]; then
-  echo 'Kein Firefox-Profil gefunden. Firefox bitte einmal öffnen und dann dieses Script erneut ausführen.'
-  exit 1
-fi
-cat << 'PROXYEOF' >> \"\$PROFILE_DIR/user.js\"
-user_pref(\"network.proxy.type\", 1);
-user_pref(\"network.proxy.socks\", \"localhost\");
-user_pref(\"network.proxy.socks_port\", 1055);
-user_pref(\"network.proxy.socks_version\", 5);
-user_pref(\"network.proxy.socks_remote_dns\", true);
-user_pref(\"network.proxy.no_proxies_on\", \"localhost, 127.0.0.1\");
-PROXYEOF
-echo 'Firefox-Proxy-Config gesetzt in: '\$PROFILE_DIR
-EOF
-chmod +x /root/configure-firefox-proxy.sh
-"
-
-# 16. termux-setup-storage ausführen (einmalige Android-Berechtigung für Speicherzugriff)
-echo "📂 Richte Android-Speicherzugriff ein (Berechtigung wird gleich abgefragt)..."
-termux-setup-storage
-
-# 17. Den Alias 'linuxdesk' in die Termux-.bashrc schreiben (mit Android-Storage-Bind-Mount)
-echo "⚙️ Richte den Start-Alias 'linuxdesk' ein..."
-if ! grep -q "alias linuxdesk=" ~/.bashrc; then
-    echo "alias linuxdesk='termux-x11 :1 -xstartup \"proot-distro login debian --shared-tmp -b ~/storage/shared:/root/android-storage -- env DISPLAY=:1 xfce4-session\"'" >> ~/.bashrc
-fi
-
-# 18. Direkt das Termux:Widget Skript mit anlegen (ebenfalls mit Android-Storage-Bind-Mount)
-echo "📱 Richte den Homescreen-Shortcut ein..."
-mkdir -p ~/.shortcuts
-cat << 'EOF' > ~/.shortcuts/linuxdesk.sh
-#!/data/data/com.termux/files/usr/bin/bash
-termux-x11 :1 -xstartup "proot-distro login debian --shared-tmp -b ~/storage/shared:/root/android-storage -- env DISPLAY=:1 xfce4-session"
-EOF
-chmod +x ~/.shortcuts/linuxdesk.sh
-
-echo "================================================="
-echo "✅ BOOM! All-in-One Umgebung erfolgreich eingerichtet!"
-echo "================================================="
-echo "Führe zuerst aus: source ~/.bashrc"
-echo "Danach kannst du mit 'linuxdesk' oder dem Widget deine GUI starten."
-echo ""
-echo "💡 Was automatisch lief:"
-echo "   ✓ Alacritty als Standard-Terminal, JetBrains Nerd Font, Dark Theme"
-echo "   ✓ Claude Code auf Dark Mode vorkonfiguriert"
-echo "   ✓ Nordic Theme (blau) für GTK + Fensterrahmen, komplett eckig (keine Rundungen)"
-echo "   ✓ Papirus Icon Theme mit blauen Ordnern"
-echo "   ✓ Bibata Modern Ice Cursor (weiß, Größe 32)"
-echo "   ✓ Desktop-Icons deaktiviert (leerer Desktop), Standard-Wallpaper bleibt"
-echo "   ✓ Panel: Whisker-Menu, Dateimanager/Browser/Terminal/Notes-Launcher, Clipman, Papierkorb, mehrteilige Uhr (exakt deine händische Config)"
-echo "   ✓ Xarchiver installiert"
-echo "   ✓ Android-Speicher unter /root/android-storage in Debian verfügbar"
-echo "   ✓ Locale + Tastatur + XFCE-Oberfläche auf Deutsch (Österreich)"
-echo "   ✓ Japanische Schriften (fonts-noto-cjk) — Toride-Wiki sollte jetzt korrekt anzeigen"
-echo "   ✓ Tailscale-Autostart eingerichtet (SOCKS5-Proxy auf Port 1055)"
-echo ""
-echo "⚠️  EINMALIGE MANUELLE SCHRITTE (nicht automatisierbar):"
-echo "   1. In XFCE ein Terminal öffnen und ausführen: tailscale up"
-echo "      → Link im Firefox öffnen, im Browser einloggen/bestätigen"
-echo "   2. Danach Firefox einmal öffnen (damit ein Profil existiert)"
-echo "   3. Dann ausführen: /root/configure-firefox-proxy.sh"
-echo "      → Danach Firefox neu starten, MagicDNS-Namen (*.ts.net) funktionieren dann"
-echo "   4. In der Termux:X11-App (nicht Termux selbst) unter Keyboard-Einstellungen:"
-echo "      'Intercept system shortcuts' UND 'Prefer scancodes when possible' aktivieren"
-echo "      → Behebt fehlende Tastenkürzel (Strg/Alt/Meta-Kombis), die sonst von Android"
-echo "        abgefangen werden statt an X11 durchgereicht zu werden. Nicht automatisierbar,"
-echo "        da App-eigene UI-Einstellung von Termux:X11."
+    <propert

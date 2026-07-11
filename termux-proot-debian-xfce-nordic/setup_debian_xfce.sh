@@ -51,14 +51,15 @@ proot-distro install debian
 # HINWEIS: tailscale ist NICHT in Debians Standard-Repos — braucht eigenes APT-Repo (siehe Schritt 4c).
 # SCHLANK GEHALTEN: Bewusst KEIN xfce4-goodies (zieht ~40 ungenutzte Plugins) und KEIN
 # task-german-desktop (zieht LibreOffice + GDAL, ~500 MB). Stattdessen nur explizit, was die
-# handgebaute Panel-Config wirklich braucht: thunar (FileManager + thunar-tpa-Applet) und
+# handgebaute Panel-Config wirklich braucht: thunar (FileManager; das Papierkorb-Applet
+# thunar-tpa ist in Debian 13 direkt in thunar eingebaut, kein Extra-Paket nötig) und
 # xfce4-terminal. Panel-Plugins (whiskermenu/clipman/notes) folgen separat in Schritt 12.
 echo "🖥️ Lade und konfiguriere XFCE-Desktop & Apps... (☕ Kaffee-Pause!)"
 proot-distro login debian -- bash -c "
 set -e
 export DEBIAN_FRONTEND=noninteractive
 apt update && apt upgrade -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold &&
-apt install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold xfce4 thunar thunar-tpa xfce4-terminal alacritty xterm login dbus-x11 x11-xkb-utils \
+apt install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold xfce4 thunar xfce4-terminal alacritty xterm login dbus-x11 x11-xkb-utils \
   firefox-esr curl wget unzip mousepad fonts-noto-cjk fonts-noto-color-emoji \
   locales gnupg &&
 update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator /usr/bin/alacritty 50 &&
@@ -66,14 +67,25 @@ update-alternatives --set x-terminal-emulator /usr/bin/alacritty || true
 "
 
 # 4b. Offizielles Tailscale-APT-Repo hinzufügen und installieren (nicht in Debian-Standard-Repos)
+# WICHTIG: Im frischen Debian sind die CA-Zertifikate für apt noch nicht aktiv — deshalb erst
+# ca-certificates + apt-transport-https installieren und update-ca-certificates laufen lassen,
+# sonst scheitert 'apt update' an 'certificate verify failed'. Fallback: klappt Tailscale nicht,
+# läuft der Rest trotzdem weiter (du kannst es später manuell nachinstallieren).
 echo "🔗 Füge offizielles Tailscale-Repo hinzu und installiere..."
 proot-distro login debian -- bash -c "
-set -e
 export DEBIAN_FRONTEND=noninteractive
-curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg
-curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list
-apt update
-apt install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold tailscale
+apt install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold ca-certificates apt-transport-https
+update-ca-certificates
+if curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg &&
+   curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list &&
+   apt update &&
+   apt install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold tailscale; then
+  echo '✅ Tailscale installiert.'
+else
+  echo '⚠ Tailscale-Installation fehlgeschlagen — überspringe (Rest läuft weiter, später manuell nachrüstbar).'
+  rm -f /etc/apt/sources.list.d/tailscale.list
+  apt update || true
+fi
 "
 
 # 5. Nerd Font (Space Mono) für korrekte Claude Code Symbole installieren

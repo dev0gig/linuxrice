@@ -69,6 +69,9 @@ cat > ~/start-desktop.sh << 'EOF'
 # Alte Instanzen sauber beenden
 killall -9 termux-x11 sxhkd 2>/dev/null
 
+# Session-Cache bereinigen (verhindert, dass XFCE einen gespeicherten Panel-Zustand wiederherstellt)
+rm -rf ~/.cache/sessions
+
 # GPU-Treiber: Zink (OpenGL-Übersetzung) über turnip (Vulkan/Adreno)
 export MESA_LOADER_DRIVER_OVERRIDE=zink
 export GALLIUM_DRIVER=zink

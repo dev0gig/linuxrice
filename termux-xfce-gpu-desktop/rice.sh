@@ -150,60 +150,32 @@ log "Deaktiviere Desktop-Icons..."
 xfconf-query -c xfce4-desktop -p /desktop-icons/style -n -t int -s 0 2>/dev/null || \
     xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 0
 
-log "Richte minimales Panel ein (rechts, vertikal mittig, nur Taskliste, transparent)..."
+log "Deaktiviere Panel dauerhaft (kein Panel, verlässlicher Zustand)..."
 mkdir -p ~/.config/xfce4/xfconf/xfce-perchannel-xml
 cat > ~/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml << 'PANELEOF'
-<?xml version="1.1" encoding="UTF-8"?>
-
+<?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-panel" version="1.0">
-  <property name="panels" type="array">
-    <value type="int" value="1"/>
-    <property name="panel-1" type="empty">
-      <property name="position" type="string" value="p=3;x=1901;y=530"/>
-      <property name="size" type="uint" value="48"/>
-      <property name="mode" type="uint" value="1"/>
-      <property name="length" type="double" value="100"/>
-      <property name="position-locked" type="bool" value="true"/>
-      <property name="autohide-behavior" type="uint" value="1"/>
-      <property name="plugin-ids" type="array">
-        <value type="int" value="1"/>
-        <value type="int" value="5"/>
-        <value type="int" value="2"/>
-      </property>
-      <property name="background-style" type="uint" value="1"/>
-      <property name="background-rgba" type="array">
-        <value type="double" value="0"/>
-        <value type="double" value="0"/>
-        <value type="double" value="0"/>
-        <value type="double" value="0"/>
-      </property>
-      <property name="enter-opacity" type="uint" value="100"/>
-      <property name="leave-opacity" type="uint" value="100"/>
-    </property>
-  </property>
-  <property name="plugins" type="empty">
-    <property name="plugin-1" type="string" value="separator">
-      <property name="style" type="uint" value="0"/>
-      <property name="expand" type="bool" value="true"/>
-    </property>
-    <property name="plugin-2" type="string" value="separator">
-      <property name="style" type="uint" value="0"/>
-      <property name="expand" type="bool" value="true"/>
-    </property>
-    <property name="plugin-5" type="string" value="tasklist">
-      <property name="flat-buttons" type="bool" value="true"/>
-      <property name="show-labels" type="bool" value="false"/>
-      <property name="show-handle" type="bool" value="false"/>
-    </property>
-  </property>
-  <property name="configver" type="int" value="2"/>
+  <property name="panels" type="array"/>
+  <property name="plugins" type="empty"/>
 </channel>
 PANELEOF
 
-# Autostart-Blockierung von vorher wieder aufheben, da wir das Panel jetzt wollen
-rm -f ~/.config/autostart/xfce4-panel.desktop
+mkdir -p ~/.config/autostart
+cat > ~/.config/autostart/xfce4-panel.desktop << 'AUTOSTARTEOF'
+[Desktop Entry]
+Type=Application
+Name=xfce4-panel
+Exec=xfce4-panel
+Hidden=true
+X-GNOME-Autostart-enabled=false
+AUTOSTARTEOF
 
-log "Panel-Config gesetzt."
+pkill xfce4-panel 2>/dev/null
+xfconf-query -c xfce4-panel -R -r /panels 2>/dev/null || true
+rm -rf ~/.cache/sessions
+rm -rf ~/.config/xfce4/panel
+
+log "Panel deaktiviert."
 
 log "Lade laufende Komponenten neu, damit Änderungen sichtbar werden..."
 pkill xfdesktop 2>/dev/null
@@ -213,9 +185,5 @@ disown
 xfwm4 --replace &
 disown
 killall -HUP xfsettingsd 2>/dev/null || xfsettingsd --replace &
-pkill xfce4-panel 2>/dev/null
-sleep 1
-xfce4-panel &
-disown
 
 log "Rice fertig."

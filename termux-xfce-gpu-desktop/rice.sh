@@ -155,32 +155,116 @@ xfconf-query -c xfce4-session -p /general/SaveOnExit -n -t bool -s false 2>/dev/
     xfconf-query -c xfce4-session -p /general/SaveOnExit -s false
 rm -rf ~/.cache/sessions
 
-log "Deaktiviere Panel dauerhaft (kein Panel, verlässlicher Zustand)..."
-mkdir -p ~/.config/xfce4/xfconf/xfce-perchannel-xml
-cat > ~/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml << 'PANELEOF'
+# ------------------------------------------------------------------
+# Panel: schmale, transparente Taskleiste rechts, vertikal mittig.
+#
+# WARUM DAS SO UMSTÄNDLICH AUSSIEHT:
+# XFCE liest Einstellungen nicht direkt aus der Konfigdatei. Dazwischen sitzt
+# der Dienst "xfconfd", der alles im Speicher hält. Schreibt man die Datei
+# einfach nur um (so hat es dieses Skript vorher gemacht), merkt xfconfd das
+# nicht — und schreibt beim Beenden seinen eigenen, alten Stand wieder drüber.
+# Deshalb war die Panel-Config nach jedem X11-Neustart wieder weg.
+#
+# Die Lösung besteht aus zwei Teilen:
+#   1. Die Wunsch-Konfiguration liegt als VORLAGE unter panel-template.xml.
+#      start-desktop.sh kopiert sie bei JEDEM Desktop-Start über die echte
+#      Konfigdatei — nachdem xfconfd beendet wurde. Damit ist die Vorlage die
+#      Quelle der Wahrheit und übersteht jeden Neustart.
+#   2. Damit es auch sofort sichtbar wird, wird xfconfd hier einmal hart beendet
+#      und das Panel neu gestartet. Details zur Reihenfolge weiter unten.
+# ------------------------------------------------------------------
+log "Ermittle Bildschirmgröße für die Panel-Position..."
+PANEL_SIZE=48
+SCREEN_DIMS=$(xrandr 2>/dev/null | awk '/current/{gsub(",","");print $8" "$10; exit}')
+SCREEN_W=$(echo "$SCREEN_DIMS" | awk '{print $1}')
+SCREEN_H=$(echo "$SCREEN_DIMS" | awk '{print $2}')
+if ! [ "${SCREEN_W:-0}" -gt 100 ] 2>/dev/null || ! [ "${SCREEN_H:-0}" -gt 100 ] 2>/dev/null; then
+    SCREEN_W=1920
+    SCREEN_H=1060
+    err "Bildschirmgröße nicht erkannt, nutze Rückfallwert ${SCREEN_W}x${SCREEN_H}."
+fi
+# Rechter Rand, vertikal mittig. Bei 1920x1060 ergibt das die bisher von Hand
+# eingetragenen Werte x=1901;y=530 — passt so aber auch im gefalteten Zustand.
+PANEL_X=$(( SCREEN_W - 19 ))
+PANEL_Y=$(( SCREEN_H / 2 ))
+log "Bildschirm ${SCREEN_W}x${SCREEN_H} -> Panel-Position p=3;x=${PANEL_X};y=${PANEL_Y}"
+
+log "Schreibe Panel-Vorlage..."
+PANEL_TEMPLATE="$HOME/.config/xfce4/panel-template.xml"
+PANEL_CONFIG="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
+mkdir -p "$(dirname "$PANEL_TEMPLATE")" "$(dirname "$PANEL_CONFIG")"
+cat > "$PANEL_TEMPLATE" << PANELEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-panel" version="1.0">
-  <property name="panels" type="array"/>
-  <property name="plugins" type="empty"/>
+  <property name="panels" type="array">
+    <value type="int" value="1"/>
+    <property name="panel-1" type="empty">
+      <property name="position" type="string" value="p=3;x=${PANEL_X};y=${PANEL_Y}"/>
+      <property name="size" type="uint" value="${PANEL_SIZE}"/>
+      <property name="mode" type="uint" value="1"/>
+      <property name="length" type="double" value="100"/>
+      <property name="position-locked" type="bool" value="true"/>
+      <property name="autohide-behavior" type="uint" value="1"/>
+      <property name="plugin-ids" type="array">
+        <value type="int" value="1"/>
+        <value type="int" value="5"/>
+        <value type="int" value="2"/>
+      </property>
+      <property name="background-style" type="uint" value="1"/>
+      <property name="background-rgba" type="array">
+        <value type="double" value="0"/>
+        <value type="double" value="0"/>
+        <value type="double" value="0"/>
+        <value type="double" value="0"/>
+      </property>
+      <property name="enter-opacity" type="uint" value="100"/>
+      <property name="leave-opacity" type="uint" value="100"/>
+    </property>
+  </property>
+  <property name="plugins" type="empty">
+    <property name="plugin-1" type="string" value="separator">
+      <property name="style" type="uint" value="0"/>
+      <property name="expand" type="bool" value="true"/>
+    </property>
+    <property name="plugin-2" type="string" value="separator">
+      <property name="style" type="uint" value="0"/>
+      <property name="expand" type="bool" value="true"/>
+    </property>
+    <property name="plugin-5" type="string" value="tasklist">
+      <property name="flat-buttons" type="bool" value="true"/>
+      <property name="show-labels" type="bool" value="false"/>
+      <property name="show-handle" type="bool" value="false"/>
+      <property name="grouping" type="bool" value="false"/>
+    </property>
+  </property>
+  <property name="configver" type="int" value="2"/>
 </channel>
 PANELEOF
 
-mkdir -p ~/.config/autostart
-cat > ~/.config/autostart/xfce4-panel.desktop << 'AUTOSTARTEOF'
-[Desktop Entry]
-Type=Application
-Name=xfce4-panel
-Exec=xfce4-panel
-Hidden=true
-X-GNOME-Autostart-enabled=false
-AUTOSTARTEOF
+# Alte Blockade aus früheren Versionen entfernen — wir wollen das Panel jetzt.
+rm -f ~/.config/autostart/xfce4-panel.desktop
 
-pkill xfce4-panel 2>/dev/null
-xfconf-query -c xfce4-panel -R -r /panels 2>/dev/null || true
-rm -rf ~/.cache/sessions
-rm -rf ~/.config/xfce4/panel
+log "Wende Panel-Vorlage sofort an..."
+# Reihenfolge ist hier entscheidend:
+#   1. Erst die Datei schreiben, damit sie schon korrekt ist, falls xfconfd
+#      zwischendurch neu geladen wird.
+cp -f "$PANEL_TEMPLATE" "$PANEL_CONFIG"
+#   2. xfconfd HART beenden (-9). Bei einem normalen "beenden bitte" (SIGTERM)
+#      schreibt er beim Runterfahren noch seinen alten Stand über die Datei —
+#      genau das hat die Config vorher zerstört. Mit -9 kommt er dazu nicht.
+killall -9 xfconfd 2>/dev/null || true
+sleep 1
+#   3. Panel hart neu starten, damit es die frischen Werte liest. XFCE startet
+#      es von selbst wieder; falls nicht, starten wir es unten selbst.
+#      (Kein "xfce4-panel --quit" — das bleibt unter Termux-X11 hängen.)
+killall -9 xfce4-panel 2>/dev/null || true
+sleep 2
+if ! pgrep -x xfce4-panel >/dev/null 2>&1; then
+    xfce4-panel >/dev/null 2>&1 &
+    disown
+fi
 
-log "Panel deaktiviert."
+log "Panel eingerichtet (Vorlage: $PANEL_TEMPLATE)."
 
 log "Lade laufende Komponenten neu, damit Änderungen sichtbar werden..."
 pkill xfdesktop 2>/dev/null

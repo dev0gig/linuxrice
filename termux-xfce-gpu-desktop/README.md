@@ -30,6 +30,7 @@ Zwei Skripte, zwei Zwecke:
 
 - **GPU-Beschleunigung**: Zink (OpenGL-über-Vulkan) auf turnip (nativer Adreno-Vulkan-Treiber), statt `llvmpipe`-Software-Rendering
 - **Kein Standard-Panel**: XFCE startet komplett ohne obere/untere Taskleiste — voller Fokus-Screen
+- **Panel-Config übersteht den Neustart**: die Einstellungen liegen als Vorlage bereit und werden bei jedem Start wieder eingespielt (siehe [Warum die Panel-Config früher weg war](#warum-die-panel-config-früher-nach-jedem-neustart-weg-war))
 - **Rofi als App-Launcher**: `Super + Space` öffnet eine mittig zentrierte App-Suche (über `sxhkd`, nicht über XFCE-eigene Shortcuts — zuverlässiger)
 - **Minimales Seiten-Panel** (via `rice.sh`): schmale, transparente Taskleiste rechts, vertikal mittig, nur laufende Fenster — kein Schatten, kein Rest-Chrome
 - **Dark Mode**: Arc-Dark GTK-Theme, Papirus-Dark Icons, Red Hat Mono Font
@@ -78,11 +79,47 @@ Lädt Font/Cursor/Wallpaper herunter, setzt Theme, Panel-Config, Maus-Verhalten.
 | Texteditor | Mousepad (über Rofi oder `mousepad &`) |
 | Taskmanager | `xfce4-taskmanager` |
 
+## Warum die Panel-Config früher nach jedem Neustart weg war
+
+Das war lange der nervigste Bug hier, darum kurz erklärt — er ist nicht offensichtlich:
+
+XFCE liest seine Einstellungen **nicht** direkt aus den XML-Dateien. Dazwischen sitzt
+ein Dienst namens `xfconfd`, der alle Einstellungen im Speicher hält. Die Konfigdatei
+liest er nur **einmal** beim Start; danach ist *er* für XFCE die einzige Wahrheit.
+
+Daraus folgen zwei Fallen:
+
+1. **Datei umschreiben wirkt nicht.** Schreibt ein Skript die `xfce4-panel.xml` neu,
+   während `xfconfd` läuft, merkt der Dienst davon nichts — XFCE arbeitet weiter mit
+   dem alten Stand aus dem Speicher.
+2. **`xfconfd` schreibt beim Beenden zurück.** Wird er normal beendet (SIGTERM), kippt
+   er seinen alten Speicherstand über die Datei — und macht die frisch geschriebene
+   Konfiguration damit kaputt.
+
+Unter Termux kommt dazu, dass `xfconfd` einen X11-Neustart oft **überlebt** (Android
+würgt die Sitzung im Hintergrund ab, die Termux-Shell und der D-Bus laufen weiter).
+Dann gilt weiter der alte Stand, und die Panel-Config war nach jedem Neustart wieder weg.
+
+**Die Lösung hier besteht aus zwei Teilen:**
+
+- Die Wunsch-Konfiguration liegt als **Vorlage** in `~/.config/xfce4/panel-template.xml`.
+- `start-desktop.sh` beendet bei jedem Start zuerst `xfconfd` **hart** (`killall -9`,
+  damit er nicht mehr zurückschreiben kann) und kopiert **danach** die Vorlage über die
+  echte Konfigdatei. Die Vorlage ist damit die Quelle der Wahrheit, nicht der Dienst.
+
+Wer das Panel ändern will, ändert also `rice.sh` (bzw. direkt die Vorlage) — nicht die
+`xfce4-panel.xml`, die wird bei jedem Start überschrieben.
+
+Nebenbei: `xfce4-panel --quit` wird hier absichtlich **nicht** benutzt — der Aufruf
+bleibt unter Termux-X11 ohne Session-Manager hängen. Stattdessen `killall -9 xfce4-panel`.
+
 ## Bekannte Einschränkungen
 
 - Zink/turnip auf Termux-X11 ist kein offiziell unterstützter Pfad — kann bei Mesa- oder Termux-X11-Updates brechen
 - Chromium zeigt Rendering-Flackern bei Modals unter Termux-X11 (Ursache: Compositor/Redraw-Zyklen bei Mausbewegung, nicht durch GPU-Flags behebbar) — deshalb Firefox als Standard-Browser
-- Panel-Position ist auf die getestete Bildschirmauflösung zugeschnitten (`x=1901;y=530`) — bei anderen Auflösungen ggf. in `rice.sh` anpassen
+- Die Panel-Position rechnet `rice.sh` aus der aktuellen Bildschirmgröße (rechter Rand,
+  vertikal mittig). Wechselt die Auflösung dauerhaft — beim Fold z.B. innen/außen —,
+  einmal `./rice.sh` erneut laufen lassen, damit die Vorlage neu berechnet wird.
 
 ## Rollback
 
@@ -94,3 +131,13 @@ rm -rf ~/.config/xfce4/panel
 ```
 
 Danach `xfce` neu starten.
+
+Wenn das Panel spinnt, hilft fast immer der harte Weg — Dienst beenden, Vorlage
+zurückkopieren:
+
+```bash
+killall -9 xfconfd xfce4-panel
+cp -f ~/.config/xfce4/panel-template.xml \
+      ~/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
+xfce4-panel &
+```

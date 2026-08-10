@@ -4,6 +4,21 @@ Natives Linux-Desktop-Setup auf Android via Termux — kein proot-distro, kein D
 
 Getestet auf: Samsung Galaxy Z Fold 7 (Snapdragon / Adreno GPU).
 
+## Quickstart
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dev0gig/linuxrice/main/termux-xfce-gpu-desktop/setup_termux_desktop.sh | bash
+```
+
+Lädt das Setup-Skript direkt von GitHub und führt es aus. Danach `source ~/.bashrc` und `xfce` zum Starten.
+
+`rice.sh` liegt dabei noch nicht lokal vor — entweder das ganze Repo klonen (siehe [Installation](#installation)), oder gezielt nachladen:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/dev0gig/linuxrice/main/termux-xfce-gpu-desktop/rice.sh
+chmod +x rice.sh
+```
+
 ## Was das hier ist
 
 Zwei Skripte, zwei Zwecke:

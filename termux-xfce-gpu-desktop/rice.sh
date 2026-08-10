@@ -150,6 +150,11 @@ log "Deaktiviere Desktop-Icons..."
 xfconf-query -c xfce4-desktop -p /desktop-icons/style -n -t int -s 0 2>/dev/null || \
     xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 0
 
+log "Deaktiviere Session-Autosave (verhindert, dass XFCE eigenen Panel-Zustand wiederherstellt)..."
+xfconf-query -c xfce4-session -p /general/SaveOnExit -n -t bool -s false 2>/dev/null || \
+    xfconf-query -c xfce4-session -p /general/SaveOnExit -s false
+rm -rf ~/.cache/sessions
+
 log "Deaktiviere Panel dauerhaft (kein Panel, verlässlicher Zustand)..."
 mkdir -p ~/.config/xfce4/xfconf/xfce-perchannel-xml
 cat > ~/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml << 'PANELEOF'

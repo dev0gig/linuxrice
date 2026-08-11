@@ -245,17 +245,27 @@ PANELEOF
 rm -f ~/.config/autostart/xfce4-panel.desktop
 
 log "Wende Panel-Vorlage sofort an..."
-# Reihenfolge ist hier entscheidend:
-#   1. Erst die Datei schreiben, damit sie schon korrekt ist, falls xfconfd
-#      zwischendurch neu geladen wird.
+# Die Reihenfolge hier ist der ganze Trick. xfconfd hält ALLES im Speicher —
+# auch das Wallpaper und das Theme, die oben per xfconf-query gesetzt wurden.
+# Auf die Platte schreibt er das erst beim sauberen Beenden.
+#
+#   1. xfconfd NORMAL beenden (SIGTERM). Dabei schreibt er brav alles raus, was
+#      oben eingestellt wurde — Wallpaper, Icons, Theme, Maus. Würde man ihn
+#      hier mit -9 abschießen, wäre all das weg (genau so ist vorher das
+#      Wallpaper verschwunden).
+killall xfconfd 2>/dev/null || true
+sleep 3
+#   2. Erst JETZT die Panel-Datei überschreiben. Beim Rausschreiben in Schritt 1
+#      hat xfconfd nämlich auch seinen alten Panel-Stand mit auf die Platte
+#      gelegt — den bügeln wir hier wieder weg.
 cp -f "$PANEL_TEMPLATE" "$PANEL_CONFIG"
-#   2. xfconfd HART beenden (-9). Bei einem normalen "beenden bitte" (SIGTERM)
-#      schreibt er beim Runterfahren noch seinen alten Stand über die Datei —
-#      genau das hat die Config vorher zerstört. Mit -9 kommt er dazu nicht.
+#   3. xfconfd jetzt hart beenden, damit er die frische Panel-Datei sicher neu
+#      liest. Das ist an dieser Stelle gefahrlos: alles Wertvolle liegt nach
+#      Schritt 1 schon auf der Platte.
 killall -9 xfconfd 2>/dev/null || true
 sleep 1
-#   3. Panel hart neu starten, damit es die frischen Werte liest. XFCE startet
-#      es von selbst wieder; falls nicht, starten wir es unten selbst.
+#   4. Panel neu starten, damit es die frischen Werte liest. XFCE startet es
+#      meist von selbst wieder; falls nicht, starten wir es hier.
 #      (Kein "xfce4-panel --quit" — das bleibt unter Termux-X11 hängen.)
 killall -9 xfce4-panel 2>/dev/null || true
 sleep 2

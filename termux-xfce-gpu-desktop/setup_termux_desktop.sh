@@ -81,31 +81,34 @@ killall -9 termux-x11 sxhkd 2>/dev/null
 killall -9 xfce4-session xfce4-panel xfwm4 xfdesktop xfsettingsd 2>/dev/null
 
 # WICHTIG: den Einstellungs-Dienst "xfconfd" mit beenden.
-# Er hält alle XFCE-Einstellungen im Speicher und ist für XFCE die einzige
+# Er hält ALLE XFCE-Einstellungen im Speicher und ist für XFCE die einzige
 # Wahrheit — die Konfigdatei liest er nur EINMAL beim Start. Überlebt er den
 # X11-Neustart (was in Termux oft passiert, wenn Android die Sitzung im
-# Hintergrund abwürgt), gilt weiter sein alter Stand, und beim Beenden schreibt
-# er den auch noch über die Datei. Genau daran ist die Panel-Config bisher
-# nach jedem Neustart verloren gegangen.
-killall -9 xfconfd 2>/dev/null
-# warten, bis er wirklich weg ist (sonst kopieren wir gegen einen laufenden Dienst an)
-for _ in $(seq 1 20); do
-    pgrep -x xfconfd >/dev/null 2>&1 || break
-    sleep 0.25
-done
+# Hintergrund abwürgt), gilt weiter sein alter Stand. Genau daran ist die
+# Panel-Config bisher nach jedem Neustart verloren gegangen.
+#
+# Er wird NORMAL beendet (kein -9): beim sauberen Beenden schreibt er alles auf
+# die Platte, was in der letzten Sitzung eingestellt wurde — Wallpaper, Theme,
+# Icons. Mit -9 wäre das alles weg.
+killall xfconfd 2>/dev/null
+sleep 3
 
 # Session-Cache bereinigen (verhindert, dass XFCE einen gespeicherten Panel-Zustand wiederherstellt)
 rm -rf ~/.cache/sessions
 
 # Panel-Einstellungen aus der Vorlage wiederherstellen.
-# Erst JETZT kopieren — nachdem xfconfd tot ist. Vorher wäre die Datei gleich
-# wieder von seinem alten Stand überschrieben worden.
+# Erst JETZT kopieren: beim Rausschreiben oben hat xfconfd auch seinen alten
+# Panel-Stand mit auf die Platte gelegt — den bügeln wir hier wieder weg.
 PANEL_TEMPLATE="$HOME/.config/xfce4/panel-template.xml"
 PANEL_CONFIG="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
 if [ -f "$PANEL_TEMPLATE" ]; then
     mkdir -p "$(dirname "$PANEL_CONFIG")"
     cp -f "$PANEL_TEMPLATE" "$PANEL_CONFIG"
 fi
+
+# Jetzt darf er hart weg, damit er die frische Panel-Datei sicher neu liest.
+# Gefahrlos, weil oben schon alles auf die Platte geschrieben wurde.
+killall -9 xfconfd 2>/dev/null
 
 # GPU-Treiber: Zink (OpenGL-Übersetzung) über turnip (Vulkan/Adreno)
 export MESA_LOADER_DRIVER_OVERRIDE=zink

@@ -87,25 +87,36 @@ XFCE liest seine Einstellungen **nicht** direkt aus den XML-Dateien. Dazwischen 
 ein Dienst namens `xfconfd`, der alle Einstellungen im Speicher hält. Die Konfigdatei
 liest er nur **einmal** beim Start; danach ist *er* für XFCE die einzige Wahrheit.
 
-Daraus folgen zwei Fallen:
+Daraus folgen drei Fallen:
 
 1. **Datei umschreiben wirkt nicht.** Schreibt ein Skript die `xfce4-panel.xml` neu,
    während `xfconfd` läuft, merkt der Dienst davon nichts — XFCE arbeitet weiter mit
    dem alten Stand aus dem Speicher.
 2. **`xfconfd` schreibt beim Beenden zurück.** Wird er normal beendet (SIGTERM), kippt
-   er seinen alten Speicherstand über die Datei — und macht die frisch geschriebene
-   Konfiguration damit kaputt.
+   er seinen Speicherstand über die Dateien — eine vorher frisch geschriebene Datei ist
+   damit wieder kaputt.
+3. **Mit `killall -9` ist alles Ungespeicherte weg.** Alles, was per `xfconf-query`
+   gesetzt wurde (Wallpaper, Theme, Icons, Maus), liegt nur im Speicher — auf die Platte
+   kommt es praktisch erst beim sauberen Beenden. Wer `xfconfd` hart abschießt, wirft
+   diese Einstellungen weg.
 
 Unter Termux kommt dazu, dass `xfconfd` einen X11-Neustart oft **überlebt** (Android
 würgt die Sitzung im Hintergrund ab, die Termux-Shell und der D-Bus laufen weiter).
 Dann gilt weiter der alte Stand, und die Panel-Config war nach jedem Neustart wieder weg.
 
-**Die Lösung hier besteht aus zwei Teilen:**
+**Die Lösung besteht aus zwei Teilen:**
 
 - Die Wunsch-Konfiguration liegt als **Vorlage** in `~/.config/xfce4/panel-template.xml`.
-- `start-desktop.sh` beendet bei jedem Start zuerst `xfconfd` **hart** (`killall -9`,
-  damit er nicht mehr zurückschreiben kann) und kopiert **danach** die Vorlage über die
-  echte Konfigdatei. Die Vorlage ist damit die Quelle der Wahrheit, nicht der Dienst.
+- `start-desktop.sh` und `rice.sh` gehen beide in dieser Reihenfolge vor:
+  1. `xfconfd` **normal** beenden (`killall xfconfd`, ohne `-9`) — dabei schreibt er
+     Wallpaper, Theme und Icons brav auf die Platte,
+  2. **danach** die Vorlage über die `xfce4-panel.xml` kopieren — das überschreibt den
+     alten Panel-Stand, den er in Schritt 1 mit rausgeschrieben hat,
+  3. dann `killall -9 xfconfd`, damit er die frische Panel-Datei sicher neu liest. Das
+     ist jetzt gefahrlos, weil alles Wertvolle schon auf der Platte liegt.
+
+Diese Reihenfolge ist wirklich wichtig: dreht man 1 und 2, gewinnt der alte Panel-Stand.
+Lässt man Schritt 1 weg und schießt gleich hart ab, verschwindet das Wallpaper.
 
 Wer das Panel ändern will, ändert also `rice.sh` (bzw. direkt die Vorlage) — nicht die
 `xfce4-panel.xml`, die wird bei jedem Start überschrieben.
@@ -136,8 +147,9 @@ Wenn das Panel spinnt, hilft fast immer der harte Weg — Dienst beenden, Vorlag
 zurückkopieren:
 
 ```bash
-killall -9 xfconfd xfce4-panel
+killall xfconfd; sleep 3          # ohne -9, damit Wallpaper/Theme erhalten bleiben
 cp -f ~/.config/xfce4/panel-template.xml \
       ~/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
+killall -9 xfconfd xfce4-panel
 xfce4-panel &
 ```

@@ -74,7 +74,7 @@ Lädt Font/Cursor/Wallpaper herunter, setzt Theme, Panel-Config, Maus-Verhalten.
 | Aktion | Befehl / Geste |
 |---|---|
 | Desktop starten | `xfce` |
-| App-Suche öffnen | `Super + Space` |
+| App-Suche öffnen | `Super + Space` **oder** `Ctrl + Alt + Space` |
 | Browser | Firefox (über Rofi oder `firefox &`) |
 | Texteditor | Mousepad (über Rofi oder `mousepad &`) |
 | Taskmanager | `xfce4-taskmanager` |
@@ -123,6 +123,30 @@ Wer das Panel ändern will, ändert also `rice.sh` (bzw. direkt die Vorlage) —
 
 Nebenbei: `xfce4-panel --quit` wird hier absichtlich **nicht** benutzt — der Aufruf
 bleibt unter Termux-X11 ohne Session-Manager hängen. Stattdessen `killall -9 xfce4-panel`.
+
+## Wenn die App-Suche (Super+Space) nicht aufgeht
+
+Der Hotkey läuft über `sxhkd`, nicht über XFCE. Zwei Ursachen sind bekannt:
+
+1. **`sxhkd` startet gar nicht.** Es bricht ab, wenn die Variable `SHELL` leer ist
+   („The 'SHELL' environment variable is not defined") — und weil es im Hintergrund
+   gestartet wird, sieht man den Fehler nicht. `start-desktop.sh` setzt `SHELL`
+   deshalb selbst und meldet beim Start, ob `sxhkd` läuft. Nachschauen:
+
+   ```bash
+   pgrep -a sxhkd || cat ~/.cache/sxhkd.log
+   ```
+
+2. **Android/Samsung DeX frisst die Super-Taste**, dann kommt sie in X11 nie an.
+   Dafür ist `Ctrl + Alt + Space` als zweite Kombination eingerichtet — die geht auch
+   dann. Prüfen, ob X11 die Taste überhaupt sieht (im Desktop-Terminal, dann Super
+   drücken; kommt keine Zeile mit `Super_L`, schluckt Android die Taste):
+
+   ```bash
+   xev -event keyboard | grep -i keysym
+   ```
+
+Rofi selbst testen, unabhängig vom Hotkey: `rofi -show drun`
 
 ## Bekannte Einschränkungen
 

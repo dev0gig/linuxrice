@@ -67,8 +67,15 @@ EOF
 
 echo "=== Rofi-Hotkey einrichten (sxhkd, Super+Space) ==="
 mkdir -p ~/.config/sxhkd
+# Zwei Kombinationen für dieselbe Sache: Samsung DeX/Android greift die
+# Super-/Meta-Taste gern selbst ab, dann kommt sie in X11 nie an. Ctrl+Alt+Space
+# ist der Ausweg, der auch dann funktioniert.
+# (Alt+Space geht NICHT — das ist in XFCE schon das Fenstermenü.)
 cat > ~/.config/sxhkd/sxhkdrc << 'EOF'
 super + space
+    rofi -show drun
+
+ctrl + alt + space
     rofi -show drun
 EOF
 
@@ -120,8 +127,20 @@ termux-x11 :0 -ac &
 sleep 2
 export DISPLAY=:0
 
-# Hotkey-Daemon für Rofi (Super+Space) im Hintergrund starten
-sxhkd &
+# Hotkey-Daemon für Rofi (Super+Space bzw. Ctrl+Alt+Space) starten.
+# sxhkd BRICHT AB, wenn die Variable SHELL nicht gesetzt ist ("The 'SHELL'
+# environment variable is not defined") — dann tut der Hotkey einfach nichts.
+# Darum hier absichern und die Ausgabe mitschreiben, statt sie zu verschlucken.
+export SHELL="${SHELL:-$PREFIX/bin/bash}"
+[ -x "$SHELL" ] || export SHELL="$(command -v bash)"
+sxhkd > ~/.cache/sxhkd.log 2>&1 &
+sleep 1
+if pgrep -x sxhkd >/dev/null 2>&1; then
+    echo "sxhkd läuft — App-Suche: Super+Space oder Ctrl+Alt+Space"
+else
+    echo "WARNUNG: sxhkd läuft NICHT, der Hotkey wird nicht gehen. Grund:"
+    cat ~/.cache/sxhkd.log
+fi
 
 # XFCE4 Desktop starten
 startxfce4

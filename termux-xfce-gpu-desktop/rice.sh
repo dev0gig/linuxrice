@@ -2,17 +2,23 @@
 #
 # XFCE Rice Setup — MANUELL im Desktop-Terminal ausführen, nachdem XFCE gestartet ist.
 # Papirus-Dark Icons, Red Hat Mono Font, Bibata-Modern-Ice Cursor,
-# Wallhaven-Wallpaper, Dark Mode, direktere Maus (keine Beschleunigung).
+# eigenes Wallpaper (liegt im Repo), Dark Mode, direktere Maus (keine Beschleunigung).
 #
 # Idempotent: kann gefahrlos mehrfach ausgeführt werden.
 #
 set -euo pipefail
 
+SKRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 FONTS_DIR="$HOME/.local/share/fonts"
 ICONS_DIR="$HOME/.icons"
 WALLPAPER_DIR="$HOME/Pictures/Wallpaper"
-WALLPAPER_URL="https://w.wallhaven.cc/full/ln/wallhaven-lnzdw4.png"
 WALLPAPER_FILE="$WALLPAPER_DIR/wallpaper.png"
+# Das Wallpaper liegt neben diesem Skript im Repo — kein Download mehr von
+# fremden Servern (der alte Wallhaven-Link hätte jederzeit sterben können).
+WALLPAPER_QUELLE="$SKRIPT_DIR/wallpaper.png"
+# Notnagel, falls das Skript ohne sein Repo unterwegs ist:
+WALLPAPER_FERN="benutzer@rechner:~/assets/wallpaper/toride-die.png"
 
 CURSOR_THEME="Bibata-Modern-Ice"
 CURSOR_URL="https://github.com/ful1e5/Bibata_Cursor/releases/latest/download/Bibata-Modern-Ice.tar.xz"
@@ -80,12 +86,19 @@ else
     rm -rf "$TMP"
 fi
 
-log "Lade Wallpaper..."
+log "Setze Wallpaper..."
 mkdir -p "$WALLPAPER_DIR"
-if wget -q -O "$WALLPAPER_FILE" "$WALLPAPER_URL" && [ -s "$WALLPAPER_FILE" ]; then
-    log "Wallpaper gespeichert."
+if [ -s "$WALLPAPER_QUELLE" ]; then
+    cp -f "$WALLPAPER_QUELLE" "$WALLPAPER_FILE"
+    log "Wallpaper aus dem Repo übernommen."
+elif [ -s "$WALLPAPER_FILE" ]; then
+    # Wichtig: ein selbst gewähltes Wallpaper wird NICHT mehr überschrieben.
+    log "Wallpaper ist schon da — bleibt unangetastet."
+elif command -v scp >/dev/null 2>&1 && scp -q "$WALLPAPER_FERN" "$WALLPAPER_FILE" 2>/dev/null; then
+    log "Wallpaper per scp geholt."
 else
-    err "Wallpaper-Download fehlgeschlagen."
+    err "Kein Wallpaper gefunden: weder $WALLPAPER_QUELLE noch $WALLPAPER_FILE."
+    err "Von einem eigenen Rechner holen: scp $WALLPAPER_FERN $WALLPAPER_FILE"
 fi
 
 log "Aktiviere Icons, Font, Cursor, Dark Mode..."

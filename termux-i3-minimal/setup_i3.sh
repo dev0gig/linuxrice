@@ -357,78 +357,113 @@ echo "=== [6/7] Startmenue einrichten ==="
 # Der Name des eigenen Servers steht bewusst NICHT im Repo, sondern nur hier
 # lokal auf dem Handy. Das Repo bleibt damit neutral.
 #
+# Es wird bei JEDEM Lauf gefragt — das Skript soll alles neu schreiben, ohne
+# Ausnahme. Der bisherige Wert steht als Vorschlag dabei: Enter uebernimmt ihn.
+#
 # Gelesen wird von /dev/tty, nicht von der Standardeingabe: bei
 # "curl ... | bash" haengt an der Standardeingabe das Skript selbst, ein
 # normales "read" wuerde die naechste Skriptzeile verschlucken.
-if [ ! -f "$CONF" ]; then
-  ZIEL=""
-  if [ -r /dev/tty ]; then
-    printf '\n  Server fuer das Menue — bitte in der Form  benutzer@rechner\n'
-    printf '\n'
-    printf '  ⚠️  Der Benutzername ist hier PFLICHT, nicht Zierde.\n'
-    printf '      Android gibt Termux einen Benutzernamen wie "%s".\n' "$(id -un 2>/dev/null || echo u0_a123)"
-    printf '      Laesst man den Benutzer weg, versucht ssh sich mit GENAU\n'
-    printf '      diesem Namen anzumelden — den es auf dem Server nicht gibt.\n'
-    printf '      Tailscale antwortet dann mit "user is not permitted".\n'
-    printf '      Nach einer Neuinstallation von Termux aendert sich der Name.\n'
-    printf '\n'
-    printf '  Eingabe (leer = spaeter): '
-    read -r ZIEL < /dev/tty || ZIEL=""
-  fi
 
-  # Fehlt das @, laeuft es garantiert in den oben beschriebenen Fehler.
-  # Lieber sofort nachfragen als den Nutzer spaeter suchen lassen.
+# Bisheriges Ziel aus dem gespeicherten Befehl herausloesen, als Vorschlag.
+ALT_ZIEL=""
+if [ -f "$CONF" ]; then
+  # Dieselbe optionsfeste Erkennung wie im Menue: Ohne die Liste der Optionen,
+  # die selbst noch einen Wert nach sich ziehen, wuerde aus "ssh -p 2222 rechner"
+  # die Zahl 2222 als Ziel herausfallen.
+  ALT_ZIEL="$(grep -v '^[[:space:]]*#' "$CONF" 2>/dev/null | grep -v '^[[:space:]]*$' \
+              | head -n 1 | awk '
+      BEGIN { split("-b -c -D -E -e -F -I -i -J -L -l -m -O -o -p -Q -R -S -W -w", _o, " ")
+              for (k in _o) argopt[_o[k]] = 1 }
+      { for (i = 1; i <= NF; i++) if ($i == "ssh") {
+          for (j = i + 1; j <= NF; j++) {
+            if ($j ~ /^-/) { if ($j in argopt) j++; continue }
+            print $j; exit
+          } } }')"
+fi
+
+ZIEL=""
+if [ -r /dev/tty ]; then
+  printf '\n  Server fuer das Menue — bitte in der Form  benutzer@rechner\n'
+  printf '\n'
+  printf '  ⚠️  Der Benutzername ist hier PFLICHT, nicht Zierde.\n'
+  printf '      Android gibt Termux einen Benutzernamen wie "%s".\n' "$(id -un 2>/dev/null || echo u0_a123)"
+  printf '      Laesst man den Benutzer weg, versucht ssh sich mit GENAU\n'
+  printf '      diesem Namen anzumelden — den es auf dem Server nicht gibt.\n'
+  printf '      Tailscale antwortet dann mit "user is not permitted".\n'
+  printf '      Nach einer Neuinstallation von Termux aendert sich der Name.\n'
+  printf '\n'
+  if [ -n "$ALT_ZIEL" ]; then
+    printf '  Eingabe [Enter = %s]: ' "$ALT_ZIEL"
+  else
+    printf '  Eingabe (leer = spaeter eintragen): '
+  fi
+  read -r ZIEL < /dev/tty || ZIEL=""
+fi
+# Enter gedrueckt -> beim Bisherigen bleiben.
+[ -n "$ZIEL" ] || ZIEL="$ALT_ZIEL"
+
+# Fehlt das @, laeuft es garantiert in den oben beschriebenen Fehler.
+# Lieber sofort nachfragen als den Nutzer spaeter suchen lassen.
+case "$ZIEL" in
+  ""|*@*) : ;;
+  *)
+    echo ""
+    echo "  ⚠️  In '$ZIEL' fehlt der Benutzername — so wird die Anmeldung"
+    echo "      fehlschlagen (siehe oben)."
+    if [ -r /dev/tty ]; then
+      printf '  Benutzername auf dem Server (leer = trotzdem so lassen): '
+      read -r BENUTZER < /dev/tty || BENUTZER=""
+      [ -n "$BENUTZER" ] && ZIEL="$BENUTZER@$ZIEL"
+    fi
+    ;;
+esac
+
+if [ -n "$ZIEL" ]; then
+  printf '# Befehl fuer Menuepunkt 1 (SSH mit tmux-Sitzung "cc").\n' > "$CONF"
+  printf 'ssh %s -t "tmux new -A -s cc"\n' "$ZIEL" >> "$CONF"
+  echo "  Ziel gespeichert: $ZIEL  ->  $CONF"
+
+  # Denselben Benutzer auch fuer ein blankes "ssh rechner" hinterlegen —
+  # sonst laeuft man in genau denselben Fehler, sobald man den Befehl
+  # einmal von Hand tippt statt ueber das Menue zu gehen.
   case "$ZIEL" in
-    ""|*@*) : ;;
-    *)
-      echo ""
-      echo "  ⚠️  In '$ZIEL' fehlt der Benutzername — so wird die Anmeldung"
-      echo "      fehlschlagen (siehe oben)."
-      if [ -r /dev/tty ]; then
-        printf '  Benutzername auf dem Server (leer = trotzdem so lassen): '
-        read -r BENUTZER < /dev/tty || BENUTZER=""
-        [ -n "$BENUTZER" ] && ZIEL="$BENUTZER@$ZIEL"
-      fi
+    *@*)
+      SSH_USER="${ZIEL%@*}"
+      SSH_HOST="${ZIEL#*@}"
+      mkdir -p "$HOME/.ssh"
+      touch "$HOME/.ssh/config"
+      chmod 600 "$HOME/.ssh/config"
+      # Einen vorhandenen Block fuer denselben Rechner ERSETZEN statt einen
+      # zweiten anzuhaengen — sonst sammeln sich bei jedem Lauf Doppel an,
+      # und ssh nimmt stillschweigend den ersten Treffer.
+      #
+      # tolower() statt IGNORECASE: Letzteres kennt nur gawk, und welches awk
+      # in Termux steckt, ist nicht garantiert.
+      # Die eigene Kommentarzeile wird mit weggefiltert, damit sie sich nicht
+      # bei jedem Lauf erneut ansammelt.
+      awk -v h="$SSH_HOST" '
+        tolower($1) == "host" { drin = ($2 == h) }
+        drin { next }
+        /^# setup_i3.sh:/ { next }
+        # Mehrere Leerzeilen hintereinander zu einer zusammenziehen, sonst
+        # waechst die Datei bei jedem Lauf um eine weitere Leerzeile.
+        /^[[:space:]]*$/ { if (leer) next; leer = 1; print; next }
+        { leer = 0; print }
+      ' "$HOME/.ssh/config" > "$HOME/.ssh/config.neu"
+      {
+        printf '\n# setup_i3.sh: Ohne diesen Eintrag meldet sich ssh mit dem Android-Namen.\n'
+        printf 'Host %s\n    User %s\n' "$SSH_HOST" "$SSH_USER"
+      } >> "$HOME/.ssh/config.neu"
+      mv "$HOME/.ssh/config.neu" "$HOME/.ssh/config"
+      chmod 600 "$HOME/.ssh/config"
+      echo "  ~/.ssh/config gesetzt: 'ssh $SSH_HOST' nutzt $SSH_USER."
       ;;
   esac
-
-  if [ -n "$ZIEL" ]; then
-    printf '# Befehl fuer Menuepunkt 1 (SSH mit tmux-Sitzung "cc").\n' > "$CONF"
-    printf 'ssh %s -t "tmux new -A -s cc"\n' "$ZIEL" >> "$CONF"
-    echo "  Ziel gespeichert in: $CONF"
-
-    # Denselben Benutzer auch fuer ein blankes "ssh rechner" hinterlegen —
-    # sonst laeuft man in genau denselben Fehler, sobald man den Befehl
-    # einmal von Hand tippt statt ueber das Menue zu gehen.
-    case "$ZIEL" in
-      *@*)
-        SSH_USER="${ZIEL%@*}"
-        SSH_HOST="${ZIEL#*@}"
-        mkdir -p "$HOME/.ssh"
-        touch "$HOME/.ssh/config"
-        chmod 600 "$HOME/.ssh/config"
-        if ! grep -qiE "^[[:space:]]*Host[[:space:]]+$SSH_HOST[[:space:]]*$" "$HOME/.ssh/config"; then
-          {
-            printf '\n# Von setup_i3.sh: sonst meldet sich ssh mit dem\n'
-            printf '# Android-Benutzernamen an und wird abgewiesen.\n'
-            printf 'Host %s\n    User %s\n' "$SSH_HOST" "$SSH_USER"
-          } >> "$HOME/.ssh/config"
-          echo "  ~/.ssh/config ergaenzt: 'ssh $SSH_HOST' nutzt jetzt $SSH_USER."
-        fi
-        ;;
-    esac
-  else
-    printf '# Befehl fuer Menuepunkt 1. Die Zeile unten anpassen und die\n' > "$CONF"
-    printf '# fuehrende Raute entfernen:\n' >> "$CONF"
-    printf '# ssh RECHNERNAME -t "tmux new -A -s cc"\n' >> "$CONF"
-    echo "  Kein Ziel angegeben — bitte spaeter eintragen in: $CONF"
-  fi
 else
-  # Nicht erneut fragen: Sonst wuerde bei jedem Lauf die vorhandene Eingabe
-  # ueberschrieben. Stattdessen zeigen, was gilt und wo man es aendert.
-  echo "  Server steht schon fest, es wird nicht erneut gefragt:"
-  echo "      $(grep -v '^[[:space:]]*#' "$CONF" 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 1)"
-  echo "  Aendern: $CONF bearbeiten."
+  printf '# Befehl fuer Menuepunkt 1. Die Zeile unten anpassen und die\n' > "$CONF"
+  printf '# fuehrende Raute entfernen:\n' >> "$CONF"
+  printf '# ssh RECHNERNAME -t "tmux new -A -s cc"\n' >> "$CONF"
+  echo "  Kein Ziel angegeben — bitte spaeter eintragen in: $CONF"
 fi
 
 # Das alte Menue vorher zur Seite legen. Es wird gleich ueberschrieben, und
@@ -607,19 +642,25 @@ echo "=== [7/7] Firefox-Grundeinstellungen ==="
 
 # Die Startseite steht — genau wie das SSH-Ziel — bewusst NICHT im Repo.
 # Sie waere eine Adresse aus dem eigenen Netz und geht niemanden etwas an.
-if [ ! -f "$FFCONF" ]; then
-  FFURL=""
-  if [ -r /dev/tty ]; then
+#
+# Auch hier wird bei JEDEM Lauf gefragt. Der bisherige Wert steht als
+# Vorschlag dabei, Enter uebernimmt ihn.
+ALT_FFURL="$(grep -v '^[[:space:]]*#' "$FFCONF" 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 1)"
+FFURL=""
+if [ -r /dev/tty ]; then
+  if [ -n "$ALT_FFURL" ]; then
+    printf '\n  Startseite fuer Firefox [Enter = %s]: ' "$ALT_FFURL"
+  else
     printf '\n  Startseite fuer Firefox (leer = keine setzen): '
-    read -r FFURL < /dev/tty || FFURL=""
   fi
-  [ -n "$FFURL" ] && printf '%s\n' "$FFURL" > "$FFCONF"
+  read -r FFURL < /dev/tty || FFURL=""
 fi
-FFURL="$(grep -v '^[[:space:]]*#' "$FFCONF" 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 1)"
+# Enter gedrueckt -> beim Bisherigen bleiben.
+[ -n "$FFURL" ] || FFURL="$ALT_FFURL"
+
 if [ -n "$FFURL" ]; then
-  echo "  Startseite steht schon fest, es wird nicht erneut gefragt:"
-  echo "      $FFURL"
-  echo "  Aendern: $FFCONF bearbeiten und das Setup nochmal starten."
+  printf '%s\n' "$FFURL" > "$FFCONF"
+  echo "  Startseite gesetzt: $FFURL"
 fi
 
 # Profil suchen. Firefox legt es unter einem zufaelligen Namen an, der echte

@@ -29,19 +29,24 @@ desk
 
 Alles Weitere ist vorkonfiguriert — Terminal, Darkmode und Firefox.
 
-### Beim erneuten Ausführen wird nicht nochmal gefragt
+### Das Skript ist beliebig oft wiederholbar
 
-Das Skript ist gefahrlos wiederholbar: Konfigurationsdateien werden neu
-geschrieben, aber die beiden **Eingaben** werden nur beim ersten Mal abgefragt.
-Sonst würde jeder Lauf deine Antworten überschreiben.
+Es überschreibt bei jedem Lauf **alles** — Konfiguration, Startskript, Menü — und
+fragt dabei auch **jedes Mal** neu nach den beiden Eingaben:
 
-| Wert | Liegt in | Ändern |
-|---|---|---|
-| SSH-Ziel fürs Menü | `~/.termux-menu.conf` | Datei bearbeiten |
-| Firefox-Startseite | `~/.i3-firefox.conf` | Datei bearbeiten, dann Setup erneut starten |
+| Wert | Liegt in |
+|---|---|
+| SSH-Ziel fürs Menü (`benutzer@rechner`) | `~/.termux-menu.conf` |
+| Firefox-Startseite | `~/.i3-firefox.conf` |
 
-Das Setup zeigt bei jedem Lauf an, welche Werte gerade gelten. Wer wieder gefragt
-werden will, löscht die jeweilige Datei.
+Der bisherige Wert steht dabei als Vorschlag in eckigen Klammern — **Enter
+übernimmt ihn**, eine neue Eingabe ersetzt ihn. So bleibt ein Wiederholungslauf
+schnell, ohne dass etwas heimlich hängen bleibt.
+
+Der `~/.ssh/config`-Eintrag wird dabei **ersetzt, nicht angehängt**. Sonst
+sammelten sich bei jedem Lauf Doppel-Einträge für denselben Rechner an, und
+`ssh` nähme stillschweigend den ersten Treffer — mit womöglich veraltetem
+Benutzernamen. Andere Einträge in der Datei bleiben unberührt.
 
 ### ⚠️ Termux verträgt keine Teil-Aktualisierungen
 

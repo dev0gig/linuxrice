@@ -32,11 +32,12 @@ MENU="$HOME/.termux-menu.sh"
 CONF="$HOME/.termux-menu.conf"
 START="$HOME/start-i3.sh"
 I3CONF="$HOME/.config/i3/config"
+TPROPS="$HOME/.termux/termux.properties"
 # Nur noch da, um die Merkdatei aelterer Fassungen aufzuraeumen — eine
 # Startseite wird bewusst nicht mehr gespeichert.
 FFCONF="$HOME/.i3-firefox.conf"
 
-echo "=== [1/7] System auf einen Stand bringen ==="
+echo "=== [1/8] System auf einen Stand bringen ==="
 export DEBIAN_FRONTEND=noninteractive
 pkg update -y
 
@@ -121,10 +122,10 @@ inst_opt() {
   return 0
 }
 
-echo "=== [2/7] X11-Repo freischalten ==="
+echo "=== [2/8] X11-Repo freischalten ==="
 inst x11-repo
 
-echo "=== [3/7] Pakete installieren ==="
+echo "=== [3/8] Pakete installieren ==="
 inst termux-x11-nightly
 inst mesa mesa-vulkan-icd-freedreno
 # i3 und Terminal zuerst und getrennt von Firefox: Firefox ist mit ~66 MB der
@@ -276,7 +277,7 @@ LXEOF
   echo "  geschrieben: $LXCONF (Schrift 12, dunkel, ohne Leisten)"
 fi
 
-echo "=== [4/7] i3-Konfiguration schreiben ==="
+echo "=== [4/8] i3-Konfiguration schreiben ==="
 mkdir -p "$(dirname "$I3CONF")"
 cat > "$I3CONF" <<'I3EOF'
 # ~/.config/i3/config
@@ -363,7 +364,7 @@ I3EOF
 sed -i "s|@TERM@|$TERMCMD|g" "$I3CONF"
 echo "  geschrieben: $I3CONF"
 
-echo "=== [5/7] Startskript schreiben ==="
+echo "=== [5/8] Startskript schreiben ==="
 cat > "$START" <<'STARTEOF'
 #!/bin/bash
 # Startet die i3-Sitzung. Erzeugt von setup_i3.sh.
@@ -419,7 +420,7 @@ STARTEOF
 chmod +x "$START"
 echo "  geschrieben: $START"
 
-echo "=== [6/7] Startmenue einrichten ==="
+echo "=== [6/8] Startmenue einrichten ==="
 
 # --- Ziel-Rechner erfragen ------------------------------------------------
 # Der Name des eigenen Servers steht bewusst NICHT im Repo, sondern nur hier
@@ -764,7 +765,73 @@ awk '
 mv "$HOME/.bashrc.neu" "$HOME/.bashrc"
 echo "  ~/.bashrc: Menue-Block und Alias neu geschrieben."
 
-echo "=== [7/7] Firefox-Grundeinstellungen ==="
+echo "=== [7/8] Termux-Tastenleiste (zwei Reihen) ==="
+
+# Die Leiste ueber der Bildschirmtastatur. Ab Werk zeigt Termux dort eine
+# einzige Reihe (ESC TAB CTRL ALT - DOWN UP). Auf dem Fold7 ist Platz fuer
+# zwei, und ohne die zweite fehlen genau die Tasten, die man im Terminal
+# staendig braucht:
+#
+#   S-TAB   Shift+Tab, als Escape-Sequenz "ESC [ Z" verschickt. Die SHIFT-
+#           Taste der Leiste taugt dafuer NICHT — sie ist kein echter
+#           Modifier, Shift+Tab kam damit nie an (z. B. der Moduswechsel
+#           in Claude Code). Darum das Makro.
+#   V|  H-  tmux-Fenster teilen, senkrecht bzw. waagrecht.
+#   EXIT    tippt "exit" und Enter — Sitzung beenden ohne Tastatur.
+#   HOME END DEL | und die vier Pfeile.
+#
+# Die Datei wird NICHT ueberschrieben: es fliegen nur der eigene Block
+# zwischen den Markierungen und eine eventuell von Hand gesetzte
+# extra-keys-Zeile raus. Alles andere (Farben, Lautstaerketaste, Schrift,
+# Termux:Boot) bleibt unangetastet stehen.
+mkdir -p "$HOME/.termux"
+touch "$TPROPS"
+awk '
+  # 1. Eigener Block aus einem frueheren Lauf.
+  /^# >>> setup_i3\.sh$/ { drin = 1; next }
+  /^# <<< setup_i3\.sh$/ { drin = 0; next }
+  drin { next }
+
+  # 2. Eine lose extra-keys-Zeile von Hand. Sie darf sich ueber mehrere
+  #    Zeilen ziehen — dann endet jede Fortsetzung auf "\", und die
+  #    muessen alle mit weg, sonst bleibt ein Rumpf stehen, den Termux
+  #    als kaputte Einstellung liest.
+  #    "extra-keys-style" und "extra-keys-text-all-caps" sind eigene
+  #    Schluessel und bleiben ausdruecklich erhalten.
+  /^[[:space:]]*extra-keys[[:space:]]*=/ {
+    while ($0 ~ /\\[[:space:]]*$/) { if ((getline) <= 0) break }
+    next
+  }
+
+  # Mehrere Leerzeilen hintereinander zu einer zusammenziehen.
+  /^[[:space:]]*$/ { if (leer) next; leer = 1; print; next }
+  { leer = 0; print }
+' "$TPROPS" > "$TPROPS.neu"
+cat >> "$TPROPS.neu" <<'TASTENEOF'
+
+# >>> setup_i3.sh
+# Alles zwischen diesen beiden Markierungen schreibt setup_i3.sh bei jedem
+# Lauf neu. Eigene Zeilen bitte AUSSERHALB davon ablegen.
+#
+# Reihe 1:  ESC  TAB  S-TAB  ALT  -  V|  UP  H-
+# Reihe 2:  HOME  END  |  EXIT  DEL  LEFT  DOWN  RIGHT
+extra-keys = [['ESC','TAB',{macro: 'ESC [ Z', display: 'S-TAB'},'ALT','-',{macro: 'CTRL b %', display:'V|'},'UP',{macro: 'CTRL b "', display: 'H-'}],['HOME','END','|',{macro: 'e x i t ENTER', display:'EXIT'},'DEL','LEFT','DOWN','RIGHT']]
+# <<< setup_i3.sh
+TASTENEOF
+mv "$TPROPS.neu" "$TPROPS"
+echo "  geschrieben: $TPROPS"
+
+# Uebernimmt die Leiste sofort — ohne das hier sieht man sie erst, wenn
+# Termux einmal komplett geschlossen und neu geoeffnet wurde.
+if command -v termux-reload-settings >/dev/null 2>&1; then
+  termux-reload-settings || true
+  echo "  Tastenleiste neu geladen — sie ist sofort da."
+else
+  echo "  Hinweis: termux-reload-settings fehlt. Termux einmal komplett"
+  echo "  schliessen und neu oeffnen, dann ist die Leiste da."
+fi
+
+echo "=== [8/8] Firefox-Grundeinstellungen ==="
 
 # ⚠️ KEINE Startseite mehr. Das Skript fragt sie nicht, speichert sie nicht und
 # schreibt sie nicht in die user.js. Eine Startseite ist eine Adresse aus dem
@@ -837,6 +904,7 @@ echo "  $MENU"
 echo "  $CONF"
 [ -f "$LXCONF" ] && echo "  $LXCONF"
 echo "  ~/.bashrc  (nur der Block zwischen den setup_i3.sh-Markierungen)"
+echo "  $TPROPS  (nur der Block zwischen den Markierungen)"
 echo "  ~/.ssh/config  (nur der Abschnitt fuer den eingetragenen Rechner)"
 echo "  Firefox user.js  (sofern ein Profil da war)"
 echo ""
@@ -866,6 +934,18 @@ Naechste Schritte:
 
 Firefox ist vorkonfiguriert (vertikale Tabs, dunkel, ohne Menueleiste).
 Rueckgaengig machen: die Datei user.js im Firefox-Profil loeschen.
+
+Die Tastenleiste ueber der Bildschirmtastatur hat jetzt zwei Reihen:
+
+  Reihe 1:  ESC  TAB  S-TAB  ALT  -  V|  UP  H-
+  Reihe 2:  HOME  END  |  EXIT  DEL  LEFT  DOWN  RIGHT
+
+  S-TAB   Shift+Tab (z. B. Moduswechsel in Claude Code)
+  V|  H-  tmux-Fenster teilen, senkrecht bzw. waagrecht
+  EXIT    tippt "exit" + Enter
+
+Rueckgaengig machen: in ~/.termux/termux.properties den Block zwischen
+den setup_i3.sh-Markierungen loeschen, dann termux-reload-settings.
 
 Tastenkuerzel:
 

@@ -124,6 +124,7 @@ Das Setup weist darauf hin, wenn keine Gruppe gewählt ist.
 | Fenster | i3 (ohne `bar`-Block) |
 | Programme in der Sitzung | ein Terminal und **Firefox** — sonst nichts |
 | Terminal-Inhalt | Startmenü → SSH zum Server |
+| Termux selbst | zweireihige Tastenleiste (`extra-keys`) |
 | Konfiguration | eine i3-Config, ~60 Zeilen inkl. Kommentaren |
 | Dienste im Hintergrund | **keine** |
 
@@ -189,6 +190,51 @@ xev -event keyboard | grep -i keysym
 Kommt keine Zeile mit `Super_L`, schluckt Android die Taste. Dann in
 `~/.config/i3/config` den `set $mod`-Block umstellen: `Mod4` auskommentieren,
 `Mod1` (Alt) freigeben. Steht dort direkt erklärt.
+
+## Die Termux-Tastenleiste (zwei Reihen)
+
+Das ist die Leiste **über der Bildschirmtastatur** — sie gehört zu Termux
+selbst, nicht zu i3, und wirkt darum auch in der normalen Termux-Sitzung ohne
+laufende X11-Sitzung. Ab Werk zeigt Termux dort eine einzige Reihe
+(`ESC TAB CTRL ALT - DOWN UP`). Das Setup schreibt zwei:
+
+| | Tasten |
+|---|---|
+| Reihe 1 | `ESC` `TAB` `S-TAB` `ALT` `-` `V|` `UP` `H-` |
+| Reihe 2 | `HOME` `END` `\|` `EXIT` `DEL` `LEFT` `DOWN` `RIGHT` |
+
+Die vier Sondertasten sind Makros:
+
+| Taste | Was sie schickt | Wofür |
+|---|---|---|
+| `S-TAB` | `ESC [ Z` | Shift+Tab, z. B. der Moduswechsel in Claude Code |
+| `V\|` | `Strg+B` `%` | tmux-Fenster senkrecht teilen |
+| `H-` | `Strg+B` `"` | tmux-Fenster waagrecht teilen |
+| `EXIT` | `exit` + Enter | Sitzung beenden, ohne die Tastatur aufzuklappen |
+
+### ⚠️ Die `SHIFT`-Taste der Leiste taugt nicht für Shift+Tab
+
+Naheliegend wäre, einfach `SHIFT` in die Leiste zu legen und damit `TAB` zu
+drücken. Das funktioniert **nicht**: Die Leistentasten sind keine echten
+Modifier für die Terminal-Ebene. Terminals erwarten für Shift+Tab die
+Escape-Sequenz `ESC [ Z`, und die muss man direkt schicken — darum das Makro.
+Das hat vorher wochenlang gefehlt und war der Anlass für die zweite Reihe.
+
+### Die Datei wird nicht überschrieben
+
+Geschrieben wird `~/.termux/termux.properties`, aber nur der Block zwischen
+den Markierungen `# >>> setup_i3.sh` und `# <<< setup_i3.sh`. Alles andere
+(Farben, `volume-keys`, Schriftart, Termux:Boot) bleibt stehen. Eine von Hand
+gesetzte `extra-keys`-Zeile außerhalb wird entfernt — auch eine mehrzeilige mit
+`\` am Zeilenende, sonst bliebe ein Rumpf stehen, den Termux als kaputte
+Einstellung liest. Die verwandten Schlüssel `extra-keys-style` und
+`extra-keys-text-all-caps` bleiben ausdrücklich unangetastet.
+
+Danach läuft `termux-reload-settings` — die Leiste ist sofort da, ohne Termux
+neu zu starten.
+
+**Rückgängig:** den Block zwischen den Markierungen löschen, dann
+`termux-reload-settings`.
 
 ## Darkmode
 

@@ -20,14 +20,14 @@ curl -fsSL https://raw.githubusercontent.com/dev0gig/linuxrice/main/termux-i3-mi
 ```
 
 Das Skript installiert alles, schreibt die i3-Konfiguration, das Startskript und
-das Startmenü, und fragt einmal nach dem Namen deines Servers. Danach:
+das Startmenü, und fragt einmal nach dem Namen deines Servers und der Firefox-Startseite. Danach:
 
 ```bash
 source ~/.bashrc
 desk
 ```
 
-Zwei Handgriffe bleiben manuell — siehe [Darkmode](#darkmode-zwei-klicks-in-firefox).
+Alles Weitere ist vorkonfiguriert — Terminal, Darkmode und Firefox.
 
 ### i3 testen, ohne XFCE aufzugeben
 
@@ -60,7 +60,7 @@ mv ~/.termux-menu.sh.bak ~/.termux-menu.sh
 |---|---|
 | Anzeige | Termux-X11 |
 | Fenster | i3 (ohne `bar`-Block) |
-| Programme in der Sitzung | **urxvt** und **Firefox** — sonst nichts |
+| Programme in der Sitzung | ein Terminal und **Firefox** — sonst nichts |
 | Terminal-Inhalt | Startmenü → SSH zum Server |
 | Konfiguration | eine i3-Config, ~60 Zeilen inkl. Kommentaren |
 | Dienste im Hintergrund | **keine** |
@@ -124,20 +124,19 @@ Kommt keine Zeile mit `Super_L`, schluckt Android die Taste. Dann in
 `~/.config/i3/config` den `set $mod`-Block umstellen: `Mod4` auskommentieren,
 `Mod1` (Alt) freigeben. Steht dort direkt erklärt.
 
-## Darkmode: zwei Klicks in Firefox
+## Darkmode
 
-Das ist der einzige Teil, der nicht automatisch passiert, und ohne ihn ist alles
-hell — Firefox nimmt sonst das GTK-Standardtheme, und das ist Adwaita **light**.
+Ohne Zutun wäre Firefox **hell**: Er nimmt sonst das GTK-Standardtheme, und das
+ist Adwaita light.
 
-1. Firefox → Einstellungen → Design → **Dunkel**
-2. `about:config` → `ui.systemUsesDarkTheme` = **1**
+Zwei Stellen sorgen dafür, dass das nicht passiert — beide erledigt das Setup:
 
-Punkt 2 ist der wichtige: Er entscheidet über `prefers-color-scheme` und damit,
-ob **Webseiten** dunkel rendern. Punkt 1 färbt nur Firefox selbst.
+- `GTK_THEME=Adwaita:dark` in `start-i3.sh` färbt Fensterrahmen und Menüs.
+- `ui.systemUsesDarkTheme` = `1` in der `user.js` färbt Firefox selbst **und**
+  entscheidet über `prefers-color-scheme`, also ob **Webseiten** dunkel rendern.
+  Das ist der wichtigere von beiden.
 
-Beides liegt im Firefox-Profil und überlebt Neustarts, Updates und
-Sitzungsabstürze. Deshalb wird es hier nicht ins Setup-Skript gepresst — das
-müsste den Profilpfad raten, der beim ersten Start noch gar nicht existiert.
+Details unter [Feinschliff](#firefox-vertikale-tabs-dunkel-keine-menüleiste).
 
 ## Feinschliff
 
@@ -163,20 +162,39 @@ Das muss beim Aufruf passieren — xfce4-terminal merkt sich das Ausblenden
 **nicht** über Fenster hinweg, man müsste es sonst in jedem neuen Fenster von
 Hand wegklicken.
 
-### Firefox: vertikale Tabs, keine Menüleiste
+### Firefox: vertikale Tabs, dunkel, keine Menüleiste
 
-Firefox 153 bringt vertikale Tabs von Haus aus mit, das braucht kein Add-on:
+Macht das Setup selbst. Es schreibt eine `user.js` ins Firefox-Profil:
 
-- **Vertikale Tabs:** Rechtsklick auf die Tab-Leiste → *Vertikale Tabs
-  aktivieren*. Alternativ in `about:config`: `sidebar.revamp` = `true` und
-  `sidebar.verticalTabs` = `true`. Die waagrechte Tab-Leiste verschwindet dabei
-  von selbst.
-- **Menüleiste:** ist auf Linux ohnehin standardmäßig aus. Falls doch sichtbar:
-  Rechtsklick auf die Symbolleiste → Haken bei *Menüleiste* entfernen.
+| Einstellung | Wirkung |
+|---|---|
+| `sidebar.revamp` + `sidebar.verticalTabs` | vertikale Tabs; die waagrechte Leiste verschwindet dabei von selbst |
+| `ui.systemUsesDarkTheme` = `1` | dunkel — auch **Webseiten** über `prefers-color-scheme` |
+| `browser.menubarVisible` = `false` | keine Menüleiste |
+| `browser.startup.homepage` | feste Startseite (optional, siehe unten) |
 
-Beides liegt im Firefox-Profil und überlebt Neustarts. Deshalb steht es hier
-und nicht im Setup-Skript: Das Profil wird aus der XFCE-Zeit weiterverwendet,
-inklusive Chronik und Lesezeichen — da soll kein Skript hineinschreiben.
+Vertikale Tabs sind seit Firefox 136 eingebaut, es braucht **kein Add-on**.
+
+**Warum `user.js` und nicht `prefs.js`:** `prefs.js` schreibt Firefox beim
+Beenden selbst neu und würde alles überbügeln. Die Werte in `user.js` gelten
+dagegen bei jedem Start.
+
+⚠️ **Der Preis:** Änderungen über die Oberfläche halten nur bis zum nächsten
+Start. Wer wieder freie Hand will, löscht die `user.js` im Profil.
+
+**Das vorhandene Profil bleibt erhalten** — Chronik, Lesezeichen und Passwörter
+aus der XFCE-Zeit werden nicht angefasst. Bei mehreren Profilen wird das
+tatsächlich benutzte gewählt (`Default=` aus `profiles.ini`), nicht einfach das
+erste.
+
+### Startseite
+
+Wird beim Setup einmal abgefragt und in `~/.i3-firefox.conf` abgelegt —
+**nicht im Repo**, aus demselben Grund wie beim SSH-Ziel: Es ist eine Adresse
+aus dem eigenen Netz.
+
+Zum Ändern die Datei anpassen und das Setup erneut laufen lassen. Leer lassen
+heißt: Firefox behält seine eigene Startseite.
 
 ## Das Startmenü
 

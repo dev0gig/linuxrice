@@ -32,8 +32,9 @@ MENU="$HOME/.termux-menu.sh"
 CONF="$HOME/.termux-menu.conf"
 START="$HOME/start-i3.sh"
 I3CONF="$HOME/.config/i3/config"
+FFCONF="$HOME/.i3-firefox.conf"
 
-echo "=== [1/6] Paketlisten auffrischen ==="
+echo "=== [1/7] Paketlisten auffrischen ==="
 export DEBIAN_FRONTEND=noninteractive
 pkg update -y
 
@@ -53,10 +54,10 @@ else
   echo "  (Rundum-Upgrade uebersprungen. Mit MIT_UPGRADE=1 erzwingbar.)"
 fi
 
-echo "=== [2/6] X11-Repo freischalten ==="
+echo "=== [2/7] X11-Repo freischalten ==="
 pkg install -y -o Dpkg::Options::="--force-confnew" x11-repo
 
-echo "=== [3/6] Pakete installieren ==="
+echo "=== [3/7] Pakete installieren ==="
 # Pflicht: ohne die laeuft nichts.
 pkg install -y -o Dpkg::Options::="--force-confnew" termux-x11-nightly
 pkg install -y -o Dpkg::Options::="--force-confnew" mesa mesa-vulkan-icd-freedreno
@@ -123,7 +124,7 @@ else
   echo "  WARNUNG: Nur xterm/aterm gefunden — Sonderzeichen werden falsch angezeigt."
 fi
 
-echo "=== [4/6] i3-Konfiguration schreiben ==="
+echo "=== [4/7] i3-Konfiguration schreiben ==="
 mkdir -p "$(dirname "$I3CONF")"
 cat > "$I3CONF" <<'I3EOF'
 # ~/.config/i3/config
@@ -209,7 +210,7 @@ I3EOF
 sed -i "s|@TERM@|$TERMCMD|g" "$I3CONF"
 echo "  geschrieben: $I3CONF"
 
-echo "=== [5/6] Startskript schreiben ==="
+echo "=== [5/7] Startskript schreiben ==="
 cat > "$START" <<'STARTEOF'
 #!/bin/bash
 # Startet die i3-Sitzung. Erzeugt von setup_i3.sh.
@@ -254,7 +255,7 @@ STARTEOF
 chmod +x "$START"
 echo "  geschrieben: $START"
 
-echo "=== [6/6] Startmenue einrichten ==="
+echo "=== [6/7] Startmenue einrichten ==="
 
 # --- Ziel-Rechner erfragen ------------------------------------------------
 # Der Name des eigenen Servers steht bewusst NICHT im Repo, sondern nur hier
@@ -456,6 +457,72 @@ if ! grep -q "alias desk=" "$HOME/.bashrc" 2>/dev/null; then
   echo "alias desk='~/start-i3.sh'" >> "$HOME/.bashrc"
 fi
 
+echo "=== [7/7] Firefox-Grundeinstellungen ==="
+
+# Die Startseite steht — genau wie das SSH-Ziel — bewusst NICHT im Repo.
+# Sie waere eine Adresse aus dem eigenen Netz und geht niemanden etwas an.
+if [ ! -f "$FFCONF" ]; then
+  FFURL=""
+  if [ -r /dev/tty ]; then
+    printf '\n  Startseite fuer Firefox (leer = keine setzen): '
+    read -r FFURL < /dev/tty || FFURL=""
+  fi
+  [ -n "$FFURL" ] && printf '%s\n' "$FFURL" > "$FFCONF"
+fi
+FFURL="$(grep -v '^[[:space:]]*#' "$FFCONF" 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 1)"
+
+# Profil suchen. Firefox legt es unter einem zufaelligen Namen an, der echte
+# Pfad steht in profiles.ini. Zuerst das als Standard markierte nehmen.
+FFDIR="$HOME/.mozilla/firefox"
+FFPROFIL=""
+if [ -f "$FFDIR/profiles.ini" ]; then
+  # Gibt es mehrere Profile, steht das aktive im Abschnitt [Install...] unter
+  # "Default=". Die Abfrage auf "1" schliesst den alten Eintrag "Default=1"
+  # aus, der kein Pfad ist, sondern nur eine Markierung.
+  FFPROFIL="$(awk -F= '/^Default=/ && $2 != "1" { print $2; exit }' "$FFDIR/profiles.ini")"
+  [ -n "$FFPROFIL" ] || \
+    FFPROFIL="$(awk -F= '/^Path=/ { print $2; exit }' "$FFDIR/profiles.ini")"
+fi
+
+# Noch kein Profil da (frisches Termux)? Dann eines anlegen lassen. Das geht
+# ohne Bildschirm, Firefox beendet sich dabei sofort wieder.
+if [ -z "$FFPROFIL" ] && command -v firefox >/dev/null 2>&1; then
+  MOZ_HEADLESS=1 firefox -CreateProfile default >/dev/null 2>&1 || true
+  [ -f "$FFDIR/profiles.ini" ] && \
+    FFPROFIL="$(awk -F= '/^Path=/ { print $2; exit }' "$FFDIR/profiles.ini")"
+fi
+
+if [ -n "$FFPROFIL" ] && [ -d "$FFDIR/$FFPROFIL" ]; then
+  # user.js statt prefs.js: prefs.js schreibt Firefox beim Beenden selbst neu
+  # und wuerde alles ueberbuegeln. Die Werte in user.js gelten dagegen bei
+  # jedem Start — der Preis ist, dass Aenderungen ueber die Oberflaeche nur
+  # bis zum naechsten Start halten. Zum Rueckgaengigmachen: Datei loeschen.
+  {
+    printf '// Erzeugt von setup_i3.sh (linuxrice/termux-i3-minimal).\n'
+    printf '// Diese Werte werden bei JEDEM Firefox-Start neu gesetzt.\n'
+    printf '// Rueckgaengig machen: diese Datei loeschen.\n\n'
+    printf '// Vertikale Tabs. Seit Firefox 136 eingebaut, kein Add-on noetig.\n'
+    printf '// Die waagrechte Tab-Leiste verschwindet dadurch von selbst.\n'
+    printf 'user_pref("sidebar.revamp", true);\n'
+    printf 'user_pref("sidebar.verticalTabs", true);\n\n'
+    printf '// Dunkel — und zwar auch fuer WEBSEITEN (prefers-color-scheme).\n'
+    printf '// Das ersetzt den Handgriff "Einstellungen -> Design -> Dunkel".\n'
+    printf 'user_pref("ui.systemUsesDarkTheme", 1);\n\n'
+    printf '// Menueleiste aus (auf Linux ohnehin der Normalfall).\n'
+    printf 'user_pref("browser.menubarVisible", false);\n'
+    if [ -n "$FFURL" ]; then
+      printf '\n// Startseite. Steht nur hier lokal, nicht im Repo.\n'
+      printf 'user_pref("browser.startup.page", 1);\n'
+      printf 'user_pref("browser.startup.homepage", "%s");\n' "$FFURL"
+    fi
+  } > "$FFDIR/$FFPROFIL/user.js"
+  echo "  geschrieben: $FFDIR/$FFPROFIL/user.js"
+  [ -n "$FFURL" ] && echo "  Startseite gesetzt (steht in $FFCONF)."
+else
+  echo "  Kein Firefox-Profil gefunden — uebersprungen."
+  echo "  Firefox einmal starten und dieses Skript danach erneut ausfuehren."
+fi
+
 cat <<'FERTIG'
 
 ============================================
@@ -467,11 +534,8 @@ Naechste Schritte:
   1. source ~/.bashrc
   2. Menuepunkt 5 waehlen (oder einfach:  desk  )
 
-Einmalig im Firefox, fuer den Darkmode:
-
-  Einstellungen -> Design -> Dunkel
-  about:config  ->  ui.systemUsesDarkTheme  =  1
-                    (erst das macht auch WEBSEITEN dunkel)
+Firefox ist vorkonfiguriert (vertikale Tabs, dunkel, ohne Menueleiste).
+Rueckgaengig machen: die Datei user.js im Firefox-Profil loeschen.
 
 Tastenkuerzel:
 

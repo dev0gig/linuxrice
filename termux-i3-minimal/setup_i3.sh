@@ -34,61 +34,109 @@ START="$HOME/start-i3.sh"
 I3CONF="$HOME/.config/i3/config"
 FFCONF="$HOME/.i3-firefox.conf"
 
-echo "=== [1/7] Paketlisten auffrischen ==="
+echo "=== [1/7] System auf einen Stand bringen ==="
 export DEBIAN_FRONTEND=noninteractive
 pkg update -y
 
-# ACHTUNG: Hier wird BEWUSST kein "pkg upgrade" gemacht.
-#
-# Ein Rundum-Upgrade wuerde auch mesa und termux-x11 anfassen — genau die
-# beiden Stuecke, an denen der Zink/turnip-Pfad haengt. Der ist offiziell gar
-# nicht unterstuetzt und bricht bei solchen Updates gern. Wer i3 erst einmal
-# NEBEN einem laufenden XFCE ausprobieren will, wuesste hinterher nicht, ob
-# ein Problem von i3 kommt oder vom Upgrade.
-#
-# Wer trotzdem alles mitziehen will:  MIT_UPGRADE=1 ./setup_i3.sh
-if [ "${MIT_UPGRADE:-0}" = "1" ]; then
-  echo "  MIT_UPGRADE=1 gesetzt — es wird doch alles aktualisiert."
-  pkg upgrade -y -o Dpkg::Options::="--force-confnew"
-else
-  echo "  (Rundum-Upgrade uebersprungen. Mit MIT_UPGRADE=1 erzwingbar.)"
+# Hinweis, wenn Termux sich den Spiegelserver selbst aussucht — das ging
+# schon zweimal daneben (einmal Indien mit ~20 kB/s, einmal ein Spiegel mit
+# einem halb kaputten Paketstand).
+if ! grep -rqs 'termux' "$PREFIX/etc/apt/sources.list.d/" 2>/dev/null; then
+  echo ""
+  echo "  Hinweis: Es ist keine feste Spiegel-Gruppe gewaehlt. Bei langsamen"
+  echo "  Downloads oder Paketfehlern hilft fast immer:"
+  echo "      termux-change-repo    ->  Mirror group  ->  Europe"
+  echo ""
 fi
 
+# --- Halb eingerichtete Pakete reparieren --------------------------------
+# Bricht eine Installation mittendrin ab (kein Netz, abgewuergt, kaputtes
+# Paket), bleibt dpkg in einem halben Zustand stehen. Jeder weitere Aufruf
+# scheitert dann an diesem Rest, auch wenn er selbst voellig in Ordnung ist.
+# Darum vor allem anderen aufraeumen. Beides darf fehlschlagen — wenn nichts
+# kaputt ist, gibt es hier auch nichts zu tun.
+dpkg --configure -a 2>/dev/null || true
+apt-get -y --fix-broken install 2>/dev/null || true
+
+# --- Rundum-Upgrade: PFLICHT, nicht Kuer ---------------------------------
+# ⚠️ Termux vertraegt KEINE Teil-Aktualisierungen. Die Basis-Pakete aus der
+# heruntergeladenen APK sind oft Monate alt, die Spiegelserver liefern immer
+# den neuesten Stand. Mischt man beides, passen die C++-Bibliotheken nicht
+# mehr zusammen und Programme lassen sich nicht mehr einrichten:
+#
+#   CANNOT LINK EXECUTABLE "ffmpeg": cannot locate symbol ...
+#     referenced by "libplacebo.so"
+#   dpkg: dependency problems prevent configuration of firefox
+#
+# Genau das ist am 16.8.2026 passiert, weil hier frueher bewusst NICHT
+# aktualisiert wurde. Termux selbst nennt in der Fehlermeldung "pkg upgrade"
+# als Loesung. Deshalb ist das Upgrade jetzt der Normalfall.
+#
+# Abschalten nur, wenn man weiss warum:  KEIN_UPGRADE=1 ./setup_i3.sh
+if [ "${KEIN_UPGRADE:-0}" = "1" ]; then
+  echo "  KEIN_UPGRADE=1 gesetzt — Rundum-Upgrade uebersprungen."
+  echo "  ⚠️  Bei Fehlern wie 'cannot locate symbol' ist genau das die Ursache."
+else
+  echo "  Alle Pakete aktualisieren (Termux vertraegt keine Mischstaende)..."
+  pkg upgrade -y -o Dpkg::Options::="--force-confnew" || {
+    echo "  Upgrade unvollstaendig — versuche zu reparieren..."
+    dpkg --configure -a 2>/dev/null || true
+    apt-get -y --fix-broken install 2>/dev/null || true
+  }
+fi
+
+# --- Installieren, ohne beim ersten Fehler alles hinzuwerfen -------------
+# Frueher hat ein einziges kaputtes Paket den Lauf schon in Schritt 2 beendet
+# — die i3-Konfiguration, das Startskript und das Menue wurden dann gar nicht
+# mehr geschrieben. Das ist der schlechteste Ausgang: viel angefasst, nichts
+# eingerichtet. Jetzt wird gemerkt was fehlt, der Rest laeuft durch, und am
+# Ende steht eine Liste.
+FEHLT=""
+inst() {
+  pkg install -y -o Dpkg::Options::="--force-confnew" "$@" && return 0
+  echo "  ⚠️  fehlgeschlagen: $*"
+  FEHLT="$FEHLT $*"
+  return 1
+}
+
+# Fuer Kuer-Pakete: darf fehlen, taucht am Ende NICHT als Mangel auf.
+# (rxvt-unicode etwa gibt es in Termux gar nicht — das ist kein Fehler.)
+inst_opt() {
+  pkg install -y -o Dpkg::Options::="--force-confnew" "$@" 2>/dev/null && return 0
+  echo "  Hinweis: nicht verfuegbar, uebersprungen: $*"
+  return 0
+}
+
 echo "=== [2/7] X11-Repo freischalten ==="
-pkg install -y -o Dpkg::Options::="--force-confnew" x11-repo
+inst x11-repo
 
 echo "=== [3/7] Pakete installieren ==="
-# Pflicht: ohne die laeuft nichts.
-pkg install -y -o Dpkg::Options::="--force-confnew" termux-x11-nightly
-pkg install -y -o Dpkg::Options::="--force-confnew" mesa mesa-vulkan-icd-freedreno
-# i3 und Terminal zuerst und getrennt von Firefox installieren.
-# Grund: Firefox ist mit ~66 MB der mit Abstand groesste Brocken. Haengt der
-# Download (langsamer Spiegelserver), soll wenigstens die Sitzung schon
-# benutzbar sein — Firefox laesst sich jederzeit nachinstallieren mit:
-#     pkg install firefox
-pkg install -y -o Dpkg::Options::="--force-confnew" i3 xterm openssh
+inst termux-x11-nightly
+inst mesa mesa-vulkan-icd-freedreno
+# i3 und Terminal zuerst und getrennt von Firefox: Firefox ist mit ~66 MB der
+# mit Abstand groesste Brocken. Haengt oder scheitert der, soll die Sitzung
+# trotzdem benutzbar sein.
+inst i3 xterm openssh
 
 echo "--- Firefox (~66 MB, der grosse Brocken) ---"
-# Bricht der Download ab, laeuft das Setup trotzdem zu Ende: i3 ist dann fertig
-# eingerichtet und startbar, nur der Browser fehlt noch.
-if ! pkg install -y -o Dpkg::Options::="--force-confnew" firefox; then
+if ! inst firefox; then
   echo ""
-  echo "  ACHTUNG: Firefox wurde NICHT installiert."
   echo "  i3 wird trotzdem fertig eingerichtet und ist startbar."
-  echo "  Ist der Download sehr langsam, liegt es fast immer am Spiegelserver:"
-  echo "      termux-change-repo      (dort eine Gruppe in Europa waehlen)"
+  echo "  Zwei haeufige Ursachen:"
+  echo "    - Sehr langsamer Spiegelserver -> termux-change-repo (Europe)"
+  echo "    - 'cannot locate symbol' / dpkg-Fehler -> Mischstand der Pakete,"
+  echo "      dann hilft:  pkg upgrade -y ; dpkg --configure -a"
   echo "  Danach nachholen mit:  pkg install firefox"
   echo ""
 fi
 
-# Kuer: schoener, aber nicht kriegsentscheidend. Darum darf das fehlschlagen,
-# ohne das ganze Setup abzubrechen (set -e wuerde sonst hier aussteigen).
+# Kuer: schoener, aber nicht kriegsentscheidend.
 #   ttf-dejavu      Schrift. btop auf dem Server zeichnet seine Graphen mit
 #                   Braille-Zeichen — ohne passende Schrift sieht das kaputt aus.
 #   xorg-xsetroot   ersetzt den haesslichen X-Standard-Mauszeiger ("X") durch
 #                   einen normalen Pfeil.
-pkg install -y ttf-dejavu 2>/dev/null || echo "  Hinweis: ttf-dejavu nicht verfuegbar — uebersprungen."
-pkg install -y xorg-xsetroot 2>/dev/null || echo "  Hinweis: xorg-xsetroot nicht verfuegbar — uebersprungen."
+inst_opt ttf-dejavu
+inst_opt xorg-xsetroot
 
 # --- Mauszeiger-Thema ----------------------------------------------------
 # Der X-Standardzeiger ist winzig und altbacken. Die Groesse allein macht
@@ -102,8 +150,8 @@ if [ -d "$HOME/.icons/$CURSOR_THEME" ]; then
 else
   echo "--- Mauszeiger $CURSOR_THEME ---"
   CTMP="$(mktemp -d)"
-  if curl -fsSL -o "$CTMP/cursor.tar.xz" "$CURSOR_URL" \
-     && tar -xf "$CTMP/cursor.tar.xz" -C "$CTMP" \
+  if curl -fsSL -o "$CTMP/cursor.tar.gz" "$CURSOR_URL" \
+     && tar -xf "$CTMP/cursor.tar.gz" -C "$CTMP" \
      && [ -d "$CTMP/$CURSOR_THEME" ]; then
     mkdir -p "$HOME/.icons"
     mv "$CTMP/$CURSOR_THEME" "$HOME/.icons/"
@@ -121,7 +169,7 @@ fi
 # Genau deshalb hiess der Nachfolger spaeter rxvt-UNICODE.
 # Fuer eine SSH-Sitzung mit btop oder einem Dateimanager ist aterm unbrauchbar.
 echo "--- Terminal mit UTF-8-Faehigkeit ---"
-pkg install -y rxvt-unicode 2>/dev/null || echo "  Hinweis: rxvt-unicode nicht verfuegbar."
+inst_opt rxvt-unicode
 
 # Den besten vorhandenen Terminal auswaehlen. Reihenfolge nach Eignung:
 #   1. urxvt            schlank, echtes UTF-8, Xft-Schriften frei skalierbar
@@ -602,6 +650,16 @@ if [ -n "$FFPROFIL" ] && [ -d "$FFDIR/$FFPROFIL" ]; then
 else
   echo "  Kein Firefox-Profil gefunden — uebersprungen."
   echo "  Firefox einmal starten und dieses Skript danach erneut ausfuehren."
+fi
+
+if [ -n "$FEHLT" ]; then
+  echo ""
+  echo "============================================"
+  echo "  ⚠️  NICHT INSTALLIERT:$FEHLT"
+  echo "============================================"
+  echo "  Alles andere ist eingerichtet. Nachholen mit:"
+  echo "      pkg upgrade -y ; dpkg --configure -a ; pkg install$FEHLT"
+  echo ""
 fi
 
 cat <<'FERTIG'

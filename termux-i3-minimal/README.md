@@ -29,19 +29,49 @@ desk
 
 Alles Weitere ist vorkonfiguriert — Terminal, Darkmode und Firefox.
 
-### Kein Rundum-Upgrade beim Setup
+### ⚠️ Termux verträgt keine Teil-Aktualisierungen
 
-Das Skript macht bewusst **kein `pkg upgrade`**. Ein Rundum-Upgrade würde auch
-`mesa` und `termux-x11` anfassen — genau die Stücke, an denen der
-Zink/turnip-Pfad hängt, der offiziell gar nicht unterstützt ist. Ginge danach
-etwas kaputt, wüsste man nicht, ob es am Setup lag oder am Upgrade.
+Das Setup macht darum **immer** ein `pkg upgrade`. Das ist keine Bequemlichkeit,
+sondern Pflicht:
 
-Wer trotzdem alles mitziehen will: `MIT_UPGRADE=1 ./setup_i3.sh`.
+Die Basis-Pakete aus der heruntergeladenen APK sind oft Monate alt, die
+Spiegelserver liefern stets den neuesten Stand. Mischt man beides, passen die
+C++-Bibliotheken nicht mehr zusammen:
 
-Findet das Skript ein altes `~/.termux-menu.sh` vor, sichert es das vorher nach
-`~/.termux-menu.sh.bak`. Und solange ein `~/start-desktop.sh` existiert, bleibt
-XFCE als Menüpunkt 6 erreichbar — auf einem frischen Termux gibt es beides
-nicht, dann entfällt der Punkt von selbst.
+```
+CANNOT LINK EXECUTABLE "ffmpeg": cannot locate symbol ...
+  referenced by "libplacebo.so"
+dpkg: dependency problems prevent configuration of firefox
+```
+
+Termux nennt in dieser Fehlermeldung selbst `pkg upgrade` als Lösung. Genau das
+ist am 16.8.2026 passiert, weil das Setup damals bewusst **nicht** aktualisiert
+hat — ein Standard, der für das Nebeneinander mit XFCE gedacht war und auf einem
+frischen Termux falsch ist.
+
+Abschalten nur, wenn man weiß warum: `KEIN_UPGRADE=1 ./setup_i3.sh`.
+
+**Aus demselben Vorfall entstanden zwei weitere Absicherungen:**
+
+- Vor dem Installieren räumt das Skript einen halben `dpkg`-Zustand auf
+  (`dpkg --configure -a`, `apt --fix-broken install`). Bricht eine Installation
+  einmal mittendrin ab, scheitert sonst jeder weitere Aufruf an diesem Rest.
+- **Ein kaputtes Paket bricht nicht mehr das ganze Setup ab.** Vorher endete der
+  Lauf bei Schritt 2, und i3-Konfiguration, Startskript und Menü wurden gar
+  nicht erst geschrieben — der schlechteste Ausgang. Jetzt läuft der Rest durch,
+  und am Ende steht eine Liste dessen, was fehlt.
+
+### Spiegelserver
+
+Termux sucht sich sonst selbst einen, und das ging zweimal daneben — einmal ein
+Spiegel in Indien mit **~20 kB/s**, einmal einer mit halb kaputtem Paketstand.
+Gleich zu Beginn festlegen:
+
+```bash
+termux-change-repo    #  ->  Mirror group  ->  Europe
+```
+
+Das Setup weist darauf hin, wenn keine Gruppe gewählt ist.
 
 ## Was drin ist
 

@@ -449,32 +449,46 @@ if [ -f "$CONF" ]; then
           } } }')"
 fi
 
+# ⚠️ AB HIER WIRD DER SERVERNAME NIE AUF DEN BILDSCHIRM GESCHRIEBEN.
+#
+# Der Grund ist keine Geheimniskraemerei um ihrer selbst willen: Terminal-
+# Ausgaben landen erfahrungsgemaess in Chats, Fehlerberichten und Screenshots.
+# Stand der Name als Vorschlag in der Zeile ("Eingabe [Enter = benutzer@rechner]"),
+# wanderte er beim Kopieren jedes Mal mit. Das Skript bestaetigt darum nur noch,
+# DASS ein Wert da ist — nie, WELCHER. In den Dateien steht er natuerlich
+# weiterhin, sonst koennte sich das Menue ja nicht anmelden.
 ZIEL=""
 if [ -n "${ZIEL_VORGABE:-}" ]; then
   # Vorgabe von aussen:  ZIEL_VORGABE=benutzer@rechner ./setup_i3.sh
   # Damit laeuft das Setup auch ohne Tastatur komplett durch.
   ZIEL="$ZIEL_VORGABE"
-  echo "  Server aus der Vorgabe uebernommen: $ZIEL"
+  echo "  Server aus der Vorgabe uebernommen."
 elif [ ! -r /dev/tty ]; then
   # Ohne Tastatur-Kanal kann nicht gefragt werden — dann bliebe stillschweigend
   # der alte Wert stehen. Genau das soll NICHT unbemerkt passieren.
   echo ""
   echo "  ⚠️  Keine Tastatureingabe moeglich (kein /dev/tty)."
-  echo "      Der bisherige Server bleibt stehen: ${ALT_ZIEL:-keiner}"
+  if [ -n "$ALT_ZIEL" ]; then
+    echo "      Der bisher eingetragene Server bleibt stehen."
+  else
+    echo "      Es ist auch kein bisheriger Server eingetragen."
+  fi
   echo "      Ohne Nachfrage setzen:  ZIEL_VORGABE=benutzer@rechner ./setup_i3.sh"
   echo ""
 else
   printf '\n  Server fuer das Menue — bitte in der Form  benutzer@rechner\n'
   printf '\n'
   printf '  ⚠️  Der Benutzername ist hier PFLICHT, nicht Zierde.\n'
-  printf '      Android gibt Termux einen Benutzernamen wie "%s".\n' "$(id -un 2>/dev/null || echo u0_a123)"
+  printf '      Android gibt Termux einen kryptischen Benutzernamen (etwa u0_a123).\n'
   printf '      Laesst man den Benutzer weg, versucht ssh sich mit GENAU\n'
   printf '      diesem Namen anzumelden — den es auf dem Server nicht gibt.\n'
   printf '      Tailscale antwortet dann mit "user is not permitted".\n'
   printf '      Nach einer Neuinstallation von Termux aendert sich der Name.\n'
   printf '\n'
+  # Der bisherige Wert wird bewusst NICHT angezeigt (siehe oben) — nur, dass
+  # es einen gibt. Enter behaelt ihn trotzdem.
   if [ -n "$ALT_ZIEL" ]; then
-    printf '  Eingabe [Enter = %s]: ' "$ALT_ZIEL"
+    printf '  Eingabe [Enter = beim bisherigen bleiben]: '
   else
     printf '  Eingabe (leer = spaeter eintragen): '
   fi
@@ -489,8 +503,8 @@ case "$ZIEL" in
   ""|*@*) : ;;
   *)
     echo ""
-    echo "  ⚠️  In '$ZIEL' fehlt der Benutzername — so wird die Anmeldung"
-    echo "      fehlschlagen (siehe oben)."
+    echo "  ⚠️  In der Eingabe fehlt der Benutzername (kein @) — so wird die"
+    echo "      Anmeldung fehlschlagen (siehe oben)."
     if [ -r /dev/tty ]; then
       printf '  Benutzername auf dem Server (leer = trotzdem so lassen): '
       read -r BENUTZER < /dev/tty || BENUTZER=""
@@ -502,7 +516,7 @@ esac
 if [ -n "$ZIEL" ]; then
   printf '# Befehl fuer Menuepunkt 1 (SSH mit tmux-Sitzung "cc").\n' > "$CONF"
   printf 'ssh %s -t "tmux new -A -s cc"\n' "$ZIEL" >> "$CONF"
-  echo "  Ziel gespeichert: $ZIEL  ->  $CONF"
+  echo "  Ziel gespeichert in: $CONF"
 
   # Denselben Benutzer auch fuer ein blankes "ssh rechner" hinterlegen —
   # sonst laeuft man in genau denselben Fehler, sobald man den Befehl
@@ -537,7 +551,8 @@ if [ -n "$ZIEL" ]; then
       } >> "$HOME/.ssh/config.neu"
       mv "$HOME/.ssh/config.neu" "$HOME/.ssh/config"
       chmod 600 "$HOME/.ssh/config"
-      echo "  ~/.ssh/config gesetzt: 'ssh $SSH_HOST' nutzt $SSH_USER."
+      echo "  ~/.ssh/config gesetzt: ein blankes 'ssh <rechner>' nutzt jetzt"
+      echo "  den richtigen Benutzernamen."
       ;;
   esac
 else
@@ -647,8 +662,10 @@ while true; do
       if [ -z "$MENU_HOST" ]; then
         _kein_ziel
       elif ! ssh "$MENU_HOST" -t btop; then
-        printf '\n  Das hat nicht geklappt. Falls btop auf %s noch fehlt,\n' "$MENU_HOST"
-        printf '  dort einmal ausfuehren:\n'
+        # Der Rechnername steht hier bewusst nicht — Menue-Ausgaben landen in
+        # Screenshots und Chats. Wer den Namen braucht, schaut in die Conf.
+        printf '\n  Das hat nicht geklappt. Falls btop auf dem Server noch\n'
+        printf '  fehlt, dort einmal ausfuehren:\n'
         printf '    sudo apt install -y btop\n'
       fi
       _menu_pause || { clear; break; }

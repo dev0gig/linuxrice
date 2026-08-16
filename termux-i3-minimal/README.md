@@ -36,9 +36,15 @@ Es überschreibt bei jedem Lauf **alles** — Konfiguration, Startskript, Menü 
 fragt dabei auch **jedes Mal** neu nach dem SSH-Ziel fürs Menü
 (`benutzer@rechner`, landet in `~/.termux-menu.conf`).
 
-Der bisherige Wert steht dabei als Vorschlag in eckigen Klammern — **Enter
-übernimmt ihn**, eine neue Eingabe ersetzt ihn. So bleibt ein Wiederholungslauf
-schnell, ohne dass etwas heimlich hängen bleibt.
+**Enter behält den bisherigen Wert**, eine neue Eingabe ersetzt ihn. So bleibt
+ein Wiederholungslauf schnell, ohne dass etwas heimlich hängen bleibt.
+
+⚠️ **Der Servername wird dabei nie auf den Bildschirm geschrieben** — auch nicht
+als Vorschlag in der Eingabezeile. Terminal-Ausgaben landen erfahrungsgemäß in
+Chats, Fehlerberichten und Screenshots; stünde der Name in der Zeile, wanderte
+er beim Kopieren jedes Mal mit. Das Setup bestätigt nur, **dass** ein Wert da
+ist — nie, **welcher**. In `~/.termux-menu.conf` und `~/.ssh/config` steht er
+selbstverständlich weiterhin, sonst könnte sich das Menü nicht anmelden.
 
 Der `~/.ssh/config`-Eintrag wird dabei **ersetzt, nicht angehängt**. Sonst
 sammelten sich bei jedem Lauf Doppel-Einträge für denselben Rechner an, und

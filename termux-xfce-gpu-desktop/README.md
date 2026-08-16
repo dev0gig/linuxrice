@@ -32,7 +32,8 @@ Zwei Skripte, zwei Zwecke:
 - **Kein Standard-Panel**: XFCE startet komplett ohne obere/untere Taskleiste — voller Fokus-Screen
 - **Panel-Config übersteht den Neustart**: die Einstellungen liegen als Vorlage bereit und werden bei jedem Start wieder eingespielt (siehe [Warum die Panel-Config früher weg war](#warum-die-panel-config-früher-nach-jedem-neustart-weg-war))
 - **Rofi als App-Launcher**: `Super + Space` öffnet eine mittig zentrierte App-Suche (über `sxhkd`, nicht über XFCE-eigene Shortcuts — zuverlässiger)
-- **Minimales Seiten-Panel** (via `rice.sh`): schmale, transparente Taskleiste rechts, vertikal mittig, nur laufende Fenster — kein Schatten, kein Rest-Chrome
+- **Minimales Seiten-Panel** (via `rice.sh`): schmale, dunkle Taskleiste rechts, vertikal mittig, nur laufende Fenster — kein Schatten, kein Rest-Chrome
+- **Compositing aus**: bewusst abgeschaltet, weil Modal-Dialoge im Browser sonst ruckeln (siehe [Warum Firefox trotz Turnip auf Software rendert](#warum-firefox-trotz-turnip-auf-software-rendert)) — der Preis ist ein undurchsichtiges statt transparentes Panel
 - **Dark Mode**: Arc-Dark GTK-Theme, Papirus-Dark Icons, Red Hat Mono Font
 - **Direktere Maus**: Beschleunigung deaktiviert, größerer Cursor (Bibata-Modern-Ice, 32px)
 - **Kein Desktop-Icon-Clutter**
@@ -124,6 +125,62 @@ Wer das Panel ändern will, ändert also `rice.sh` (bzw. direkt die Vorlage) —
 Nebenbei: `xfce4-panel --quit` wird hier absichtlich **nicht** benutzt — der Aufruf
 bleibt unter Termux-X11 ohne Session-Manager hängen. Stattdessen `killall -9 xfce4-panel`.
 
+## Warum Firefox trotz Turnip auf Software rendert
+
+Kurzfassung: **Der Desktop nutzt die GPU, Firefox nicht — und das ist nicht zu ändern.**
+Ausführlich hier, damit diese Diagnose kein zweites Mal geführt werden muss.
+
+`about:support` zeigt in Firefox unter *Compositing* dauerhaft `WebRender (Software)`.
+Im Failure Log steht:
+
+```
+Failed[3] to create EGL library display: FEATURE_FAILURE_NO_DISPLAY
+GLContextEGL::FindVisual(): Failed to load EGL library!
+Failed GL context creation for hardware WebRender: true
+Fallback WR to SW-WR
+```
+
+Firefox bekommt also über **EGL** keinen Display. Das ist deshalb bitter, weil die
+GPU nachweislich läuft — `glxinfo -B` meldet:
+
+```
+OpenGL renderer string: zink Vulkan 1.4(Adreno (TM) 830 (MESA_TURNIP))
+OpenGL version string: 4.6 (Compatibility Profile) Mesa 26.0.6
+```
+
+Der Haken: `glxinfo` spricht **GLX**, Firefox spricht **EGL**. GLX funktioniert hier,
+EGL nicht. Und Mozilla hat den GLX-Pfad aus Firefox entfernt — unter X11 gibt es nur
+noch EGL. `MOZ_X11_EGL=0` greift deshalb nicht mehr, der Fehler bleibt identisch.
+
+### Was alles geprüft und ausgeschlossen wurde (16.8.2026)
+
+Jede einzelne Voraussetzung ist erfüllt — deswegen ist unklar, woran es am Ende hängt:
+
+| Verdacht | Prüfung | Ergebnis |
+|---|---|---|
+| GPU/Treiber fehlt | `glxinfo -B` | ❌ widerlegt — Turnip auf Adreno 830, OpenGL 4.6 |
+| EGL-Bibliotheken fehlen | `ls $PREFIX/lib \| grep -i egl` | ❌ widerlegt — `libEGL.so.1`, `libEGL_mesa.so.0` da |
+| Mesa kann kein EGL-auf-X11 | `strings libEGL_mesa.so.0 \| grep platform_` | ❌ widerlegt — `EGL_EXT_platform_x11` vorhanden |
+| libglvnd findet den Treiber nicht | `share/glvnd/egl_vendor.d/50_mesa.json` | ❌ widerlegt — Datei da und korrekt |
+| X-Server ohne DRI3/Present | `xdpyinfo \| grep -iE 'DRI\|Present'` | ❌ widerlegt — `DRI3`, `MIT-SHM`, `Present` da |
+| Falscher EGL-Plattform-Default | `EGL_PLATFORM=x11 firefox` | ❌ ohne Wirkung |
+| Firefox-Blocklist | `EGL_LOG_LEVEL=debug firefox` | ❌ ohne Erkenntnis, weiterhin Software |
+
+**Fazit:** Nicht weiter dran arbeiten. Der Aufwand steht in keinem Verhältnis — und
+mit abgeschaltetem Compositing (siehe unten) ist das eigentliche Problem, ruckelnde
+Modals, ohnehin gelöst.
+
+### Was stattdessen hilft
+
+1. **Compositing aus** — macht `rice.sh` inzwischen selbst. Messbarer Effekt auf die
+   Flüssigkeit von Modal-Dialogen. Der Preis: keine Fenster-Transparenz mehr.
+2. **Auf der Webseite kein `backdrop-filter: blur()`** — das ist die mit Abstand
+   teuerste CSS-Eigenschaft und muss ohne GPU jeden Bildpunkt des Hintergrunds pro
+   Einzelbild auf der CPU anfassen. Ein halbtransparentes Overlay tut es genauso und
+   kostet praktisch nichts.
+
+Beides zusammen bringt eine flüssige Bedienung, ohne dass die GPU je ins Spiel kommt.
+
 ## Wenn die App-Suche (Super+Space) nicht aufgeht
 
 Der Hotkey läuft über `sxhkd`, nicht über XFCE. Zwei Ursachen sind bekannt:
@@ -151,6 +208,8 @@ Rofi selbst testen, unabhängig vom Hotkey: `rofi -show drun`
 ## Bekannte Einschränkungen
 
 - Zink/turnip auf Termux-X11 ist kein offiziell unterstützter Pfad — kann bei Mesa- oder Termux-X11-Updates brechen
+- **Browser bekommen die GPU nicht zu sehen.** Zink/turnip trägt für OpenGL-Programme (GLX), aber Firefox braucht EGL und scheitert dort reproduzierbar — Details und die komplette Ausschlussliste unter [Warum Firefox trotz Turnip auf Software rendert](#warum-firefox-trotz-turnip-auf-software-rendert)
+- **Keine Fenster-Transparenz**, weil Compositing bewusst aus ist (sonst ruckeln Modals)
 - Chromium zeigt Rendering-Flackern bei Modals unter Termux-X11 (Ursache: Compositor/Redraw-Zyklen bei Mausbewegung, nicht durch GPU-Flags behebbar) — deshalb Firefox als Standard-Browser
 - Die Panel-Position rechnet `rice.sh` aus der aktuellen Bildschirmgröße (rechter Rand,
   vertikal mittig). Wechselt die Auflösung dauerhaft — beim Fold z.B. innen/außen —,

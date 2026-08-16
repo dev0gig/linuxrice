@@ -151,9 +151,24 @@ xfconf-query -c xfwm4 -p /general/show_dock_shadow -n -t bool -s false 2>/dev/nu
 xfconf-query -c xfwm4 -p /general/show_frame_shadow -n -t bool -s false 2>/dev/null || \
     xfconf-query -c xfwm4 -p /general/show_frame_shadow -s false
 
-log "Stelle sicher, dass Compositing aktiv ist..."
-xfconf-query -c xfwm4 -p /general/use_compositing -n -t bool -s true 2>/dev/null || \
-    xfconf-query -c xfwm4 -p /general/use_compositing -s true
+# ------------------------------------------------------------------
+# Compositing bleibt AUS — das ist eine bewusste Entscheidung, kein Versehen.
+#
+# Der Compositor lässt jedes Neuzeichnen eines Fensters zusätzlich über eine
+# Zwischenstufe laufen. Auf dem Fold7 rechnet das die CPU (siehe README,
+# "Warum Firefox trotz Turnip auf Software rendert") — und dann wird es teuer:
+# Webseiten mit Modal-Dialogen ruckeln beim Öffnen spürbar.
+#
+# Messung am 16.8.2026: Compositing aus -> Modals laufen deutlich flüssiger.
+#
+# Der Preis dafür: Fenster-Transparenz gibt es ohne Compositor nicht. Das
+# Seiten-Panel bekommt deshalb weiter unten eine feste dunkle Farbe statt
+# durchsichtig zu sein. Wer die Transparenz zurück will, setzt hier true —
+# und nimmt das Ruckeln in Kauf.
+# ------------------------------------------------------------------
+log "Schalte Compositing ab (flüssigere Modals, dafür keine Transparenz)..."
+xfconf-query -c xfwm4 -p /general/use_compositing -n -t bool -s false 2>/dev/null || \
+    xfconf-query -c xfwm4 -p /general/use_compositing -s false
 
 xfwm4 --replace &
 disown
@@ -169,7 +184,7 @@ xfconf-query -c xfce4-session -p /general/SaveOnExit -n -t bool -s false 2>/dev/
 rm -rf ~/.cache/sessions
 
 # ------------------------------------------------------------------
-# Panel: schmale, transparente Taskleiste rechts, vertikal mittig.
+# Panel: schmale, dunkle Taskleiste rechts, vertikal mittig.
 #
 # WARUM DAS SO UMSTÄNDLICH AUSSIEHT:
 # XFCE liest Einstellungen nicht direkt aus der Konfigdatei. Dazwischen sitzt
@@ -223,12 +238,17 @@ cat > "$PANEL_TEMPLATE" << PANELEOF
         <value type="int" value="5"/>
         <value type="int" value="2"/>
       </property>
+      <!-- Feste dunkle Farbe statt durchsichtig (#2f343f, der Hintergrundton
+           von Arc-Dark). Alpha steht bewusst auf 1: Ohne Compositor kann XFCE
+           keine Transparenz zeichnen — ein Alpha von 0 käme dann als hartes
+           Schwarz heraus und sähe nach Fehler aus. Mit dem Theme-Ton fügt sich
+           das Panel dagegen sauber ein. -->
       <property name="background-style" type="uint" value="1"/>
       <property name="background-rgba" type="array">
-        <value type="double" value="0"/>
-        <value type="double" value="0"/>
-        <value type="double" value="0"/>
-        <value type="double" value="0"/>
+        <value type="double" value="0.184314"/>
+        <value type="double" value="0.203922"/>
+        <value type="double" value="0.247059"/>
+        <value type="double" value="1"/>
       </property>
       <property name="enter-opacity" type="uint" value="100"/>
       <property name="leave-opacity" type="uint" value="100"/>

@@ -60,7 +60,7 @@ mv ~/.termux-menu.sh.bak ~/.termux-menu.sh
 |---|---|
 | Anzeige | Termux-X11 |
 | Fenster | i3 (ohne `bar`-Block) |
-| Programme in der Sitzung | **xterm** und **Firefox** — sonst nichts |
+| Programme in der Sitzung | **urxvt** und **Firefox** — sonst nichts |
 | Terminal-Inhalt | Startmenü → SSH zum Server |
 | Konfiguration | eine i3-Config, ~60 Zeilen inkl. Kommentaren |
 | Dienste im Hintergrund | **keine** |
@@ -84,7 +84,7 @@ Das ist der eigentliche Punkt dieses Ordners, darum ausführlich:
   `GTK_THEME=Adwaita:dark` im Startskript erledigt die Fensterrahmen — eine Zeile,
   kein Paket, kein Dienst.
 - **`.Xresources` und `xorg-xrdb`.** Die Terminalfarben stehen direkt im
-  xterm-Aufruf in der i3-Config. Spart eine Datei und ein Paket.
+  Terminal-Aufruf in der i3-Config. Spart eine Datei und ein Paket.
 - **Rofi und `sxhkd`.** Bei zwei Programmen braucht es keine App-Suche, und i3
   bringt Tastenkürzel selbst mit.
 - **`yazi`, `btop`, `htop`, `tmux` lokal.** Läuft alles auf dem Server, wo es
@@ -99,7 +99,8 @@ Das ist der eigentliche Punkt dieses Ordners, darum ausführlich:
 | `Super` + `Return` | neues Terminal |
 | `Strg` + `Alt` + `T` | neues Terminal |
 | `Super` + `F` | Firefox |
-| `Super` + `Q` | Fenster schließen |
+| `Strg` + `Q` | Fenster schließen |
+| `Alt` + `F4` | Fenster schließen |
 | `Super` + `Shift` + `F` | Vollbild an/aus |
 | `Super` + `Shift` + `R` | i3 neu laden |
 | `Super` + `Shift` + `Rücktaste` | i3 beenden |
@@ -141,7 +142,7 @@ müsste den Profilpfad raten, der beim ersten Start noch gar nicht existiert.
 ## Das Startmenü
 
 Öffnet sich in jedem neuen Terminal, sowohl in der Termux-App als auch in jedem
-xterm innerhalb der Sitzung:
+Terminalfenster innerhalb der Sitzung:
 
 ```
    1   Server      SSH + tmux "cc"
@@ -158,7 +159,7 @@ liefe der Start ins Leere und würde die eigene Sitzung abschießen.
 Punkt 6 taucht nur auf, solange `~/start-desktop.sh` existiert. Das ist die
 Brücke für die Testphase; nach dem Löschen des XFCE-Starters verschwindet er.
 
-In i3 ist das Menü praktischer als in der Termux-App: Du kannst mehrere xterms
+In i3 ist das Menü praktischer als in der Termux-App: Du kannst mehrere Terminals
 öffnen und in jedem einen anderen Punkt wählen — etwa Arbeitsfläche 2 mit der
 tmux-Sitzung und Arbeitsfläche 3 mit `btop`.
 
@@ -170,7 +171,7 @@ in `~/.termux-menu.conf` ab. Zum Ändern nur diese Datei anfassen —
 
 Das Menü setzt beim Start `TERMUX_MENU_DONE=1` und **exportiert** es, damit es
 sich nicht endlos selbst aufruft. Wird i3 aus dem Menü heraus gestartet, erbt
-jedes später geöffnete xterm die Variable — und das Menü erschiene dort **nie**.
+jedes später geöffnete Terminal die Variable — und das Menü erschiene dort **nie**.
 
 `start-i3.sh` setzt sie darum vor dem Start zurück. Wer das Startskript
 umschreibt, darf diese Zeile nicht verlieren.
@@ -217,6 +218,43 @@ praktisch nichts.
 - Zink/turnip auf Termux-X11 ist kein offiziell unterstützter Pfad und kann bei
   Mesa- oder Termux-X11-Updates brechen.
 
+## ⚠️ Das Terminal: Finger weg von „xterm"
+
+Das war der unangenehmste Fund der Testphase, darum ausführlich.
+
+**Was Termux als `xterm` installiert, ist in Wirklichkeit `aterm`** — ein Fork
+des alten rxvt aus der Zeit *vor* Unicode. Zwei Folgen:
+
+1. Es kennt die Xft-Optionen `-fa` und `-fs` nicht, bricht bei ihnen sofort mit
+   `bad option` ab — und dann startet **überhaupt kein Terminal**, auch nicht
+   über die Tastenkürzel.
+2. Viel schlimmer: **es kann kein UTF-8.** Sonderzeichen, Rahmenlinien, Umlaute
+   und die Braille-Graphen von `btop` werden falsch dargestellt. Das ist keine
+   Einstellungssache — aterm benutzt klassische X-Core-Fonts, da hilft keine
+   Schriftgröße und keine Schriftart. Genau deshalb hieß der Nachfolger später
+   rxvt-**unicode**.
+
+Für eine SSH-Sitzung ist aterm damit unbrauchbar.
+
+**Das Setup wählt darum selbst aus, in dieser Reihenfolge:**
+
+| | Terminal | Bewertung |
+|---|---|---|
+| 1. | `urxvt` (rxvt-unicode) | schlank, echtes UTF-8, Xft-Schriften frei skalierbar |
+| 2. | `xfce4-terminal` | ebenfalls tadellos, zieht aber GTK/VTE mit sich |
+| 3. | `xterm` / aterm | Notnagel, mit Warnung — siehe oben |
+
+**`-tn xterm-256color` ist bei urxvt Pflicht.** Ohne das meldet es sich beim
+Server als `rxvt-unicode-256color` an, und wenn dessen Terminfo-Eintrag dort
+fehlt, ist die Anzeige über SSH kaputt. `xterm-256color` kennt jeder Server.
+
+**Schriftgröße ändern:** in `~/.config/i3/config` die Zahl hinter `size=`
+anpassen, dann `Super+Shift+R`. Voreinstellung ist 13.
+
+Dazu gehört die Zeile `export LANG="${LANG:-en_US.UTF-8}"` in `start-i3.sh`:
+Ohne UTF-8-Sprachumgebung stellt auch ein moderner Terminal Umlaute falsch dar,
+weil er die Bytes nicht als UTF-8 deutet.
+
 ## Warum xterm und kein Rust-Terminal
 
 Kurz, damit die Frage nicht zweimal gestellt wird: **Alacritty**, **WezTerm** und
@@ -239,7 +277,7 @@ i3 beenden: `Super` + `Shift` + `Rücktaste`.
 Bei schwarzem Bildschirm oder klemmender Sitzung, in der Termux-App:
 
 ```bash
-killall -9 termux-x11 i3 xterm
+killall -9 termux-x11 i3 xterm aterm urxvt
 ```
 
 Zurück zu XFCE: `~/start-desktop.sh` aus dem

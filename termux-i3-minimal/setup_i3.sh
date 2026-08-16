@@ -89,6 +89,35 @@ fi
 pkg install -y ttf-dejavu 2>/dev/null || echo "  Hinweis: ttf-dejavu nicht verfuegbar — uebersprungen."
 pkg install -y xorg-xsetroot 2>/dev/null || echo "  Hinweis: xorg-xsetroot nicht verfuegbar — uebersprungen."
 
+# --- Ein Terminal, das UTF-8 kann --------------------------------------
+# WICHTIG: Was Termux als "xterm" liefert, ist aterm — ein Fork des alten rxvt
+# aus der Zeit VOR Unicode. Es benutzt klassische X-Core-Fonts und stellt
+# Sonderzeichen, Rahmenlinien, Umlaute und Braille-Zeichen schlicht falsch dar.
+# Genau deshalb hiess der Nachfolger spaeter rxvt-UNICODE.
+# Fuer eine SSH-Sitzung mit btop oder einem Dateimanager ist aterm unbrauchbar.
+echo "--- Terminal mit UTF-8-Faehigkeit ---"
+pkg install -y rxvt-unicode 2>/dev/null || echo "  Hinweis: rxvt-unicode nicht verfuegbar."
+
+# Den besten vorhandenen Terminal auswaehlen. Reihenfolge nach Eignung:
+#   1. urxvt            schlank, echtes UTF-8, Xft-Schriften frei skalierbar
+#   2. xfce4-terminal   ebenfalls tadellos, zieht aber GTK/VTE mit sich
+#   3. xterm/aterm      Notnagel, kann kein UTF-8 (siehe oben)
+#
+# "-tn xterm-256color" ist bei urxvt Pflicht: Sonst meldet es sich beim Server
+# als "rxvt-unicode-256color" an, und wenn dessen Terminfo-Eintrag dort fehlt,
+# ist die Anzeige ueber SSH kaputt. "xterm-256color" kennt wirklich jeder Server.
+TERMFONT='xft:DejaVu Sans Mono:size=13'
+if command -v urxvt >/dev/null 2>&1; then
+  TERMCMD="urxvt -tn xterm-256color -fn \"$TERMFONT\" -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0"
+  echo "  Terminal: urxvt (UTF-8, Schriftgroesse 13)"
+elif command -v xfce4-terminal >/dev/null 2>&1; then
+  TERMCMD="xfce4-terminal"
+  echo "  Terminal: xfce4-terminal (UTF-8; Schriftgroesse in dessen Einstellungen)"
+else
+  TERMCMD="xterm -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0"
+  echo "  WARNUNG: Nur xterm/aterm gefunden — Sonderzeichen werden falsch angezeigt."
+fi
+
 echo "=== [4/6] i3-Konfiguration schreiben ==="
 mkdir -p "$(dirname "$I3CONF")"
 cat > "$I3CONF" <<'I3EOF'
@@ -125,24 +154,25 @@ focus_follows_mouse no
 floating_modifier $mod
 
 # --- Terminal -------------------------------------------------------------
-# Die Farben stehen absichtlich direkt im Aufruf. Damit entfaellt eine
+# Diese Zeile setzt setup_i3.sh je nach dem, was auf dem Geraet vorhanden ist.
+# Die Farben stehen absichtlich direkt im Aufruf: damit entfaellt eine
 # ~/.Xresources UND das Paket xorg-xrdb — das Terminal startet sonst weiss.
 # Geschrieben als rgb:xx/xx/xx statt #xxxxxx, weil die Raute in dieser Datei
 # einen Kommentar einleiten wuerde.
 #
-# ⚠️ NUR -bg und -fg verwenden, sonst nichts.
-# Was in Termux als "xterm" installiert wird, ist in Wirklichkeit ATERM (ein
-# rxvt-Abkoemmling). Das kennt die Xft-Optionen -fa und -fs NICHT, bricht bei
-# ihnen sofort mit "bad option" ab — und dann startet ueberhaupt kein Terminal
-# mehr, auch nicht ueber die Tastenkuerzel. -bg und -fg verstehen beide.
-# Fuer die Schrift kennt aterm nur -fn mit einem klassischen X-Fontnamen.
-set $term xterm -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0
+# Schrift zu klein oder zu gross? Bei urxvt die Zahl hinter "size=" aendern
+# und danach Strg+Shift+R druecken.
+set $term @TERM@
 
 # --- Tastenkuerzel --------------------------------------------------------
 bindsym $mod+Return          exec $term
 bindsym Control+Mod1+t       exec $term
 bindsym $mod+f               exec firefox
-bindsym $mod+q               kill
+
+# Fenster schliessen — bewusst die altbekannten Tasten aus jedem normalen
+# Linux-Desktop, keine i3-Eigenheiten.
+bindsym Control+q            kill
+bindsym Mod1+F4              kill
 
 # Vollbild liegt bewusst auf Shift+f, weil $mod+f hier Firefox startet.
 # (In einer Standard-i3-Config waere $mod+f das Vollbild.)
@@ -166,8 +196,12 @@ exec --no-startup-id xsetroot -cursor_name left_ptr
 
 exec --no-startup-id firefox
 # Terminal auf Arbeitsflaeche 2 — und dort bleibt der Blick nach dem Start.
-exec --no-startup-id i3-msg 'workspace 2; exec xterm -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0'
+exec --no-startup-id i3-msg 'workspace 2; exec @TERM@'
 I3EOF
+
+# Den erkannten Terminal-Aufruf einsetzen. Als Trennzeichen fuer sed dient
+# das Rohr, weil im Befehl selbst Schraegstriche vorkommen (rgb:1a/1a/1a).
+sed -i "s|@TERM@|$TERMCMD|g" "$I3CONF"
 echo "  geschrieben: $I3CONF"
 
 echo "=== [5/6] Startskript schreiben ==="
@@ -179,7 +213,7 @@ cat > "$START" <<'STARTEOF'
 # im Hintergrund gern selbst, waehrend die Termux-Shell weiterlaeuft.
 # "aterm" muss mit in die Liste: was in Termux als xterm installiert wird,
 # laeuft als Prozess unter dem Namen aterm — "killall xterm" fasst es nicht an.
-killall -9 termux-x11 i3 xterm aterm 2>/dev/null
+killall -9 termux-x11 i3 xterm aterm urxvt xfce4-terminal 2>/dev/null
 sleep 1
 
 # WICHTIG: Das Startmenue setzt TERMUX_MENU_DONE und EXPORTIERT es, damit es
@@ -200,6 +234,11 @@ export MESA_NO_ERROR=1
 # Fuer dunkle WEBSEITEN reicht das nicht, das macht die Firefox-Einstellung
 # ui.systemUsesDarkTheme (siehe README).
 export GTK_THEME=Adwaita:dark
+
+# Ohne eine UTF-8-Sprachumgebung zeigt auch ein moderner Terminal Umlaute und
+# Rahmenlinien falsch an — er weiss dann schlicht nicht, dass die Bytes
+# UTF-8 sind.
+export LANG="${LANG:-en_US.UTF-8}"
 
 termux-x11 :0 -ac &
 sleep 2

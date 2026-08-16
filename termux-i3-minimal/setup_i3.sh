@@ -90,6 +90,30 @@ fi
 pkg install -y ttf-dejavu 2>/dev/null || echo "  Hinweis: ttf-dejavu nicht verfuegbar — uebersprungen."
 pkg install -y xorg-xsetroot 2>/dev/null || echo "  Hinweis: xorg-xsetroot nicht verfuegbar — uebersprungen."
 
+# --- Mauszeiger-Thema ----------------------------------------------------
+# Der X-Standardzeiger ist winzig und altbacken. Die Groesse allein macht
+# XCURSOR_SIZE im Startskript — das hier ist nur das Aussehen.
+# Faellt der Download aus, ist das nicht schlimm: Ohne den Ordner nimmt X
+# seinen Standardzeiger, und XCURSOR_SIZE wirkt trotzdem.
+CURSOR_THEME="Bibata-Modern-Ice"
+CURSOR_URL="https://github.com/ful1e5/Bibata_Cursor/releases/latest/download/Bibata-Modern-Ice.tar.xz"
+if [ -d "$HOME/.icons/$CURSOR_THEME" ]; then
+  echo "  Mauszeiger $CURSOR_THEME ist schon da."
+else
+  echo "--- Mauszeiger $CURSOR_THEME ---"
+  CTMP="$(mktemp -d)"
+  if curl -fsSL -o "$CTMP/cursor.tar.xz" "$CURSOR_URL" \
+     && tar -xf "$CTMP/cursor.tar.xz" -C "$CTMP" \
+     && [ -d "$CTMP/$CURSOR_THEME" ]; then
+    mkdir -p "$HOME/.icons"
+    mv "$CTMP/$CURSOR_THEME" "$HOME/.icons/"
+    echo "  installiert nach ~/.icons/$CURSOR_THEME"
+  else
+    echo "  Hinweis: Download fehlgeschlagen — X nimmt seinen Standardzeiger."
+  fi
+  rm -rf "$CTMP"
+fi
+
 # --- Ein Terminal, das UTF-8 kann --------------------------------------
 # WICHTIG: Was Termux als "xterm" liefert, ist aterm — ein Fork des alten rxvt
 # aus der Zeit VOR Unicode. Es benutzt klassische X-Core-Fonts und stellt
@@ -240,6 +264,17 @@ export MESA_NO_ERROR=1
 # Fuer dunkle WEBSEITEN reicht das nicht, das macht die Firefox-Einstellung
 # ui.systemUsesDarkTheme (siehe README).
 export GTK_THEME=Adwaita:dark
+
+# --- Mauszeiger ----------------------------------------------------------
+# GROESSE: einfach die Zahl aendern, danach die Sitzung neu starten. Wirkt
+# auch ganz ohne eigenes Zeiger-Thema. Der X-Standard ist winzig; auf dem
+# Fold-Bildschirm sind 32 ein guter Wert, 40-48 gehen deutlich groesser.
+export XCURSOR_SIZE=32
+
+# AUSSEHEN: Der Name muss einem Ordner ~/.icons/<Name>/cursors/ entsprechen.
+# Fehlt der Ordner, nimmt X einfach seinen Standardzeiger — es geht also
+# nichts kaputt, wenn hier etwas Falsches steht.
+export XCURSOR_THEME=Bibata-Modern-Ice
 
 # Ohne eine UTF-8-Sprachumgebung zeigt auch ein moderner Terminal Umlaute und
 # Rahmenlinien falsch an — er weiss dann schlicht nicht, dass die Bytes

@@ -111,10 +111,14 @@ Vollbild liegt darum auf `Super+Shift+F`.
 Beenden liegt absichtlich auf der Rücktaste, weit weg von allem anderen. Die
 i3-Standardbelegung `Super+Shift+E` sitzt zu nah an den anderen Kürzeln.
 
-### ⚠️ Wenn die Super-Taste nichts tut
+### Wenn die Super-Taste nichts tut
 
-Samsung DeX greift die Super-/Meta-Taste gern selbst ab, dann kommt sie in X11 nie
-an. Erst prüfen — im Terminal ausführen und Super drücken:
+✅ **Auf dem Fold7 unter DeX funktioniert sie** (geprüft 16.8.2026) — die
+Befürchtung aus der XFCE-Zeit hat sich nicht bestätigt. Der folgende Absatz ist
+nur für den Fall, dass es auf einem anderen Gerät klemmt.
+
+Samsung DeX greift die Super-/Meta-Taste manchmal selbst ab, dann kommt sie in
+X11 nie an. Prüfen — im Terminal ausführen und Super drücken:
 
 ```bash
 xev -event keyboard | grep -i keysym
@@ -161,6 +165,36 @@ Erledigt das Setup selbst: Der Aufruf lautet
 Das muss beim Aufruf passieren — xfce4-terminal merkt sich das Ausblenden
 **nicht** über Fenster hinweg, man müsste es sonst in jedem neuen Fenster von
 Hand wegklicken.
+
+### Mauszeiger: Größe und eigenes Aussehen
+
+Zwei getrennte Dinge, beide über Umgebungsvariablen in `start-i3.sh`:
+
+**Größe** — wirkt auch ganz ohne eigenes Thema:
+
+```bash
+export XCURSOR_SIZE=32
+```
+
+Der X-Standard ist winzig. 32 ist auf dem Fold ein guter Wert, 40–48 gehen
+deutlich größer. Zahl ändern, Sitzung neu starten, fertig. Kein Paket nötig.
+
+**Eigenes Aussehen** — dafür braucht es genau zwei Dinge:
+
+1. Einen Ordner `~/.icons/<Name>/cursors/` mit den Zeiger-Dateien darin.
+2. Den Namen dieses Ordners in `XCURSOR_THEME`.
+
+```bash
+export XCURSOR_THEME=Bibata-Modern-Ice
+```
+
+Das Setup lädt Bibata-Modern-Ice selbst herunter, falls es noch nicht da ist.
+Jedes andere X-Cursor-Thema geht genauso — entpacken nach `~/.icons/`, Namen
+eintragen. Verbreitete Quellen sind die Release-Seiten der jeweiligen Projekte
+auf GitHub; das Paketformat ist immer dasselbe.
+
+**Fehlt der Ordner, geht nichts kaputt:** X nimmt dann einfach seinen
+Standardzeiger, und `XCURSOR_SIZE` wirkt trotzdem.
 
 ### Firefox: vertikale Tabs, dunkel, keine Menüleiste
 
@@ -326,6 +360,37 @@ der Terminal-Renderer.
 Falls doch etwas anderes gewünscht ist: `rxvt-unicode` wäre die einzige sinnvolle
 Alternative — ebenfalls C, ebenfalls ohne GPU, aber besser bei Unicode und mit
 brauchbarem Scrollback.
+
+## XFCE entfernen
+
+Wenn i3 sich bewährt hat — in der **Termux-App**, nicht in der laufenden
+Sitzung:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dev0gig/linuxrice/main/termux-i3-minimal/entferne_xfce.sh | bash
+```
+
+Das Skript zeigt vorher, was verschwinden würde, und fragt nach. Ohne
+ausdrückliches `ja` passiert nichts.
+
+**Zwei Stellen, an denen es sonst schiefginge:**
+
+- **`xfce4-terminal` wird geschützt.** Es ist eine Abhängigkeit des
+  XFCE-Metapakets — `apt autoremove` würde es mitreißen, und dann wäre die
+  Sitzung ohne Terminal unbrauchbar. Das Skript markiert es (und i3, Firefox,
+  mesa, termux-x11) vorher als „bewusst gewollt".
+- **`~/.config/xfce4/terminal` bleibt stehen.** Dort liegen Schrift,
+  Schriftgröße und Farben des Terminals. Ein pauschales Löschen von
+  `~/.config/xfce4` würde genau das Aussehen zurücksetzen, das man gerade
+  eingerichtet hat.
+
+Entfernt werden das XFCE-Metapaket, Session, Panel, Desktop, Fenstermanager,
+Einstellungsdienst, Appfinder, Taskmanager, Thunar, Mousepad sowie Rofi und
+sxhkd. Danach `apt autoremove`.
+
+Zum Schluss verschwindet `~/start-desktop.sh` — damit fällt Menüpunkt 6 von
+selbst weg. Eine Kontrolle am Ende meldet, ob i3, Terminal, Firefox und
+Termux-X11 noch da sind.
 
 ## Rollback
 

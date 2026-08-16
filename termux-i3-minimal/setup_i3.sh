@@ -33,10 +33,25 @@ CONF="$HOME/.termux-menu.conf"
 START="$HOME/start-i3.sh"
 I3CONF="$HOME/.config/i3/config"
 
-echo "=== [1/6] System aktualisieren ==="
+echo "=== [1/6] Paketlisten auffrischen ==="
 export DEBIAN_FRONTEND=noninteractive
 pkg update -y
-pkg upgrade -y -o Dpkg::Options::="--force-confnew"
+
+# ACHTUNG: Hier wird BEWUSST kein "pkg upgrade" gemacht.
+#
+# Ein Rundum-Upgrade wuerde auch mesa und termux-x11 anfassen — genau die
+# beiden Stuecke, an denen der Zink/turnip-Pfad haengt. Der ist offiziell gar
+# nicht unterstuetzt und bricht bei solchen Updates gern. Wer i3 erst einmal
+# NEBEN einem laufenden XFCE ausprobieren will, wuesste hinterher nicht, ob
+# ein Problem von i3 kommt oder vom Upgrade.
+#
+# Wer trotzdem alles mitziehen will:  MIT_UPGRADE=1 ./setup_i3.sh
+if [ "${MIT_UPGRADE:-0}" = "1" ]; then
+  echo "  MIT_UPGRADE=1 gesetzt — es wird doch alles aktualisiert."
+  pkg upgrade -y -o Dpkg::Options::="--force-confnew"
+else
+  echo "  (Rundum-Upgrade uebersprungen. Mit MIT_UPGRADE=1 erzwingbar.)"
+fi
 
 echo "=== [2/6] X11-Repo freischalten ==="
 pkg install -y -o Dpkg::Options::="--force-confnew" x11-repo
@@ -198,6 +213,13 @@ else
   echo "  $CONF ist schon da — bleibt unveraendert."
 fi
 
+# Das alte Menue vorher zur Seite legen. Es wird gleich ueberschrieben, und
+# solange i3 nur getestet wird, will man notfalls zurueck koennen.
+if [ -f "$MENU" ] && [ ! -f "$MENU.bak" ]; then
+  cp "$MENU" "$MENU.bak"
+  echo "  altes Menue gesichert: $MENU.bak"
+fi
+
 cat > "$MENU" <<'MENUEOF'
 #!/bin/bash
 # Startmenue. Erzeugt von setup_i3.sh (linuxrice/termux-i3-minimal).
@@ -225,6 +247,11 @@ MENU_HOST="$(printf '%s\n' "$MENU_SSH" | awk '
 
 MENU_START="$HOME/start-i3.sh"
 
+# Der alte XFCE-Starter. Solange er existiert, bleibt er als Menuepunkt
+# stehen — so laesst sich i3 ausprobieren, ohne XFCE aufzugeben. Wer XFCE
+# spaeter loswird, loescht die Datei und der Punkt verschwindet von selbst.
+MENU_XFCE="$HOME/start-desktop.sh"
+
 _menu_pause() {
   printf '\n  [Enter] zurueck zum Menue, [q] Terminal: '
   read -r _a
@@ -247,9 +274,12 @@ while true; do
   printf '   2   Server pur  SSH ohne tmux\n'
   printf '   3   Auslastung  btop auf dem Server\n'
   printf '   4   Terminal    nur die Shell\n'
-  # Punkt 5 nur ausserhalb der grafischen Sitzung: in einem xterm laeuft i3
-  # ja schon, ein zweiter Start wuerde die eigene Sitzung abschiessen.
-  [ -z "${DISPLAY:-}" ] && printf '   5   Desktop     i3 starten\n'
+  # Punkt 5 und 6 nur ausserhalb der grafischen Sitzung: in einem xterm laeuft
+  # die Sitzung ja schon, ein zweiter Start wuerde die eigene abschiessen.
+  if [ -z "${DISPLAY:-}" ]; then
+    printf '   5   Desktop     i3 starten\n'
+    [ -x "$MENU_XFCE" ] && printf '   6   Desktop alt XFCE starten\n'
+  fi
   printf '\n'
   printf '  Auswahl [1]: '
 
@@ -303,6 +333,18 @@ while true; do
       else
         printf '\n  Kein Starter gefunden: %s\n' "$MENU_START"
         printf '  (Setup: setup_i3.sh aus dem linuxrice-Repo)\n'
+      fi
+      _menu_pause || { clear; break; }
+      ;;
+    6)
+      clear
+      if [ -n "${DISPLAY:-}" ]; then
+        printf '\n  Die Sitzung laeuft bereits.\n'
+        sleep 1
+      elif [ -x "$MENU_XFCE" ]; then
+        "$MENU_XFCE" || true
+      else
+        printf '\n  Kein XFCE-Starter gefunden: %s\n' "$MENU_XFCE"
       fi
       _menu_pause || { clear; break; }
       ;;

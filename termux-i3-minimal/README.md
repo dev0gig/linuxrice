@@ -29,6 +29,31 @@ desk
 
 Zwei Handgriffe bleiben manuell — siehe [Darkmode](#darkmode-zwei-klicks-in-firefox).
 
+### i3 testen, ohne XFCE aufzugeben
+
+Das Setup ist absichtlich so gebaut, dass beide Sitzungen nebeneinander leben
+können — man muss sich nicht vorher entscheiden.
+
+- **Der XFCE-Starter bleibt unangetastet.** Solange `~/start-desktop.sh`
+  existiert, erscheint XFCE im Startmenü als Punkt 6. Umschalten geht also aus
+  demselben Menü.
+- **Das alte Menü wird gesichert** nach `~/.termux-menu.sh.bak`, bevor es
+  überschrieben wird.
+- **Es wird bewusst kein `pkg upgrade` gemacht.** Ein Rundum-Upgrade würde auch
+  `mesa` und `termux-x11` anfassen — genau die Stücke, an denen der
+  Zink/turnip-Pfad hängt, der offiziell gar nicht unterstützt ist. Ginge danach
+  etwas kaputt, wüsste man nicht, ob es an i3 lag oder am Upgrade. Wer alles
+  mitziehen will: `MIT_UPGRADE=1 ./setup_i3.sh`.
+
+Wenn i3 sich bewährt, verschwindet Punkt 6 von selbst, sobald
+`~/start-desktop.sh` gelöscht wird.
+
+**Zurück zum alten Zustand:**
+
+```bash
+mv ~/.termux-menu.sh.bak ~/.termux-menu.sh
+```
+
 ## Was drin ist
 
 | Ebene | Was |
@@ -124,10 +149,14 @@ xterm innerhalb der Sitzung:
    3   Auslastung  btop auf dem Server
    4   Terminal    nur die Shell
    5   Desktop     i3 starten
+   6   Desktop alt XFCE starten
 ```
 
-Punkt 5 erscheint nur **außerhalb** der grafischen Sitzung — innerhalb liefe der
-Start ins Leere und würde die eigene Sitzung abschießen.
+Punkt 5 und 6 erscheinen nur **außerhalb** der grafischen Sitzung — innerhalb
+liefe der Start ins Leere und würde die eigene Sitzung abschießen.
+
+Punkt 6 taucht nur auf, solange `~/start-desktop.sh` existiert. Das ist die
+Brücke für die Testphase; nach dem Löschen des XFCE-Starters verschwindet er.
 
 In i3 ist das Menü praktischer als in der Termux-App: Du kannst mehrere xterms
 öffnen und in jedem einen anderen Punkt wählen — etwa Arbeitsfläche 2 mit der

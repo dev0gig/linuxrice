@@ -95,8 +95,8 @@ pkg install -y xorg-xsetroot 2>/dev/null || echo "  Hinweis: xorg-xsetroot nicht
 # XCURSOR_SIZE im Startskript — das hier ist nur das Aussehen.
 # Faellt der Download aus, ist das nicht schlimm: Ohne den Ordner nimmt X
 # seinen Standardzeiger, und XCURSOR_SIZE wirkt trotzdem.
-CURSOR_THEME="Bibata-Modern-Ice"
-CURSOR_URL="https://github.com/ful1e5/Bibata_Cursor/releases/latest/download/Bibata-Modern-Ice.tar.xz"
+CURSOR_THEME="GoogleDot-Blue"
+CURSOR_URL="https://github.com/ful1e5/Google_Cursor/releases/latest/download/GoogleDot-Blue.tar.gz"
 if [ -d "$HOME/.icons/$CURSOR_THEME" ]; then
   echo "  Mauszeiger $CURSOR_THEME ist schon da."
 else
@@ -274,7 +274,7 @@ export XCURSOR_SIZE=32
 # AUSSEHEN: Der Name muss einem Ordner ~/.icons/<Name>/cursors/ entsprechen.
 # Fehlt der Ordner, nimmt X einfach seinen Standardzeiger — es geht also
 # nichts kaputt, wenn hier etwas Falsches steht.
-export XCURSOR_THEME=Bibata-Modern-Ice
+export XCURSOR_THEME=GoogleDot-Blue
 
 # Ohne eine UTF-8-Sprachumgebung zeigt auch ein moderner Terminal Umlaute und
 # Rahmenlinien falsch an — er weiss dann schlicht nicht, dass die Bytes

@@ -1,5 +1,11 @@
 # Termux · proot · Debian · XFCE · Nordic
 
+> **📦 ARCHIV — nicht mehr in Benutzung.**
+> Der erste Anlauf: ein vollständiges Debian im proot-Container. Zu schwer und
+> ohne Zugriff auf die GPU. Abgelöst zunächst durch
+> [`termux-xfce-gpu-desktop`](../termux-xfce-gpu-desktop/) (natives Termux statt
+> proot), seit 16.8.2026 durch [`termux-i3-minimal`](../termux-i3-minimal/).
+
 Eine komplette, portable Linux-Arbeitsumgebung auf dem Android-Smartphone — installiert mit **einem** Script. Debian 13 (Trixie) mit XFCE-Desktop im Nordic-Look, gestartet über Termux und Termux:X11, läuft in einem proot-Container ohne Root.
 
 Gedacht als Ersatz für einen Laptop: programmieren, arbeiten und Server per SSH warten — alles aus einem Gerät, das in die Hosentasche passt.

@@ -29,30 +29,19 @@ desk
 
 Alles Weitere ist vorkonfiguriert — Terminal, Darkmode und Firefox.
 
-### i3 testen, ohne XFCE aufzugeben
+### Kein Rundum-Upgrade beim Setup
 
-Das Setup ist absichtlich so gebaut, dass beide Sitzungen nebeneinander leben
-können — man muss sich nicht vorher entscheiden.
+Das Skript macht bewusst **kein `pkg upgrade`**. Ein Rundum-Upgrade würde auch
+`mesa` und `termux-x11` anfassen — genau die Stücke, an denen der
+Zink/turnip-Pfad hängt, der offiziell gar nicht unterstützt ist. Ginge danach
+etwas kaputt, wüsste man nicht, ob es am Setup lag oder am Upgrade.
 
-- **Der XFCE-Starter bleibt unangetastet.** Solange `~/start-desktop.sh`
-  existiert, erscheint XFCE im Startmenü als Punkt 6. Umschalten geht also aus
-  demselben Menü.
-- **Das alte Menü wird gesichert** nach `~/.termux-menu.sh.bak`, bevor es
-  überschrieben wird.
-- **Es wird bewusst kein `pkg upgrade` gemacht.** Ein Rundum-Upgrade würde auch
-  `mesa` und `termux-x11` anfassen — genau die Stücke, an denen der
-  Zink/turnip-Pfad hängt, der offiziell gar nicht unterstützt ist. Ginge danach
-  etwas kaputt, wüsste man nicht, ob es an i3 lag oder am Upgrade. Wer alles
-  mitziehen will: `MIT_UPGRADE=1 ./setup_i3.sh`.
+Wer trotzdem alles mitziehen will: `MIT_UPGRADE=1 ./setup_i3.sh`.
 
-Wenn i3 sich bewährt, verschwindet Punkt 6 von selbst, sobald
-`~/start-desktop.sh` gelöscht wird.
-
-**Zurück zum alten Zustand:**
-
-```bash
-mv ~/.termux-menu.sh.bak ~/.termux-menu.sh
-```
+Findet das Skript ein altes `~/.termux-menu.sh` vor, sichert es das vorher nach
+`~/.termux-menu.sh.bak`. Und solange ein `~/start-desktop.sh` existiert, bleibt
+XFCE als Menüpunkt 6 erreichbar — auf einem frischen Termux gibt es beides
+nicht, dann entfällt der Punkt von selbst.
 
 ## Was drin ist
 
@@ -185,13 +174,16 @@ deutlich größer. Zahl ändern, Sitzung neu starten, fertig. Kein Paket nötig.
 2. Den Namen dieses Ordners in `XCURSOR_THEME`.
 
 ```bash
-export XCURSOR_THEME=Bibata-Modern-Ice
+export XCURSOR_THEME=GoogleDot-Blue
 ```
 
-Das Setup lädt Bibata-Modern-Ice selbst herunter, falls es noch nicht da ist.
-Jedes andere X-Cursor-Thema geht genauso — entpacken nach `~/.icons/`, Namen
-eintragen. Verbreitete Quellen sind die Release-Seiten der jeweiligen Projekte
-auf GitHub; das Paketformat ist immer dasselbe.
+Das Setup lädt **GoogleDot-Blue** selbst herunter, falls es noch nicht da ist —
+aus [ful1e5/Google_Cursor](https://github.com/ful1e5/Google_Cursor).
+
+Jedes andere X-Cursor-Thema geht genauso: entpacken nach `~/.icons/`, Namen
+eintragen. Aus demselben Repo gibt es `GoogleDot-Black`, `-White` und `-Red`;
+für eine andere Farbe nur die beiden Zeilen im Setup-Skript anpassen
+(`CURSOR_THEME` und `CURSOR_URL`).
 
 **Fehlt der Ordner, geht nichts kaputt:** X nimmt dann einfach seinen
 Standardzeiger, und `XCURSOR_SIZE` wirkt trotzdem.
@@ -363,34 +355,19 @@ brauchbarem Scrollback.
 
 ## XFCE entfernen
 
-Wenn i3 sich bewährt hat — in der **Termux-App**, nicht in der laufenden
-Sitzung:
+Der Umstieg lief über ein **komplett frisches Termux**: App-Daten löschen, neu
+installieren, das Setup-Skript einmal laufen lassen. Das ist sauberer als jedes
+Deinstallieren und dauert kaum länger.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/dev0gig/linuxrice/main/termux-i3-minimal/entferne_xfce.sh | bash
-```
+Bleibt aus irgendeinem Grund ein altes XFCE stehen, richtet es keinen Schaden
+an — es startet nur nicht mehr von selbst. Zwei Stellen wären beim Aufräumen
+von Hand zu beachten:
 
-Das Skript zeigt vorher, was verschwinden würde, und fragt nach. Ohne
-ausdrückliches `ja` passiert nichts.
-
-**Zwei Stellen, an denen es sonst schiefginge:**
-
-- **`xfce4-terminal` wird geschützt.** Es ist eine Abhängigkeit des
-  XFCE-Metapakets — `apt autoremove` würde es mitreißen, und dann wäre die
-  Sitzung ohne Terminal unbrauchbar. Das Skript markiert es (und i3, Firefox,
-  mesa, termux-x11) vorher als „bewusst gewollt".
-- **`~/.config/xfce4/terminal` bleibt stehen.** Dort liegen Schrift,
-  Schriftgröße und Farben des Terminals. Ein pauschales Löschen von
-  `~/.config/xfce4` würde genau das Aussehen zurücksetzen, das man gerade
-  eingerichtet hat.
-
-Entfernt werden das XFCE-Metapaket, Session, Panel, Desktop, Fenstermanager,
-Einstellungsdienst, Appfinder, Taskmanager, Thunar, Mousepad sowie Rofi und
-sxhkd. Danach `apt autoremove`.
-
-Zum Schluss verschwindet `~/start-desktop.sh` — damit fällt Menüpunkt 6 von
-selbst weg. Eine Kontrolle am Ende meldet, ob i3, Terminal, Firefox und
-Termux-X11 noch da sind.
+- **`xfce4-terminal` nicht mitentfernen.** Es ist eine Abhängigkeit des
+  XFCE-Metapakets, `apt autoremove` würde es mitreißen — und dann wäre die
+  Sitzung ohne Terminal unbrauchbar. Vorher `apt-mark manual xfce4-terminal`.
+- **`~/.config/xfce4/terminal` stehen lassen.** Dort liegen Schrift,
+  Schriftgröße und Farben des Terminals.
 
 ## Rollback
 
@@ -402,7 +379,3 @@ Bei schwarzem Bildschirm oder klemmender Sitzung, in der Termux-App:
 killall -9 termux-x11 i3 xterm aterm urxvt
 ```
 
-Zurück zu XFCE: `~/start-desktop.sh` aus dem
-[Nachbarordner](../termux-xfce-gpu-desktop/) existiert weiterhin unverändert.
-Beide Setups stören einander nicht — sie teilen sich nur `~/.bashrc` und das
-Startmenü.

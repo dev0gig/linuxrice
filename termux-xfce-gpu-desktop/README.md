@@ -1,5 +1,16 @@
 # Termux XFCE GPU Desktop
 
+> **📦 ARCHIV — seit 16.8.2026 nicht mehr in Benutzung.**
+> Abgelöst durch [`termux-i3-minimal`](../termux-i3-minimal/). Nach einer Woche
+> im Alltag zeigte sich, dass von diesem Desktop nur zwei Programme benutzt
+> wurden: Firefox und ein Terminal. Der ganze Unterbau war Ballast, und der
+> Einstellungsdienst `xfconfd` war eine dauerhafte Fehlerquelle.
+>
+> **Dieser Ordner bleibt trotzdem stehen** — wegen zweier Untersuchungen, die
+> weiterhin gelten und im i3-Setup verlinkt sind:
+> [warum Firefox trotz Turnip auf Software rendert](#warum-firefox-trotz-turnip-auf-software-rendert)
+> und [warum die Panel-Config immer verschwand](#warum-die-panel-config-früher-nach-jedem-neustart-weg-war).
+
 Natives Linux-Desktop-Setup auf Android via Termux — kein proot-distro, kein Debian-Chroot. XFCE läuft direkt in Termux, mit GPU-Beschleunigung über Zink/turnip (Vulkan) statt reinem Software-Rendering.
 
 Getestet auf: Samsung Galaxy Z Fold 7 (Snapdragon / Adreno GPU).

@@ -111,8 +111,13 @@ if command -v urxvt >/dev/null 2>&1; then
   TERMCMD="urxvt -tn xterm-256color -fn \"$TERMFONT\" -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0"
   echo "  Terminal: urxvt (UTF-8, Schriftgroesse 13)"
 elif command -v xfce4-terminal >/dev/null 2>&1; then
-  TERMCMD="xfce4-terminal"
-  echo "  Terminal: xfce4-terminal (UTF-8; Schriftgroesse in dessen Einstellungen)"
+  # --hide-menubar/-toolbar: die Leisten oben sind in einer Sitzung, die auf
+  # Vollbild ausgelegt ist, nur verlorener Platz. Ohne diese Optionen muesste
+  # man sie in jedem neuen Fenster von Hand wegklicken — die Einstellung
+  # merkt sich xfce4-terminal naemlich nicht ueber Fenster hinweg.
+  TERMCMD="xfce4-terminal --hide-menubar --hide-toolbar"
+  echo "  Terminal: xfce4-terminal (UTF-8, ohne Menueleiste)"
+  echo "            Schrift und Farben kommen aus dessen eigener Einstellung."
 else
   TERMCMD="xterm -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0"
   echo "  WARNUNG: Nur xterm/aterm gefunden — Sonderzeichen werden falsch angezeigt."

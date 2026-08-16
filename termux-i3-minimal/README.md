@@ -139,6 +139,45 @@ Beides liegt im Firefox-Profil und überlebt Neustarts, Updates und
 Sitzungsabstürze. Deshalb wird es hier nicht ins Setup-Skript gepresst — das
 müsste den Profilpfad raten, der beim ersten Start noch gar nicht existiert.
 
+## Feinschliff
+
+Drei Dinge, die **nicht** in der i3-Konfiguration liegen können, weil sie
+außerhalb von X11 bzw. im Firefox-Profil sitzen.
+
+### Echtes Vollbild auf Samsung DeX
+
+Solange das X11-Fenster ein normales DeX-Fenster ist, bleibt darunter die
+DeX-Taskleiste sichtbar und frisst Platz. Das ist keine i3-Einstellung — i3
+kennt nur den Bereich, den Termux-X11 ihm gibt.
+
+Der Schalter sitzt in der **App Termux:X11 selbst**, in deren Einstellungen
+(Drei-Punkte-Menü der App). Dort gibt es eine Vollbild-Option; ist sie aktiv,
+verschwindet die DeX-Leiste und i3 bekommt die volle Fläche.
+
+### Terminal ohne Menüleiste
+
+Erledigt das Setup selbst: Der Aufruf lautet
+`xfce4-terminal --hide-menubar --hide-toolbar`.
+
+Das muss beim Aufruf passieren — xfce4-terminal merkt sich das Ausblenden
+**nicht** über Fenster hinweg, man müsste es sonst in jedem neuen Fenster von
+Hand wegklicken.
+
+### Firefox: vertikale Tabs, keine Menüleiste
+
+Firefox 153 bringt vertikale Tabs von Haus aus mit, das braucht kein Add-on:
+
+- **Vertikale Tabs:** Rechtsklick auf die Tab-Leiste → *Vertikale Tabs
+  aktivieren*. Alternativ in `about:config`: `sidebar.revamp` = `true` und
+  `sidebar.verticalTabs` = `true`. Die waagrechte Tab-Leiste verschwindet dabei
+  von selbst.
+- **Menüleiste:** ist auf Linux ohnehin standardmäßig aus. Falls doch sichtbar:
+  Rechtsklick auf die Symbolleiste → Haken bei *Menüleiste* entfernen.
+
+Beides liegt im Firefox-Profil und überlebt Neustarts. Deshalb steht es hier
+und nicht im Setup-Skript: Das Profil wird aus der XFCE-Zeit weiterverwendet,
+inklusive Chronik und Lesezeichen — da soll kein Skript hineinschreiben.
+
 ## Das Startmenü
 
 Öffnet sich in jedem neuen Terminal, sowohl in der Termux-App als auch in jedem

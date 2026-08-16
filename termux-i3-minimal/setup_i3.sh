@@ -598,11 +598,6 @@ MENU_HOST="$(printf '%s\n' "$MENU_SSH" | awk '
 
 MENU_START="$HOME/start-i3.sh"
 
-# Der alte XFCE-Starter. Solange er existiert, bleibt er als Menuepunkt
-# stehen — so laesst sich i3 ausprobieren, ohne XFCE aufzugeben. Wer XFCE
-# spaeter loswird, loescht die Datei und der Punkt verschwindet von selbst.
-MENU_XFCE="$HOME/start-desktop.sh"
-
 # Die Esc-Taste sendet genau ein Zeichen (0x1b). In einer Datei laesst es sich
 # schlecht ablegen, darum wird es hier erzeugt und ueberall damit verglichen.
 ESC="$(printf '\033')"
@@ -629,11 +624,11 @@ while true; do
   printf '   1   Server      SSH + tmux "cc"\n'
   printf '   2   Server pur  SSH ohne tmux\n'
   printf '   3   Auslastung  htop auf dem Server\n'
-  # Punkt 4 und 5 nur ausserhalb der grafischen Sitzung: in einem xterm laeuft
-  # die Sitzung ja schon, ein zweiter Start wuerde die eigene abschiessen.
+  # Punkt 4 nur ausserhalb der grafischen Sitzung: in einem Terminalfenster
+  # laeuft die Sitzung ja schon, ein zweiter Start wuerde die eigene
+  # abschiessen.
   if [ -z "${DISPLAY:-}" ]; then
     printf '   4   Desktop     i3 starten\n'
-    [ -x "$MENU_XFCE" ] && printf '   5   Desktop alt XFCE starten\n'
   fi
   printf '\n'
   printf '  [Enter] = 1     [Esc] = nur die Shell\n'
@@ -713,18 +708,6 @@ while true; do
       else
         printf '\n  Kein Starter gefunden: %s\n' "$MENU_START"
         printf '  (Setup: setup_i3.sh aus dem linuxrice-Repo)\n'
-      fi
-      _menu_pause || { clear; break; }
-      ;;
-    5)
-      clear
-      if [ -n "${DISPLAY:-}" ]; then
-        printf '\n  Die Sitzung laeuft bereits.\n'
-        sleep 1
-      elif [ -x "$MENU_XFCE" ]; then
-        "$MENU_XFCE" || true
-      else
-        printf '\n  Kein XFCE-Starter gefunden: %s\n' "$MENU_XFCE"
       fi
       _menu_pause || { clear; break; }
       ;;

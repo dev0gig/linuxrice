@@ -2,6 +2,10 @@
 
 **Stand: 16.8.2026 — Nachfolger von [`termux-xfce-gpu-desktop`](../termux-xfce-gpu-desktop/).**
 
+**XFCE ist abgeschafft.** Der Umstieg lief über ein komplett frisches Termux:
+App-Daten löschen, neu installieren, dieses Setup einmal laufen lassen. i3 ist
+die einzige Sitzung — es gibt keinen XFCE-Menüpunkt und keinen Rückweg mehr.
+
 Eine i3-Sitzung auf dem Fold7, die auf das Nötigste eingedampft ist: **genau zwei
 Programme** laufen darin — ein Terminal und Firefox. Keine Desktop-Umgebung, kein
 Panel, kein Compositor, kein Theme-Dienst, kein Launcher, kein Wallpaper.
@@ -353,7 +357,6 @@ Terminalfenster innerhalb der Sitzung:
    2   Server pur  SSH ohne tmux
    3   Auslastung  htop auf dem Server
    4   Desktop     i3 starten
-   5   Desktop alt XFCE starten
 
   [Enter] = 1     [Esc] = nur die Shell
 ```
@@ -368,11 +371,8 @@ Pfeil- und Funktionstasten senden ebenfalls ein Esc, gefolgt von weiteren
 Zeichen. Das Menü liest kurz nach: Kommt sofort noch etwas hinterher, war es
 keine echte Esc-Taste, und ein Verrutscher schließt das Menü nicht.
 
-Punkt 4 und 5 erscheinen nur **außerhalb** der grafischen Sitzung — innerhalb
-liefe der Start ins Leere und würde die eigene Sitzung abschießen.
-
-Punkt 5 taucht nur auf, solange `~/start-desktop.sh` existiert. Das ist die
-Brücke für die Testphase; nach dem Löschen des XFCE-Starters verschwindet er.
+Punkt 4 erscheint nur **außerhalb** der grafischen Sitzung — innerhalb liefe
+der Start ins Leere und würde die eigene Sitzung abschießen.
 
 In i3 ist das Menü praktischer als in der Termux-App: Du kannst mehrere Terminals
 öffnen und in jedem einen anderen Punkt wählen — etwa Arbeitsfläche 2 mit der
@@ -532,22 +532,6 @@ der Terminal-Renderer.
 Falls doch etwas anderes gewünscht ist: `rxvt-unicode` wäre die einzige sinnvolle
 Alternative — ebenfalls C, ebenfalls ohne GPU, aber besser bei Unicode und mit
 brauchbarem Scrollback.
-
-## XFCE entfernen
-
-Der Umstieg lief über ein **komplett frisches Termux**: App-Daten löschen, neu
-installieren, das Setup-Skript einmal laufen lassen. Das ist sauberer als jedes
-Deinstallieren und dauert kaum länger.
-
-Bleibt aus irgendeinem Grund ein altes XFCE stehen, richtet es keinen Schaden
-an — es startet nur nicht mehr von selbst. Zwei Stellen wären beim Aufräumen
-von Hand zu beachten:
-
-- **`xfce4-terminal` nicht mitentfernen.** Es ist eine Abhängigkeit des
-  XFCE-Metapakets, `apt autoremove` würde es mitreißen — und dann wäre die
-  Sitzung ohne Terminal unbrauchbar. Vorher `apt-mark manual xfce4-terminal`.
-- **`~/.config/xfce4/terminal` stehen lassen.** Dort liegen Schrift,
-  Schriftgröße und Farben des Terminals.
 
 ## Rollback
 

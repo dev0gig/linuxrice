@@ -60,7 +60,25 @@ echo "=== [3/6] Pakete installieren ==="
 # Pflicht: ohne die laeuft nichts.
 pkg install -y -o Dpkg::Options::="--force-confnew" termux-x11-nightly
 pkg install -y -o Dpkg::Options::="--force-confnew" mesa mesa-vulkan-icd-freedreno
-pkg install -y -o Dpkg::Options::="--force-confnew" i3 xterm firefox openssh
+# i3 und Terminal zuerst und getrennt von Firefox installieren.
+# Grund: Firefox ist mit ~66 MB der mit Abstand groesste Brocken. Haengt der
+# Download (langsamer Spiegelserver), soll wenigstens die Sitzung schon
+# benutzbar sein — Firefox laesst sich jederzeit nachinstallieren mit:
+#     pkg install firefox
+pkg install -y -o Dpkg::Options::="--force-confnew" i3 xterm openssh
+
+echo "--- Firefox (~66 MB, der grosse Brocken) ---"
+# Bricht der Download ab, laeuft das Setup trotzdem zu Ende: i3 ist dann fertig
+# eingerichtet und startbar, nur der Browser fehlt noch.
+if ! pkg install -y -o Dpkg::Options::="--force-confnew" firefox; then
+  echo ""
+  echo "  ACHTUNG: Firefox wurde NICHT installiert."
+  echo "  i3 wird trotzdem fertig eingerichtet und ist startbar."
+  echo "  Ist der Download sehr langsam, liegt es fast immer am Spiegelserver:"
+  echo "      termux-change-repo      (dort eine Gruppe in Europa waehlen)"
+  echo "  Danach nachholen mit:  pkg install firefox"
+  echo ""
+fi
 
 # Kuer: schoener, aber nicht kriegsentscheidend. Darum darf das fehlschlagen,
 # ohne das ganze Setup abzubrechen (set -e wuerde sonst hier aussteigen).

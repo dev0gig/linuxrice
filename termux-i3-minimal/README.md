@@ -352,15 +352,26 @@ Terminalfenster innerhalb der Sitzung:
    1   Server      SSH + tmux "cc"
    2   Server pur  SSH ohne tmux
    3   Auslastung  htop auf dem Server
-   4   Terminal    nur die Shell
-   5   Desktop     i3 starten
-   6   Desktop alt XFCE starten
+   4   Desktop     i3 starten
+   5   Desktop alt XFCE starten
+
+  [Enter] = 1     [Esc] = nur die Shell
 ```
 
-Punkt 5 und 6 erscheinen nur **außerhalb** der grafischen Sitzung — innerhalb
+**Eine Taste genügt — kein Enter.** Die Ziffer wird sofort ausgeführt.
+
+- **[Enter]** ohne Ziffer ist dasselbe wie **1** (Server mit tmux).
+- **[Esc]** (oder `q`) führt direkt in die Shell. Einen eigenen Menüpunkt
+  „Terminal" gibt es dafür nicht mehr.
+
+Pfeil- und Funktionstasten senden ebenfalls ein Esc, gefolgt von weiteren
+Zeichen. Das Menü liest kurz nach: Kommt sofort noch etwas hinterher, war es
+keine echte Esc-Taste, und ein Verrutscher schließt das Menü nicht.
+
+Punkt 4 und 5 erscheinen nur **außerhalb** der grafischen Sitzung — innerhalb
 liefe der Start ins Leere und würde die eigene Sitzung abschießen.
 
-Punkt 6 taucht nur auf, solange `~/start-desktop.sh` existiert. Das ist die
+Punkt 5 taucht nur auf, solange `~/start-desktop.sh` existiert. Das ist die
 Brücke für die Testphase; nach dem Löschen des XFCE-Starters verschwindet er.
 
 In i3 ist das Menü praktischer als in der Termux-App: Du kannst mehrere Terminals

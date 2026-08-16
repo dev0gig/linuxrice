@@ -603,10 +603,15 @@ MENU_START="$HOME/start-i3.sh"
 # spaeter loswird, loescht die Datei und der Punkt verschwindet von selbst.
 MENU_XFCE="$HOME/start-desktop.sh"
 
+# Die Esc-Taste sendet genau ein Zeichen (0x1b). In einer Datei laesst es sich
+# schlecht ablegen, darum wird es hier erzeugt und ueberall damit verglichen.
+ESC="$(printf '\033')"
+
 _menu_pause() {
-  printf '\n  [Enter] zurueck zum Menue, [q] Terminal: '
-  read -r _a
-  case "$_a" in q|Q) return 1 ;; *) return 0 ;; esac
+  printf '\n  [Enter] zurueck zum Menue, [q] oder [Esc] Terminal: '
+  read -rsn1 _a
+  printf '\n'
+  case "$_a" in q|Q|"$ESC") return 1 ;; *) return 0 ;; esac
 }
 
 _kein_ziel() {
@@ -624,24 +629,36 @@ while true; do
   printf '   1   Server      SSH + tmux "cc"\n'
   printf '   2   Server pur  SSH ohne tmux\n'
   printf '   3   Auslastung  htop auf dem Server\n'
-  printf '   4   Terminal    nur die Shell\n'
-  # Punkt 5 und 6 nur ausserhalb der grafischen Sitzung: in einem xterm laeuft
+  # Punkt 4 und 5 nur ausserhalb der grafischen Sitzung: in einem xterm laeuft
   # die Sitzung ja schon, ein zweiter Start wuerde die eigene abschiessen.
   if [ -z "${DISPLAY:-}" ]; then
-    printf '   5   Desktop     i3 starten\n'
-    [ -x "$MENU_XFCE" ] && printf '   6   Desktop alt XFCE starten\n'
+    printf '   4   Desktop     i3 starten\n'
+    [ -x "$MENU_XFCE" ] && printf '   5   Desktop alt XFCE starten\n'
   fi
   printf '\n'
-  printf '  Auswahl [1]: '
+  printf '  [Enter] = 1     [Esc] = nur die Shell\n'
+  printf '\n'
+  printf '  Auswahl: '
 
-  if ! read -r wahl; then
+  # Eine EINZELNE Taste, ohne Enter (-n1) und ohne Anzeige (-s).
+  # Nur so laesst sich Esc ueberhaupt erkennen: "read -r" gibt die Zeile erst
+  # beim Enter heraus, eine allein gedrueckte Esc-Taste kaeme dort nie an.
+  if ! read -rsn1 wahl; then
     # Kein Eingabekanal (z.B. Skriptaufruf) -> einfach Terminal
     clear
     break
   fi
 
-  case "${wahl:-1}" in
-    1)
+  # Pfeil- und Funktionstasten senden Esc und danach noch "[A" o.ae.
+  # Ohne dieses Nachfassen wuerde ein Verrutscher auf die Pfeiltaste als Esc
+  # gelten und das Menue schliessen. Kommt also sofort noch etwas hinterher,
+  # war es keine echte Esc-Taste: Rest wegwerfen und als Fehleingabe werten.
+  if [ "$wahl" = "$ESC" ]; then
+    while read -rsn1 -t 0.05 _rest; do wahl='?'; done
+  fi
+
+  case "$wahl" in
+    ''|1)
       clear
       if [ -n "$MENU_SSH" ]; then eval "$MENU_SSH" || true; else _kein_ziel; fi
       _menu_pause || { clear; break; }
@@ -688,10 +705,6 @@ while true; do
       ;;
     4)
       clear
-      break
-      ;;
-    5)
-      clear
       if [ -n "${DISPLAY:-}" ]; then
         printf '\n  Die Sitzung laeuft bereits.\n'
         sleep 1
@@ -703,7 +716,7 @@ while true; do
       fi
       _menu_pause || { clear; break; }
       ;;
-    6)
+    5)
       clear
       if [ -n "${DISPLAY:-}" ]; then
         printf '\n  Die Sitzung laeuft bereits.\n'
@@ -715,7 +728,9 @@ while true; do
       fi
       _menu_pause || { clear; break; }
       ;;
-    q|Q|exit)
+    q|Q|"$ESC")
+      # Esc (und weiterhin q) fuehren direkt in die Shell — dafuer gibt es
+      # keinen eigenen Menuepunkt mehr.
       clear
       break
       ;;

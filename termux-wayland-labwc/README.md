@@ -1,6 +1,6 @@
 # Termux Wayland Desktop (labwc) — Machbarkeitsanalyse
 
-**Stand: 16.8.2026 — untersucht und praktisch getestet. Nicht weiterverfolgt.**
+**Stand: 16.8.2026 — zwei Wege praktisch getestet, beide verworfen. Es bleibt bei X11.**
 
 Die Frage: Lässt sich auf dem Fold7 ein Wayland-Desktop nativ unter Termux
 betreiben, statt X11 über Termux-X11? Und zwar so, dass Browser die GPU
@@ -126,6 +126,46 @@ was mit sparsamem CSS (kein `backdrop-filter: blur()`) gut auszuhalten ist.
   `killall`-Choreografie wäre überflüssig.
 - **Launcher und Panel fehlen:** `wofi`, `fuzzel` und `waybar` gibt es in
   Termux nicht. Rofi könnte über XWayland weiterlaufen.
+
+## TAWC ebenfalls getestet — auch kein Ersatz
+
+Weil beim Termux:GUI-Weg die Eingabe fehlt, wurde am selben Tag noch
+[TAWC](https://github.com/wmww/tawc) ausprobiert. Es bringt eine eigene App,
+einen eigenen Compositor und lädt eine echte Debian-Umgebung herunter.
+
+**Was gut lief:**
+
+- Installation und Debian-Download problemlos
+- ✅ **Externe Tastatur funktioniert** — genau das, was dem Termux:GUI-Weg fehlt
+- Firefox ließ sich installieren und starten
+
+**Woran es scheiterte:**
+
+- **Chromium kommt nicht hoch.** Er verbindet sich zwar mit dem Compositor,
+  scheitert dann aber endlos beim Anlegen eines GPU-Kontexts:
+  ```
+  ContextResult::kFatalFailure: Failed to create shared context for virtualization.
+  SharedImageStub: unable to create context
+  ```
+  Das wiederholt sich unbegrenzt, der Browser startet nie. Auch mit
+  `--no-sandbox --disable-dev-shm-usage --in-process-gpu` nicht.
+- Firefox startete, meldete aber `No GPUs detected via PCI` und
+  `vaapitest: failed to open renderDeviceFD` — ob er die GPU am Ende genutzt
+  hätte, wurde nicht mehr zu Ende gemessen.
+
+**Stolperstein für einen späteren Anlauf:** TAWC legt den Wayland-Socket an
+einer ungewöhnlichen Stelle ab — nicht unter `/run/user/…`, sondern:
+
+```
+XDG_RUNTIME_DIR=/usr/share/tawc WAYLAND_DISPLAY=wayland-0 <programm>
+```
+
+Ohne diese beiden Variablen findet kein Programm den Compositor, und die
+Fehlermeldung („Failed to connect to Wayland display") führt in die Irre.
+
+**Entscheidung am 16.8.2026: Es bleibt bei X11.** Der Aufwand steht in keinem
+Verhältnis zum Gewinn, und mit abgeschaltetem Compositing ist das
+Ausgangsproblem ausreichend entschärft.
 
 ## Geprüfte Alternativen (nicht nötig gewesen)
 

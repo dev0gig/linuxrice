@@ -17,8 +17,14 @@ WALLPAPER_FILE="$WALLPAPER_DIR/wallpaper.png"
 # Das Wallpaper liegt neben diesem Skript im Repo — kein Download mehr von
 # fremden Servern (der alte Wallhaven-Link hätte jederzeit sterben können).
 WALLPAPER_QUELLE="$SKRIPT_DIR/wallpaper.png"
-# Notnagel, falls das Skript ohne sein Repo unterwegs ist:
-WALLPAPER_FERN="benutzer@rechner:~/assets/wallpaper/toride-die.png"
+# Notnagel, falls das Skript ohne sein Repo unterwegs ist: dann kann das
+# Wallpaper per scp von einem eigenen Rechner geholt werden.
+#
+# Steht hier bewusst LEER. Das Repo ist oeffentlich — ein echter Benutzer- und
+# Rechnername hat darin nichts verloren, auch nicht als Beispiel. Wer den Weg
+# nutzen will, setzt die Variable beim Aufruf:
+#     WALLPAPER_FERN=benutzer@rechner:~/pfad/bild.png ./rice.sh
+WALLPAPER_FERN="${WALLPAPER_FERN:-}"
 
 CURSOR_THEME="Bibata-Modern-Ice"
 CURSOR_URL="https://github.com/ful1e5/Bibata_Cursor/releases/latest/download/Bibata-Modern-Ice.tar.xz"
@@ -94,11 +100,13 @@ if [ -s "$WALLPAPER_QUELLE" ]; then
 elif [ -s "$WALLPAPER_FILE" ]; then
     # Wichtig: ein selbst gewähltes Wallpaper wird NICHT mehr überschrieben.
     log "Wallpaper ist schon da — bleibt unangetastet."
-elif command -v scp >/dev/null 2>&1 && scp -q "$WALLPAPER_FERN" "$WALLPAPER_FILE" 2>/dev/null; then
+elif [ -n "$WALLPAPER_FERN" ] && command -v scp >/dev/null 2>&1 \
+     && scp -q "$WALLPAPER_FERN" "$WALLPAPER_FILE" 2>/dev/null; then
     log "Wallpaper per scp geholt."
 else
     err "Kein Wallpaper gefunden: weder $WALLPAPER_QUELLE noch $WALLPAPER_FILE."
-    err "Von einem eigenen Rechner holen: scp $WALLPAPER_FERN $WALLPAPER_FILE"
+    err "Von einem eigenen Rechner holen:"
+    err "  WALLPAPER_FERN=benutzer@rechner:~/pfad/bild.png $0"
 fi
 
 log "Aktiviere Icons, Font, Cursor, Dark Mode..."

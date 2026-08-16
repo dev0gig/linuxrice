@@ -302,14 +302,60 @@ echo "=== [6/7] Startmenue einrichten ==="
 if [ ! -f "$CONF" ]; then
   ZIEL=""
   if [ -r /dev/tty ]; then
-    printf '\n  Name oder Adresse deines Servers fuer das Menue\n'
-    printf '  (z.B. rechnername oder benutzer@rechnername, leer = spaeter): '
+    printf '\n  Server fuer das Menue — bitte in der Form  benutzer@rechner\n'
+    printf '\n'
+    printf '  ⚠️  Der Benutzername ist hier PFLICHT, nicht Zierde.\n'
+    printf '      Android gibt Termux einen Benutzernamen wie "%s".\n' "$(id -un 2>/dev/null || echo u0_a123)"
+    printf '      Laesst man den Benutzer weg, versucht ssh sich mit GENAU\n'
+    printf '      diesem Namen anzumelden — den es auf dem Server nicht gibt.\n'
+    printf '      Tailscale antwortet dann mit "user is not permitted".\n'
+    printf '      Nach einer Neuinstallation von Termux aendert sich der Name.\n'
+    printf '\n'
+    printf '  Eingabe (leer = spaeter): '
     read -r ZIEL < /dev/tty || ZIEL=""
   fi
+
+  # Fehlt das @, laeuft es garantiert in den oben beschriebenen Fehler.
+  # Lieber sofort nachfragen als den Nutzer spaeter suchen lassen.
+  case "$ZIEL" in
+    ""|*@*) : ;;
+    *)
+      echo ""
+      echo "  ⚠️  In '$ZIEL' fehlt der Benutzername — so wird die Anmeldung"
+      echo "      fehlschlagen (siehe oben)."
+      if [ -r /dev/tty ]; then
+        printf '  Benutzername auf dem Server (leer = trotzdem so lassen): '
+        read -r BENUTZER < /dev/tty || BENUTZER=""
+        [ -n "$BENUTZER" ] && ZIEL="$BENUTZER@$ZIEL"
+      fi
+      ;;
+  esac
+
   if [ -n "$ZIEL" ]; then
     printf '# Befehl fuer Menuepunkt 1 (SSH mit tmux-Sitzung "cc").\n' > "$CONF"
     printf 'ssh %s -t "tmux new -A -s cc"\n' "$ZIEL" >> "$CONF"
     echo "  Ziel gespeichert in: $CONF"
+
+    # Denselben Benutzer auch fuer ein blankes "ssh rechner" hinterlegen —
+    # sonst laeuft man in genau denselben Fehler, sobald man den Befehl
+    # einmal von Hand tippt statt ueber das Menue zu gehen.
+    case "$ZIEL" in
+      *@*)
+        SSH_USER="${ZIEL%@*}"
+        SSH_HOST="${ZIEL#*@}"
+        mkdir -p "$HOME/.ssh"
+        touch "$HOME/.ssh/config"
+        chmod 600 "$HOME/.ssh/config"
+        if ! grep -qiE "^[[:space:]]*Host[[:space:]]+$SSH_HOST[[:space:]]*$" "$HOME/.ssh/config"; then
+          {
+            printf '\n# Von setup_i3.sh: sonst meldet sich ssh mit dem\n'
+            printf '# Android-Benutzernamen an und wird abgewiesen.\n'
+            printf 'Host %s\n    User %s\n' "$SSH_HOST" "$SSH_USER"
+          } >> "$HOME/.ssh/config"
+          echo "  ~/.ssh/config ergaenzt: 'ssh $SSH_HOST' nutzt jetzt $SSH_USER."
+        fi
+        ;;
+    esac
   else
     printf '# Befehl fuer Menuepunkt 1. Die Zeile unten anpassen und die\n' > "$CONF"
     printf '# fuehrende Raute entfernen:\n' >> "$CONF"

@@ -250,6 +250,34 @@ tmux-Sitzung und Arbeitsfläche 3 mit `btop`.
 in `~/.termux-menu.conf` ab. Zum Ändern nur diese Datei anfassen —
 `~/.termux-menu.sh` wird bei jedem Setup überschrieben.
 
+### ⚠️ Der Benutzername beim SSH-Ziel ist Pflicht
+
+Beim Setup muss das Ziel als **`benutzer@rechner`** angegeben werden, nicht nur
+als Rechnername. Sonst kommt beim ersten Anmelden:
+
+```
+user u0_a543 is not permitted
+```
+
+**Warum:** Android gibt Termux einen Benutzernamen wie `u0_a543`. Ohne
+ausdrücklichen Benutzer meldet sich `ssh` mit genau diesem Namen an — und den
+gibt es auf dem Server nicht. Bei Tailscale SSH führt das zu obiger Meldung.
+
+Das ist **kein** Berechtigungsproblem: Den Android-Benutzer in die Tailscale-ACL
+aufzunehmen wäre der falsche Weg, denn die Nummer **ändert sich bei jeder
+Neuinstallation von Termux**.
+
+Das Setup fragt nach, wenn das `@` fehlt, und legt zusätzlich einen Eintrag in
+`~/.ssh/config` an — damit auch ein von Hand getipptes `ssh rechner` den
+richtigen Benutzer nimmt:
+
+```
+Host rechner
+    User benutzer
+```
+
+Nachträglich reicht das Anpassen von `~/.termux-menu.conf`.
+
 ### ⚠️ `TERMUX_MENU_DONE` muss zurückgesetzt werden
 
 Das Menü setzt beim Start `TERMUX_MENU_DONE=1` und **exportiert** es, damit es

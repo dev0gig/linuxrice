@@ -1,12 +1,15 @@
 # Termux Wayland Desktop (labwc) — Machbarkeitsanalyse
 
-**Stand: 16.8.2026 — reine Analyse, noch nichts gebaut.**
+**Stand: 16.8.2026 — untersucht und praktisch getestet. Nicht weiterverfolgt.**
 
 Die Frage: Lässt sich auf dem Fold7 ein Wayland-Desktop nativ unter Termux
 betreiben, statt X11 über Termux-X11? Und zwar so, dass Browser die GPU
 tatsächlich nutzen können?
 
-**Antwort: Ja, sehr wahrscheinlich. Und einfacher als gedacht.**
+**Kurzantwort: Grafisch ja — bedienbar nein.** Der Grafikpfad funktioniert und
+löst genau das Problem, an dem das X11-Setup scheitert. Aber Tastatur und Maus
+werden nicht erkannt, und das ist ein bekannter, seit über einem Jahr offener
+Fehler im Termux-Paket. Damit ist es aktuell kein benutzbarer Desktop.
 
 ## Warum die Frage überhaupt aufkam
 
@@ -17,104 +20,125 @@ Firefox braucht EGL, und dieser Weg ist unter Termux-X11 nicht befahrbar.
 Die vollständige Diagnose steht dort unter „Warum Firefox trotz Turnip auf
 Software rendert".
 
-Unter Wayland entfällt X11 als Zwischenschicht komplett. Der EGL-Weg dort ist
-ein völlig anderer Codepfad — deshalb die Hoffnung, dass Browser damit an die
-GPU kommen.
+Unter Wayland entfällt X11 als Zwischenschicht. Der EGL-Weg dort ist ein
+anderer Codepfad — daher die Hoffnung, dass Browser damit an die GPU kommen.
 
-## Der entscheidende Befund
+## Ergebnis des Praxistests
 
-Das wlroots-Paket in Termux bringt ein **eigenes Backend für Termux:GUI** mit.
-Beim Start von `labwc` sieht man es versuchen:
+| Stufe | Ergebnis |
+|---|---|
+| Wayland-Compositor startet | ✅ labwc läuft |
+| Bild kommt auf den Android-Schirm | ✅ über die App Termux:GUI |
+| GPU wird genutzt | ✅ mit dem Vulkan-Renderer |
+| Firefox startet in der Sitzung | ✅ |
+| **Firefox bekommt einen GL-Kontext** | ✅ **keine EGL-Fehler mehr** |
+| Tastatur | ❌ wird nicht erkannt |
+| Maus | ❌ wird nicht erkannt |
 
-```
-backend/termuxgui/backend.c:148  Failed to create tgui_connection
-Could not connect to socket: No such file or directory
-backend/backend.c:116  Cannot create session: disabled at compile-time
-backend/backend.c:438  Failed to start a DRM session
-```
+Der vorletzte Punkt ist der eigentliche Erfolg: Unter X11 spuckt Firefox
+seitenweise `Failed to create EGL library display` und `Fallback WR to SW-WR`
+aus. In der Wayland-Sitzung **kein einziger Grafikfehler** — nur harmlose
+Tastaturlayout-Warnungen von XWayland. Der Beweis, dass der Ansatz trägt.
 
-Gescheitert ist es also **nicht mangels Weg**, sondern weil die Gegenstelle
-fehlt: die App **Termux:GUI** ist nicht installiert. Sie spielt hier dieselbe
-Rolle, die im X11-Setup die App Termux-X11 spielt — sie bringt das Bild auf den
-Android-Bildschirm.
+## Der Weg dorthin — was tatsächlich nötig war
 
-Die beiden folgenden Fehlerzeilen sind die erwarteten Rückfallebenen (libseat
-ist nicht einkompiliert, DRM/KMS gibt es auf Android ohne Root nicht) und
-brauchen niemanden zu beunruhigen.
+Alles über normale Termux-Repos, kein Fremdprojekt, kein proot, kein Root:
 
-## Was bereits vorhanden ist
-
-Alles über die normalen Termux-Repos, nichts Exotisches:
-
-| Baustein | Version | Status |
-|---|---|---|
-| `labwc` | 0.8.2-2 | installiert |
-| `wlroots` (mit termuxgui-Backend) | 0.18.2-1 | installiert (Abhängigkeit) |
-| `termux-gui-c` | 0.1.3-7 | installiert (Abhängigkeit) |
-| `xwayland` | 24.1.13 | installiert (Abhängigkeit) |
-| `sway` (Alternative zu labwc) | 1.10.1-1 | verfügbar |
-| `swaybg` | 1.2.2 | verfügbar |
-| Zink/turnip auf Adreno 830 | Mesa 26.0.6 | läuft bereits |
-
-Die Versionen passen zueinander — labwc 0.8 und sway 1.10 wollen beide
-wlroots 0.18. Genau daran scheitert es sonst oft.
-
-## Was noch fehlt
-
-1. **Die App Termux:GUI** (`com.termux.gui`). ⚠️ Sie muss aus **derselben Quelle
-   stammen wie Termux selbst** (F-Droid oder GitHub) — Android prüft die
-   Signatur, und Add-ons aus fremder Quelle lassen sich nicht installieren
-   bzw. können nicht mit Termux reden. Das ist die klassische Falle bei
-   Termux-Zusatz-Apps.
-2. **`XDG_RUNTIME_DIR`** muss gesetzt sein, sonst startet labwc gar nicht:
-   ```
-   export XDG_RUNTIME_DIR=$PREFIX/tmp
-   ```
-3. **Launcher und Panel.** `wofi`, `fuzzel` und `waybar` gibt es in Termux
-   **nicht**. Für einen ersten Start egal, danach zu klären. Rofi könnte über
-   XWayland weiterlaufen.
-
-## Was offen bleibt (und erst der Versuch klärt)
-
-- **Startet labwc mit Termux:GUI überhaupt durch?**
-- **Kommt der Browser dann an die GPU?** Das ist der ganze Zweck der Übung —
-  und bisher nur eine begründete Vermutung, keine Messung.
-- **Wie gut ist die Eingabe?** Tastatur, Maus und Touch über Termux:GUI sind
-  unbekanntes Terrain.
-
-## Was von XFCE nicht mitkommt
-
-Bewusst festhalten, damit später keine Enttäuschung entsteht:
-
-- **`xfwm4` kann kein Wayland.** Fenstersteuerung, Compositing-Schalter, Schatten
-  und Theme aus `rice.sh` greifen dort nicht.
-- **`sxhkd` entfällt** — labwc bringt Tastenkürzel selbst mit. Das ist eine
-  Vereinfachung, kein Verlust.
-- **`xfconfd` entfällt ebenfalls** — und damit der größte Ärger des X11-Setups:
-  labwc liest eine XML-Datei beim Start, es gibt keinen Dienst, der
-  Einstellungen im Speicher hält und beim Beenden zurückschreibt. Die ganze
-  Vorlagen- und `killall`-Choreografie aus dem Nachbarordner wird überflüssig.
-
-## Risiken
-
-- Das termuxgui-Backend stammt aus einem sehr kleinen Projekt
-  ([`xMeM/wlroots-termux`](https://github.com/xMeM/wlroots-termux), Zweig
-  `termuxgui`). Termux- oder Mesa-Updates können es brechen.
-- Es ist kein offiziell unterstützter Pfad — dieselbe Einschränkung, die schon
-  für Zink/turnip im X11-Setup gilt.
-
-## Nächster Schritt
-
-Termux:GUI installieren (passende Quelle beachten), dann:
-
-```
+```bash
+pkg install labwc          # zieht wlroots, termux-gui-c, xwayland mit
 export XDG_RUNTIME_DIR=$PREFIX/tmp
-labwc
+WLR_RENDERER=vulkan labwc -s "env MOZ_ENABLE_WAYLAND=1 firefox"
 ```
 
-Ziel des ersten Versuchs ist ausdrücklich **nur**: kommt ein Fenstermanager auf
-den Schirm, und rendert Firefox darin mit GPU. Kein Panel, kein Theme, kein
-Launcher — das ist erst danach interessant.
+Dazu muss die App **Termux:GUI** (`com.termux.gui`) installiert sein.
+⚠️ Sie muss aus **derselben Quelle stammen wie Termux selbst** (F-Droid oder
+GitHub) — Android prüft die Signatur, Add-ons aus fremder Quelle funktionieren
+nicht.
 
-**Das X11-Setup im Nachbarordner bleibt davon unberührt** und funktioniert
-weiter. Die beiden Ansätze stehen nebeneinander, nicht gegeneinander.
+### Die zwei Fallen, die es zu umgehen galt
+
+**1. `XDG_RUNTIME_DIR` fehlt.** Ohne die Variable startet labwc gar nicht:
+
+```
+[ERROR] XDG_RUNTIME_DIR is unset
+```
+
+**2. Der Standard-Renderer scheitert.** labwc nimmt von sich aus den
+GLES2-Renderer, und der will über EGL einen GBM-Zugang zur Grafikhardware —
+also `/dev/dri`, das es auf Android ohne Root nicht gibt:
+
+```
+[EGL] eglInitialize, error: EGL_NOT_INITIALIZED, message: "DRI2: failed to create gbm device"
+render/gles2/renderer.c:499  Could not initialize EGL
+Aborted
+```
+
+**`WLR_RENDERER=vulkan` löst das.** Vulkan spricht über turnip direkt mit der
+Adreno, ohne EGL und ohne GBM dazwischen. Danach läuft labwc fehlerfrei durch.
+Das ist der zentrale Kniff dieses ganzen Ansatzes.
+
+## Woran es scheitert
+
+**Tastatur und Maus werden nicht erkannt.** Das ist kein Konfigurationsfehler,
+sondern ein bekannter Fehler des Termux-Pakets:
+
+> [termux/termux-packages#23751 — „[Bug][TGUI]: Labwc and Sway does not support
+> a physical keyboard"](https://github.com/termux/termux-packages/issues/23751)
+> Gemeldet 12.3.2025, seitdem offen und „untriaged", kein Maintainer
+> zugewiesen, keine Lösung in Sicht.
+
+Passend dazu meldet labwc beim Öffnen eines Fensters:
+
+```
+[view.c:860] view has no output, not positioning
+```
+
+Das termuxgui-Backend registriert den Bildschirm also nicht sauber — Eingabe
+und Ausgabe-Geometrie hängen am selben unfertigen Stück.
+
+**Nicht getestet:** ob Touch-Eingabe direkt am Handybildschirm funktioniert.
+Der Fehlerbericht spricht ausdrücklich von *physischen* Tastaturen. Für die
+Arbeit über DeX mit Maus und Tastatur hilft das allerdings ohnehin nicht.
+
+## Bewertung
+
+**Der Ansatz ist bewiesen, aber unfertig.** Was hier fehlt, kann man nicht
+konfigurieren — es müsste im Backend programmiert werden. Das liegt bei einem
+sehr kleinen Projekt ([`xMeM/wlroots-termux`](https://github.com/xMeM/wlroots-termux),
+Zweig `termuxgui`), das diese Lücke seit über einem Jahr nicht geschlossen hat.
+
+Deshalb: **nicht weiterverfolgen, aber im Auge behalten.** Sollte die Eingabe
+irgendwann funktionieren, ist der Rest bereits erprobt und in diesem Dokument
+festgehalten — dann sind es nur noch ein paar Zeilen bis zum laufenden Desktop.
+
+**Der Alltag bleibt bei XFCE über Termux-X11** im Nachbarordner. Dort ist das
+Ruckeln über abgeschaltetes Compositing gelöst; Browser rendern auf der CPU,
+was mit sparsamem CSS (kein `backdrop-filter: blur()`) gut auszuhalten ist.
+
+## Was von XFCE bei einem späteren Umstieg nicht mitkäme
+
+- **`xfwm4` kann kein Wayland.** Fenstersteuerung, Compositing-Schalter,
+  Schatten und Theme aus `rice.sh` greifen dort nicht.
+- **`sxhkd` entfällt** — labwc bringt Tastenkürzel selbst mit. Vereinfachung.
+- **`xfconfd` entfällt** — und damit der größte Ärger des X11-Setups: labwc
+  liest eine XML-Datei beim Start, kein Dienst hält Einstellungen im Speicher
+  und schreibt sie beim Beenden zurück. Die ganze Vorlagen- und
+  `killall`-Choreografie wäre überflüssig.
+- **Launcher und Panel fehlen:** `wofi`, `fuzzel` und `waybar` gibt es in
+  Termux nicht. Rofi könnte über XWayland weiterlaufen.
+
+## Geprüfte Alternativen (nicht nötig gewesen)
+
+Vor dem Fund des eingebauten Termux:GUI-Weges wurden diese Projekte untersucht.
+Sie lösen dasselbe Problem über Androids eigene Grafik-Infrastruktur
+(AHardwareBuffer/gralloc bzw. libhybris) statt über DRM/KMS:
+
+| Projekt | Ansatz |
+|---|---|
+| [Anland](https://github.com/lfdevs/anland-termux) | Wayland in nativem Termux, Turnip auf Snapdragon |
+| [TAWC](https://github.com/wmww/tawc) | Eigenständige App, libhybris, Smithay |
+| [wlroots-android-bridge](https://github.com/Xtr126/wlroots-android-bridge/) | wlroots über gralloc/SurfaceFlinger, labwc |
+| [Local Desktop](https://github.com/localdesktop/localdesktop.github.io) | Fertige App, Compositor im NDK, XFCE-Wayland in proot |
+
+Falls der Termux-Weg dauerhaft an der Eingabe hängen bleibt, wären das die
+nächsten Kandidaten — insbesondere TAWC, das am aktivsten gepflegt wird.

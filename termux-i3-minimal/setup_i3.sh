@@ -126,10 +126,17 @@ floating_modifier $mod
 
 # --- Terminal -------------------------------------------------------------
 # Die Farben stehen absichtlich direkt im Aufruf. Damit entfaellt eine
-# ~/.Xresources UND das Paket xorg-xrdb — xterm startet sonst weiss.
+# ~/.Xresources UND das Paket xorg-xrdb — das Terminal startet sonst weiss.
 # Geschrieben als rgb:xx/xx/xx statt #xxxxxx, weil die Raute in dieser Datei
 # einen Kommentar einleiten wuerde.
-set $term xterm -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0 -fa monospace -fs 11
+#
+# ⚠️ NUR -bg und -fg verwenden, sonst nichts.
+# Was in Termux als "xterm" installiert wird, ist in Wirklichkeit ATERM (ein
+# rxvt-Abkoemmling). Das kennt die Xft-Optionen -fa und -fs NICHT, bricht bei
+# ihnen sofort mit "bad option" ab — und dann startet ueberhaupt kein Terminal
+# mehr, auch nicht ueber die Tastenkuerzel. -bg und -fg verstehen beide.
+# Fuer die Schrift kennt aterm nur -fn mit einem klassischen X-Fontnamen.
+set $term xterm -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0
 
 # --- Tastenkuerzel --------------------------------------------------------
 bindsym $mod+Return          exec $term
@@ -159,7 +166,7 @@ exec --no-startup-id xsetroot -cursor_name left_ptr
 
 exec --no-startup-id firefox
 # Terminal auf Arbeitsflaeche 2 — und dort bleibt der Blick nach dem Start.
-exec --no-startup-id i3-msg 'workspace 2; exec xterm -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0 -fa monospace -fs 11'
+exec --no-startup-id i3-msg 'workspace 2; exec xterm -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0'
 I3EOF
 echo "  geschrieben: $I3CONF"
 
@@ -170,7 +177,9 @@ cat > "$START" <<'STARTEOF'
 
 # Reste einer abgewuergten Sitzung wegraeumen. Android beendet die X-Sitzung
 # im Hintergrund gern selbst, waehrend die Termux-Shell weiterlaeuft.
-killall -9 termux-x11 i3 xterm 2>/dev/null
+# "aterm" muss mit in die Liste: was in Termux als xterm installiert wird,
+# laeuft als Prozess unter dem Namen aterm — "killall xterm" fasst es nicht an.
+killall -9 termux-x11 i3 xterm aterm 2>/dev/null
 sleep 1
 
 # WICHTIG: Das Startmenue setzt TERMUX_MENU_DONE und EXPORTIERT es, damit es

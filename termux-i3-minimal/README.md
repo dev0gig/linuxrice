@@ -20,7 +20,8 @@ curl -fsSL https://raw.githubusercontent.com/dev0gig/linuxrice/main/termux-i3-mi
 ```
 
 Das Skript installiert alles, schreibt die i3-Konfiguration, das Startskript und
-das Startmenü, und fragt einmal nach dem Namen deines Servers und der Firefox-Startseite. Danach:
+das Startmenü, und fragt genau **eine** Sache: den Namen deines Servers fürs
+Menü. Danach:
 
 ```bash
 source ~/.bashrc
@@ -32,12 +33,8 @@ Alles Weitere ist vorkonfiguriert — Terminal, Darkmode und Firefox.
 ### Das Skript ist beliebig oft wiederholbar
 
 Es überschreibt bei jedem Lauf **alles** — Konfiguration, Startskript, Menü — und
-fragt dabei auch **jedes Mal** neu nach den beiden Eingaben:
-
-| Wert | Liegt in |
-|---|---|
-| SSH-Ziel fürs Menü (`benutzer@rechner`) | `~/.termux-menu.conf` |
-| Firefox-Startseite | `~/.i3-firefox.conf` |
+fragt dabei auch **jedes Mal** neu nach dem SSH-Ziel fürs Menü
+(`benutzer@rechner`, landet in `~/.termux-menu.conf`).
 
 Der bisherige Wert steht dabei als Vorschlag in eckigen Klammern — **Enter
 übernimmt ihn**, eine neue Eingabe ersetzt ihn. So bleibt ein Wiederholungslauf
@@ -63,10 +60,10 @@ wird übersprungen, wenn es schon da ist. Zum Erneuern den Ordner löschen.
 
 Wo keine Tastatur hängt (Skript, `ssh handy 'curl … | bash'`), kann nicht
 gefragt werden. Das Skript sagt das dann deutlich und behält den alten Wert.
-Beide Eingaben lassen sich auch vorgeben:
+Das SSH-Ziel lässt sich auch vorgeben:
 
 ```bash
-ZIEL_VORGABE=benutzer@rechner FFURL_VORGABE=http://rechner:8080 ./setup_i3.sh
+ZIEL_VORGABE=benutzer@rechner ./setup_i3.sh
 ```
 
 ### ⚠️ Termux verträgt keine Teil-Aktualisierungen
@@ -216,14 +213,15 @@ Der Schalter sitzt in der **App Termux:X11 selbst**, in deren Einstellungen
 (Drei-Punkte-Menü der App). Dort gibt es eine Vollbild-Option; ist sie aktiv,
 verschwindet die DeX-Leiste und i3 bekommt die volle Fläche.
 
-### Terminal ohne Menüleiste
+### Terminal ohne Menü- und Bildlaufleiste
 
-Erledigt das Setup selbst: Der Aufruf lautet
-`xfce4-terminal --hide-menubar --hide-toolbar`.
+Erledigt das Setup selbst. Bei `lxterminal` passiert das über die Datei
+`~/.config/lxterminal/lxterminal.conf` (`hidemenubar`, `hidescrollbar`,
+`hideclosebutton`), die bei jedem Lauf neu geschrieben wird.
 
-Das muss beim Aufruf passieren — xfce4-terminal merkt sich das Ausblenden
-**nicht** über Fenster hinweg, man müsste es sonst in jedem neuen Fenster von
-Hand wegklicken.
+Fällt die Auswahl auf `xfce4-terminal`, muss es dagegen **beim Aufruf**
+passieren (`--hide-menubar --hide-toolbar`) — das merkt sich xfce4-terminal
+nämlich nicht über Fenster hinweg.
 
 ### Mauszeiger: Größe und eigenes Aussehen
 
@@ -267,7 +265,6 @@ Macht das Setup selbst. Es schreibt eine `user.js` ins Firefox-Profil:
 | `sidebar.revamp` + `sidebar.verticalTabs` | vertikale Tabs; die waagrechte Leiste verschwindet dabei von selbst |
 | `ui.systemUsesDarkTheme` = `1` | dunkel — auch **Webseiten** über `prefers-color-scheme` |
 | `browser.menubarVisible` = `false` | keine Menüleiste |
-| `browser.startup.homepage` | feste Startseite (optional, siehe unten) |
 
 Vertikale Tabs sind seit Firefox 136 eingebaut, es braucht **kein Add-on**.
 
@@ -283,14 +280,16 @@ aus der XFCE-Zeit werden nicht angefasst. Bei mehreren Profilen wird das
 tatsächlich benutzte gewählt (`Default=` aus `profiles.ini`), nicht einfach das
 erste.
 
-### Startseite
+### Startseite: macht das Setup bewusst nicht
 
-Wird beim Setup einmal abgefragt und in `~/.i3-firefox.conf` abgelegt —
-**nicht im Repo**, aus demselben Grund wie beim SSH-Ziel: Es ist eine Adresse
-aus dem eigenen Netz.
+Es fragt sie nicht, speichert sie nicht und schreibt sie nicht in die `user.js`.
+Eine Startseite ist eine Adresse aus dem eigenen Netz — die hat hier nichts zu
+suchen, auch nicht als Beispiel.
 
-Zum Ändern die Datei anpassen und das Setup erneut laufen lassen. Leer lassen
-heißt: Firefox behält seine eigene Startseite.
+**Stell sie in Firefox selbst ein.** Sie überlebt auch den nächsten Setup-Lauf,
+weil `user.js` genau diese Einstellung nicht anfasst. Eine Merkdatei
+`~/.i3-firefox.conf` aus einer früheren Fassung räumt das Setup beim nächsten
+Lauf weg.
 
 ## Das Startmenü
 
@@ -417,31 +416,50 @@ des alten rxvt aus der Zeit *vor* Unicode. Zwei Folgen:
 
 Für eine SSH-Sitzung ist aterm damit unbrauchbar.
 
-**Das Setup wählt darum selbst aus, in dieser Reihenfolge:**
+### ⚠️ Und `rxvt-unicode` gibt es in Termux gar nicht
 
-| | Terminal | Bewertung |
-|---|---|---|
-| 1. | `urxvt` (rxvt-unicode) | schlank, echtes UTF-8, Xft-Schriften frei skalierbar |
-| 2. | `xfce4-terminal` | ebenfalls tadellos, zieht aber GTK/VTE mit sich |
-| 3. | `xterm` / aterm | Notnagel, mit Warnung — siehe oben |
+Frühere Fassungen dieses Setups wollten `urxvt` installieren und nannten es
+„erste Wahl". Das Paket existiert in Termux aber **überhaupt nicht** —
+nachgeprüft am 17.8.2026 in der Paketliste des `x11-repo`. Der Aufruf stand als
+`inst_opt` da, durfte also fehlschlagen und meldete nichts. Ergebnis: Die
+Auswahl fiel *jedes Mal still* auf aterm zurück, und das Terminal sah kaputt aus
+— ohne dass irgendwo eine Fehlermeldung darauf hingewiesen hätte.
 
-**`-tn xterm-256color` ist bei urxvt Pflicht.** Ohne das meldet es sich beim
-Server als `rxvt-unicode-256color` an, und wenn dessen Terminfo-Eintrag dort
-fehlt, ist die Anzeige über SSH kaputt. `xterm-256color` kennt jeder Server.
+**Das Setup installiert darum jetzt `lxterminal` und wählt in dieser
+Reihenfolge:**
 
-**Schriftgröße ändern:** in `~/.config/i3/config` die Zahl hinter `size=`
-anpassen, dann `Super+Shift+R`. Voreinstellung ist 13.
+| | Terminal | Größe | Bewertung |
+|---|---|---|---|
+| 1. | `lxterminal` | 224 kB | **erste Wahl.** VTE — dieselbe Technik wie in GNOME/XFCE. Lupenreines UTF-8, braucht nur `gtk3` + `libvte`. |
+| 2. | `xfce4-terminal` | 552 kB | technisch gleichwertig, zieht aber `xfconf` mit — ein D-Bus-Hintergrunddienst, den eine nackte i3-Sitzung nicht hat. |
+| 3. | `st` | 136 kB | echtes UTF-8, aber ohne Scrollback und nur zur Übersetzungszeit einstellbar. Reserve. |
+| 4. | `xterm` / aterm | 188 kB | Notnagel **mit Warnung** — siehe oben. Lieber ein kaputtes Terminal als gar keines. |
+
+`--no-remote` ist bei lxterminal Pflicht: Ohne diese Option reicht ein zweiter
+Aufruf die Anfrage an das schon laufende Fenster weiter und öffnet dort nur
+einen neuen Reiter. In i3 will man ein eigenes Fenster für eine eigene
+Arbeitsfläche.
+
+**Schrift und Farben ändern:** nicht in der i3-Config, sondern in
+`~/.config/lxterminal/lxterminal.conf` — die Zahl hinter
+`fontname=DejaVu Sans Mono` anpassen und ein neues Fenster öffnen. Ein
+i3-Neustart ist dafür nicht nötig. Voreinstellung ist 12.
+
+`ttf-dejavu` und `fontconfig` sind dabei **Pflicht, nicht Kür**: VTE zeichnet
+über fontconfig. Ohne anständige Monospace-Schrift fehlen genau die
+Sonderzeichen wieder, derentwegen das Terminal überhaupt gewechselt wurde.
 
 Dazu gehört die Zeile `export LANG="${LANG:-en_US.UTF-8}"` in `start-i3.sh`:
 Ohne UTF-8-Sprachumgebung stellt auch ein moderner Terminal Umlaute falsch dar,
 weil er die Bytes nicht als UTF-8 deutet.
 
-## Warum xterm und kein Rust-Terminal
+## Warum kein Rust-Terminal
 
 Kurz, damit die Frage nicht zweimal gestellt wird: **Alacritty**, **WezTerm** und
 **Rio** sind in Rust — und alle drei rendern über die GPU. Genau der Pfad, der hier
 kaputt ist. Sie würden entweder gar nicht starten oder auf Software zurückfallen
-und wären dann *langsamer* als xterm.
+und wären dann *langsamer* als lxterminal. (`alacritty`, `kitty` und `wezterm`
+stehen durchaus im `x11-repo` — sie sind hier trotzdem die falsche Wahl.)
 
 Alacritty ist nicht schnell, weil es Rust ist, sondern weil es die GPU benutzt. Der
 Flaschenhals ist hier ohnehin die SSH-Verbindung und der Termux-X11-Transport, nicht
@@ -474,6 +492,6 @@ i3 beenden: `Super` + `Shift` + `Rücktaste`.
 Bei schwarzem Bildschirm oder klemmender Sitzung, in der Termux-App:
 
 ```bash
-killall -9 termux-x11 i3 xterm aterm urxvt
+killall -9 termux-x11 i3 lxterminal xfce4-terminal st xterm aterm
 ```
 

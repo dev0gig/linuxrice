@@ -32,6 +32,8 @@ MENU="$HOME/.termux-menu.sh"
 CONF="$HOME/.termux-menu.conf"
 START="$HOME/start-i3.sh"
 I3CONF="$HOME/.config/i3/config"
+# Nur noch da, um die Merkdatei aelterer Fassungen aufzuraeumen — eine
+# Startseite wird bewusst nicht mehr gespeichert.
 FFCONF="$HOME/.i3-firefox.conf"
 
 echo "=== [1/7] System auf einen Stand bringen ==="
@@ -128,7 +130,10 @@ inst mesa mesa-vulkan-icd-freedreno
 # i3 und Terminal zuerst und getrennt von Firefox: Firefox ist mit ~66 MB der
 # mit Abstand groesste Brocken. Haengt oder scheitert der, soll die Sitzung
 # trotzdem benutzbar sein.
-inst i3 xterm openssh
+# Das Terminal wird bewusst NICHT hier mitinstalliert, sondern erst weiter
+# unten im eigenen Abschnitt — dort steht ausfuehrlich, warum "xterm" in
+# Termux die falsche Wahl ist.
+inst i3 openssh
 
 echo "--- Firefox (~66 MB, der grosse Brocken) ---"
 inst firefox
@@ -148,7 +153,7 @@ fi
 #                   Braille-Zeichen — ohne passende Schrift sieht das kaputt aus.
 #   xorg-xsetroot   ersetzt den haesslichen X-Standard-Mauszeiger ("X") durch
 #                   einen normalen Pfeil.
-inst_opt ttf-dejavu
+# ttf-dejavu steht weiter unten beim Terminal — dort ist es Pflicht, nicht Kuer.
 inst_opt xorg-xsetroot
 
 # --- Mauszeiger-Thema ----------------------------------------------------
@@ -176,37 +181,99 @@ else
 fi
 
 # --- Ein Terminal, das UTF-8 kann --------------------------------------
-# WICHTIG: Was Termux als "xterm" liefert, ist aterm — ein Fork des alten rxvt
-# aus der Zeit VOR Unicode. Es benutzt klassische X-Core-Fonts und stellt
-# Sonderzeichen, Rahmenlinien, Umlaute und Braille-Zeichen schlicht falsch dar.
-# Genau deshalb hiess der Nachfolger spaeter rxvt-UNICODE.
-# Fuer eine SSH-Sitzung mit btop oder einem Dateimanager ist aterm unbrauchbar.
-echo "--- Terminal mit UTF-8-Faehigkeit ---"
-inst_opt rxvt-unicode
-
-# Den besten vorhandenen Terminal auswaehlen. Reihenfolge nach Eignung:
-#   1. urxvt            schlank, echtes UTF-8, Xft-Schriften frei skalierbar
-#   2. xfce4-terminal   ebenfalls tadellos, zieht aber GTK/VTE mit sich
-#   3. xterm/aterm      Notnagel, kann kein UTF-8 (siehe oben)
+# ⚠️ DIE WICHTIGSTE STELLE IM GANZEN SKRIPT — hier lag lange ein Fehler.
 #
-# "-tn xterm-256color" ist bei urxvt Pflicht: Sonst meldet es sich beim Server
-# als "rxvt-unicode-256color" an, und wenn dessen Terminfo-Eintrag dort fehlt,
-# ist die Anzeige ueber SSH kaputt. "xterm-256color" kennt wirklich jeder Server.
-TERMFONT='xft:DejaVu Sans Mono:size=13'
-if command -v urxvt >/dev/null 2>&1; then
-  TERMCMD="urxvt -tn xterm-256color -fn \"$TERMFONT\" -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0"
-  echo "  Terminal: urxvt (UTF-8, Schriftgroesse 13)"
+# In Termux gibt es KEIN Paket namens "xterm". "xterm" ist nur ein virtueller
+# Name, den das Paket ATERM bereitstellt (Provides: xterm). aterm ist ein Fork
+# des alten rxvt von 1998, aus der Zeit VOR Unicode: klassische X-Core-Fonts,
+# kein UTF-8. Umlaute, Rahmenlinien und die Braille-Zeichen, mit denen btop
+# seine Graphen malt, kommen als Buchstabensalat heraus — und tmux ueber SSH
+# ist damit praktisch unbenutzbar, weil dessen Trennlinien zerfallen.
+#
+# Frueher stand hier "inst_opt rxvt-unicode". Dieses Paket gibt es in Termux
+# aber ueberhaupt nicht (nachgeprueft am 17.8.2026 in der Paketliste des
+# x11-repo). inst_opt darf fehlschlagen und meldet nichts weiter — also fiel
+# die Auswahl unten JEDES MAL still auf aterm zurueck. Genau deshalb sah das
+# Terminal kaputt aus.
+#
+# Diese Terminals gibt es in Termux wirklich. Ausgewaehlt nach Eignung:
+#   lxterminal      224 kB, braucht nur gtk3 + libvte  -> ERSTE WAHL
+#                   VTE ist dieselbe Terminal-Technik wie in GNOME/XFCE:
+#                   lupenreines UTF-8, frei skalierbare Schrift.
+#   xfce4-terminal  552 kB, zieht zusaetzlich xfconf und libxfce4ui mit.
+#                   xfconf ist ein Hintergrunddienst ueber D-Bus — in einer
+#                   nackten i3-Sitzung ohne D-Bus ein unnoetiges Risiko.
+#                   Darum nur zweite Wahl, obwohl technisch gleichwertig.
+#   st              136 kB, echtes UTF-8, aber ohne Scrollback und nur zur
+#                   Uebersetzungszeit einstellbar. Reserve.
+#   aterm/xterm     der oben beschriebene Notnagel. Nur, wenn sonst nichts da
+#                   ist — dann lieber ein kaputtes Terminal als gar keines.
+echo "--- Terminal mit UTF-8-Faehigkeit ---"
+inst lxterminal
+# Schrift ist hier PFLICHT, nicht Kuer: VTE zeichnet ueber fontconfig. Ohne
+# eine anstaendige Monospace-Schrift fehlen genau die Sonderzeichen wieder,
+# derentwegen wir das Terminal ueberhaupt gewechselt haben.
+inst ttf-dejavu fontconfig
+# Notnagel, falls lxterminal nicht durchkommt. 188 kB — billiger als eine
+# Sitzung ganz ohne Terminal.
+inst_opt xterm
+
+LXCONF="$HOME/.config/lxterminal/lxterminal.conf"
+if command -v lxterminal >/dev/null 2>&1; then
+  # --no-remote ist bei lxterminal PFLICHT: Ohne diese Option reicht ein
+  # zweiter Aufruf die Anfrage an das schon laufende Fenster weiter und macht
+  # dort nur einen neuen Reiter auf. In i3 will man aber ein eigenes Fenster,
+  # das man auf eine eigene Arbeitsflaeche legen kann.
+  TERMCMD="lxterminal --no-remote"
+  echo "  Terminal: lxterminal (VTE, volles UTF-8)"
 elif command -v xfce4-terminal >/dev/null 2>&1; then
   # --hide-menubar/-toolbar: die Leisten oben sind in einer Sitzung, die auf
   # Vollbild ausgelegt ist, nur verlorener Platz. Ohne diese Optionen muesste
   # man sie in jedem neuen Fenster von Hand wegklicken — die Einstellung
   # merkt sich xfce4-terminal naemlich nicht ueber Fenster hinweg.
   TERMCMD="xfce4-terminal --hide-menubar --hide-toolbar"
-  echo "  Terminal: xfce4-terminal (UTF-8, ohne Menueleiste)"
-  echo "            Schrift und Farben kommen aus dessen eigener Einstellung."
+  echo "  Terminal: xfce4-terminal (VTE, volles UTF-8)"
+elif command -v st >/dev/null 2>&1; then
+  TERMCMD="st -f \"DejaVu Sans Mono:size=13\""
+  echo "  Terminal: st (UTF-8, aber ohne Scrollback)"
 else
   TERMCMD="xterm -bg rgb:1a/1a/1a -fg rgb:d0/d0/d0"
-  echo "  WARNUNG: Nur xterm/aterm gefunden — Sonderzeichen werden falsch angezeigt."
+  echo ""
+  echo "  ⚠️  WARNUNG: Nur aterm gefunden (das steckt hinter 'xterm')."
+  echo "      Sonderzeichen, Umlaute und tmux-Linien werden falsch angezeigt."
+  echo "      Nachholen mit:  pkg install lxterminal"
+  echo ""
+fi
+
+# --- lxterminal einstellen ------------------------------------------------
+# Wird bei jedem Lauf neu geschrieben, wie alles andere auch.
+# Ohne diese Datei startet lxterminal weiss, mit Menueleiste und Bildlaufleiste.
+if command -v lxterminal >/dev/null 2>&1; then
+  mkdir -p "$(dirname "$LXCONF")"
+  cat > "$LXCONF" <<'LXEOF'
+[general]
+fontname=DejaVu Sans Mono 12
+selchars=-A-Za-z0-9,./?%&#:_
+scrollback=10000
+bgcolor=rgb(26,26,26)
+fgcolor=rgb(208,208,208)
+palette_color_0=rgb(26,26,26)
+palette_color_8=rgb(85,85,85)
+disallowbold=false
+cursorblinks=false
+cursorunderline=false
+audiblebell=false
+tabpos=top
+geometry_columns=100
+geometry_rows=30
+hidescrollbar=true
+hidemenubar=true
+hideclosebutton=true
+hidepointer=true
+disablef10=false
+disablealt=false
+LXEOF
+  echo "  geschrieben: $LXCONF (Schrift 12, dunkel, ohne Leisten)"
 fi
 
 echo "=== [4/7] i3-Konfiguration schreiben ==="
@@ -246,13 +313,14 @@ floating_modifier $mod
 
 # --- Terminal -------------------------------------------------------------
 # Diese Zeile setzt setup_i3.sh je nach dem, was auf dem Geraet vorhanden ist.
-# Die Farben stehen absichtlich direkt im Aufruf: damit entfaellt eine
-# ~/.Xresources UND das Paket xorg-xrdb — das Terminal startet sonst weiss.
-# Geschrieben als rgb:xx/xx/xx statt #xxxxxx, weil die Raute in dieser Datei
-# einen Kommentar einleiten wuerde.
+# Im Normalfall steht hier lxterminal — ein VTE-Terminal, das echtes UTF-8
+# kann. Nur so werden Umlaute, tmux-Linien und die Braille-Graphen von btop
+# richtig dargestellt.
 #
-# Schrift zu klein oder zu gross? Bei urxvt die Zahl hinter "size=" aendern
-# und danach Strg+Shift+R druecken.
+# Schrift, Farben und Bildlauf stehen NICHT hier, sondern in
+#   ~/.config/lxterminal/lxterminal.conf
+# Dort die Zahl hinter "fontname=DejaVu Sans Mono" aendern und ein neues
+# Fenster oeffnen — ein i3-Neustart ist dafuer nicht noetig.
 set $term @TERM@
 
 # --- Tastenkuerzel --------------------------------------------------------
@@ -304,7 +372,7 @@ cat > "$START" <<'STARTEOF'
 # im Hintergrund gern selbst, waehrend die Termux-Shell weiterlaeuft.
 # "aterm" muss mit in die Liste: was in Termux als xterm installiert wird,
 # laeuft als Prozess unter dem Namen aterm — "killall xterm" fasst es nicht an.
-killall -9 termux-x11 i3 xterm aterm urxvt xfce4-terminal 2>/dev/null
+killall -9 termux-x11 i3 lxterminal xfce4-terminal st xterm aterm 2>/dev/null
 sleep 1
 
 # WICHTIG: Das Startmenue setzt TERMUX_MENU_DONE und EXPORTIERT es, damit es
@@ -681,37 +749,18 @@ echo "  ~/.bashrc: Menue-Block und Alias neu geschrieben."
 
 echo "=== [7/7] Firefox-Grundeinstellungen ==="
 
-# Die Startseite steht — genau wie das SSH-Ziel — bewusst NICHT im Repo.
-# Sie waere eine Adresse aus dem eigenen Netz und geht niemanden etwas an.
+# ⚠️ KEINE Startseite mehr. Das Skript fragt sie nicht, speichert sie nicht und
+# schreibt sie nicht in die user.js. Eine Startseite ist eine Adresse aus dem
+# eigenen Netz — die hat in einem oeffentlichen Repo nichts verloren, auch nicht
+# als Beispiel. Wer eine will, stellt sie in Firefox selbst ein; das ueberlebt
+# auch den naechsten Setup-Lauf, weil user.js diese Einstellung nicht anfasst.
 #
-# Auch hier wird bei JEDEM Lauf gefragt. Der bisherige Wert steht als
-# Vorschlag dabei, Enter uebernimmt ihn.
-ALT_FFURL="$(grep -v '^[[:space:]]*#' "$FFCONF" 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 1)"
-FFURL=""
-if [ -n "${FFURL_VORGABE:-}" ]; then
-  # Vorgabe von aussen:  FFURL_VORGABE=http://... ./setup_i3.sh
-  FFURL="$FFURL_VORGABE"
-  echo "  Startseite aus der Vorgabe uebernommen: $FFURL"
-elif [ ! -r /dev/tty ]; then
-  echo ""
-  echo "  ⚠️  Keine Tastatureingabe moeglich (kein /dev/tty)."
-  echo "      Die bisherige Startseite bleibt stehen: ${ALT_FFURL:-keine}"
-  echo "      Ohne Nachfrage setzen:  FFURL_VORGABE=http://... ./setup_i3.sh"
-  echo ""
-else
-  if [ -n "$ALT_FFURL" ]; then
-    printf '\n  Startseite fuer Firefox [Enter = %s]: ' "$ALT_FFURL"
-  else
-    printf '\n  Startseite fuer Firefox (leer = keine setzen): '
-  fi
-  read -r FFURL < /dev/tty || FFURL=""
-fi
-# Enter gedrueckt -> beim Bisherigen bleiben.
-[ -n "$FFURL" ] || FFURL="$ALT_FFURL"
-
-if [ -n "$FFURL" ]; then
-  printf '%s\n' "$FFURL" > "$FFCONF"
-  echo "  Startseite gesetzt: $FFURL"
+# Eine Startseite aus einer frueheren Fassung wird aufgeraeumt: Die alte
+# Merkdatei kommt weg, und die user.js unten wird ohnehin neu geschrieben —
+# ohne die beiden startup-Zeilen.
+if [ -f "$FFCONF" ]; then
+  rm -f "$FFCONF"
+  echo "  alte Startseiten-Merkdatei entfernt: $FFCONF"
 fi
 
 # Profil suchen. Firefox legt es unter einem zufaelligen Namen an, der echte
@@ -752,15 +801,12 @@ if [ -n "$FFPROFIL" ] && [ -d "$FFDIR/$FFPROFIL" ]; then
     printf '// Das ersetzt den Handgriff "Einstellungen -> Design -> Dunkel".\n'
     printf 'user_pref("ui.systemUsesDarkTheme", 1);\n\n'
     printf '// Menueleiste aus (auf Linux ohnehin der Normalfall).\n'
-    printf 'user_pref("browser.menubarVisible", false);\n'
-    if [ -n "$FFURL" ]; then
-      printf '\n// Startseite. Steht nur hier lokal, nicht im Repo.\n'
-      printf 'user_pref("browser.startup.page", 1);\n'
-      printf 'user_pref("browser.startup.homepage", "%s");\n' "$FFURL"
-    fi
+    printf 'user_pref("browser.menubarVisible", false);\n\n'
+    printf '// Die Startseite wird hier BEWUSST nicht gesetzt — die stellt man\n'
+    printf '// in Firefox selbst ein, und sie bleibt dort auch erhalten.\n'
   } > "$FFDIR/$FFPROFIL/user.js"
   echo "  geschrieben: $FFDIR/$FFPROFIL/user.js"
-  [ -n "$FFURL" ] && echo "  Startseite gesetzt (steht in $FFCONF)."
+  echo "  (ohne Startseite — die stellst du in Firefox selbst ein)"
 else
   echo "  Kein Firefox-Profil gefunden — uebersprungen."
   echo "  Firefox einmal starten und dieses Skript danach erneut ausfuehren."
@@ -772,6 +818,7 @@ echo "  $I3CONF"
 echo "  $START"
 echo "  $MENU"
 echo "  $CONF"
+[ -f "$LXCONF" ] && echo "  $LXCONF"
 echo "  ~/.bashrc  (nur der Block zwischen den setup_i3.sh-Markierungen)"
 echo "  ~/.ssh/config  (nur der Abschnitt fuer den eingetragenen Rechner)"
 echo "  Firefox user.js  (sofern ein Profil da war)"

@@ -382,7 +382,20 @@ if [ -f "$CONF" ]; then
 fi
 
 ZIEL=""
-if [ -r /dev/tty ]; then
+if [ -n "${ZIEL_VORGABE:-}" ]; then
+  # Vorgabe von aussen:  ZIEL_VORGABE=benutzer@rechner ./setup_i3.sh
+  # Damit laeuft das Setup auch ohne Tastatur komplett durch.
+  ZIEL="$ZIEL_VORGABE"
+  echo "  Server aus der Vorgabe uebernommen: $ZIEL"
+elif [ ! -r /dev/tty ]; then
+  # Ohne Tastatur-Kanal kann nicht gefragt werden — dann bliebe stillschweigend
+  # der alte Wert stehen. Genau das soll NICHT unbemerkt passieren.
+  echo ""
+  echo "  ⚠️  Keine Tastatureingabe moeglich (kein /dev/tty)."
+  echo "      Der bisherige Server bleibt stehen: ${ALT_ZIEL:-keiner}"
+  echo "      Ohne Nachfrage setzen:  ZIEL_VORGABE=benutzer@rechner ./setup_i3.sh"
+  echo ""
+else
   printf '\n  Server fuer das Menue — bitte in der Form  benutzer@rechner\n'
   printf '\n'
   printf '  ⚠️  Der Benutzername ist hier PFLICHT, nicht Zierde.\n'
@@ -615,28 +628,56 @@ MENUEOF
 chmod +x "$MENU"
 echo "  geschrieben: $MENU"
 
-# --- Menue in die .bashrc haengen ----------------------------------------
-# Die Wache aus drei Bedingungen ist wichtig:
+# --- Menue und Alias in die .bashrc haengen ------------------------------
+# ⚠️ Wird bei JEDEM Lauf neu geschrieben. Frueher wurde der Block nur angelegt,
+# wenn er noch fehlte ("ruft das Menue schon auf — unveraendert gelassen").
+# Auf einem bereits eingerichteten Handy kam damit KEINE Verbesserung an
+# diesen Zeilen jemals an — man haette die .bashrc von Hand aufraeumen muessen.
+# Jetzt wird der alte Block herausgeschnitten und ein frischer angehaengt.
+#
+# Die Wache aus drei Bedingungen im Block selbst bleibt wichtig:
 #   TERMUX_MENU_DONE  -> ruft sich sonst endlos selbst auf
 #   -t 0 / -t 1       -> nur bei echtem Terminal, nicht bei "ssh handy befehl"
-if ! grep -q 'termux-menu.sh' "$HOME/.bashrc" 2>/dev/null; then
-  {
-    printf '\n# Zeigt beim Oeffnen eines Terminals das Startmenue.\n'
-    printf 'if [ -z "${TERMUX_MENU_DONE:-}" ] && [ -t 0 ] && [ -t 1 ] \\\n'
-    printf '   && [ -f "$HOME/.termux-menu.sh" ]; then\n'
-    printf '  export TERMUX_MENU_DONE=1\n'
-    printf '  . "$HOME/.termux-menu.sh"\n'
-    printf 'fi\n'
-  } >> "$HOME/.bashrc"
-  echo "  Menue in ~/.bashrc eingehaengt."
-else
-  echo "  ~/.bashrc ruft das Menue schon auf — unveraendert gelassen."
-fi
+touch "$HOME/.bashrc"
+awk '
+  # 1. Block aus dieser Fassung: sauber zwischen zwei Markierungen.
+  /^# >>> setup_i3\.sh$/ { drin = 1; next }
+  /^# <<< setup_i3\.sh$/ { drin = 0; next }
+  drin { next }
 
-# --- Bequemer Alias -------------------------------------------------------
-if ! grep -q "alias desk=" "$HOME/.bashrc" 2>/dev/null; then
-  echo "alias desk='~/start-i3.sh'" >> "$HOME/.bashrc"
-fi
+  # 2. Block aus aelteren Fassungen (ohne Markierungen). Er begann immer mit
+  #    dieser Kommentarzeile und endete beim ersten "fi" ganz links.
+  #    Der Zaehler ist ein Sicherheitsnetz: Fehlt das "fi" (weil jemand von
+  #    Hand darin herumgeschnitten hat), wuerde sonst der gesamte Rest der
+  #    Datei verschluckt. Der Block war immer 6 Zeilen lang.
+  /^# Zeigt beim Oeffnen eines Terminals das Startmenue\.$/ { alt = 8; next }
+  alt > 0 { alt--; if ($0 == "fi") alt = 0; next }
+
+  # 3. Der Alias stand frueher lose irgendwo dazwischen.
+  /^alias desk=/ { next }
+
+  # Mehrere Leerzeilen hintereinander zu einer zusammenziehen, sonst waechst
+  # die Datei bei jedem Lauf um eine weitere Leerzeile.
+  /^[[:space:]]*$/ { if (leer) next; leer = 1; print; next }
+  { leer = 0; print }
+' "$HOME/.bashrc" > "$HOME/.bashrc.neu"
+{
+  printf '\n# >>> setup_i3.sh\n'
+  printf '# Alles zwischen diesen beiden Markierungen schreibt setup_i3.sh bei\n'
+  printf '# jedem Lauf neu. Eigene Zeilen bitte AUSSERHALB davon ablegen.\n'
+  printf '\n'
+  printf '# Zeigt beim Oeffnen eines Terminals das Startmenue.\n'
+  printf 'if [ -z "${TERMUX_MENU_DONE:-}" ] && [ -t 0 ] && [ -t 1 ] \\\n'
+  printf '   && [ -f "$HOME/.termux-menu.sh" ]; then\n'
+  printf '  export TERMUX_MENU_DONE=1\n'
+  printf '  . "$HOME/.termux-menu.sh"\n'
+  printf 'fi\n'
+  printf '\n'
+  printf "alias desk='~/start-i3.sh'\n"
+  printf '# <<< setup_i3.sh\n'
+} >> "$HOME/.bashrc.neu"
+mv "$HOME/.bashrc.neu" "$HOME/.bashrc"
+echo "  ~/.bashrc: Menue-Block und Alias neu geschrieben."
 
 echo "=== [7/7] Firefox-Grundeinstellungen ==="
 
@@ -647,7 +688,17 @@ echo "=== [7/7] Firefox-Grundeinstellungen ==="
 # Vorschlag dabei, Enter uebernimmt ihn.
 ALT_FFURL="$(grep -v '^[[:space:]]*#' "$FFCONF" 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 1)"
 FFURL=""
-if [ -r /dev/tty ]; then
+if [ -n "${FFURL_VORGABE:-}" ]; then
+  # Vorgabe von aussen:  FFURL_VORGABE=http://... ./setup_i3.sh
+  FFURL="$FFURL_VORGABE"
+  echo "  Startseite aus der Vorgabe uebernommen: $FFURL"
+elif [ ! -r /dev/tty ]; then
+  echo ""
+  echo "  ⚠️  Keine Tastatureingabe moeglich (kein /dev/tty)."
+  echo "      Die bisherige Startseite bleibt stehen: ${ALT_FFURL:-keine}"
+  echo "      Ohne Nachfrage setzen:  FFURL_VORGABE=http://... ./setup_i3.sh"
+  echo ""
+else
   if [ -n "$ALT_FFURL" ]; then
     printf '\n  Startseite fuer Firefox [Enter = %s]: ' "$ALT_FFURL"
   else
@@ -714,6 +765,19 @@ else
   echo "  Kein Firefox-Profil gefunden — uebersprungen."
   echo "  Firefox einmal starten und dieses Skript danach erneut ausfuehren."
 fi
+
+echo ""
+echo "--- Bei diesem Lauf neu geschrieben ---"
+echo "  $I3CONF"
+echo "  $START"
+echo "  $MENU"
+echo "  $CONF"
+echo "  ~/.bashrc  (nur der Block zwischen den setup_i3.sh-Markierungen)"
+echo "  ~/.ssh/config  (nur der Abschnitt fuer den eingetragenen Rechner)"
+echo "  Firefox user.js  (sofern ein Profil da war)"
+echo ""
+echo "  Nicht angetastet: der Mauszeiger in ~/.icons (nur ein Download —"
+echo "  zum Erneuern den Ordner loeschen und das Skript nochmal starten)."
 
 if [ -n "$FEHLT" ]; then
   echo ""

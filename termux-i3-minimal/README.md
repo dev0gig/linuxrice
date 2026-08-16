@@ -48,6 +48,27 @@ sammelten sich bei jedem Lauf Doppel-Einträge für denselben Rechner an, und
 `ssh` nähme stillschweigend den ersten Treffer — mit womöglich veraltetem
 Benutzernamen. Andere Einträge in der Datei bleiben unberührt.
 
+Auch die `~/.bashrc` wird jedes Mal frisch geschrieben — allerdings **nur der
+Block zwischen den beiden Markierungen** `# >>> setup_i3.sh` und
+`# <<< setup_i3.sh`. Eigene Zeilen außerhalb davon bleiben stehen. Frühere
+Fassungen legten diesen Block nur an, wenn er noch fehlte; auf einem bereits
+eingerichteten Handy kam eine Verbesserung daran damit **nie** an. Einen alten
+Block ohne Markierungen erkennt das Skript und räumt ihn mit weg.
+
+Am Ende listet das Setup auf, welche Dateien es geschrieben hat. Einzige
+Ausnahme ist das Mauszeiger-Thema in `~/.icons` — das ist bloß ein Download und
+wird übersprungen, wenn es schon da ist. Zum Erneuern den Ordner löschen.
+
+### Ohne Nachfrage durchlaufen lassen
+
+Wo keine Tastatur hängt (Skript, `ssh handy 'curl … | bash'`), kann nicht
+gefragt werden. Das Skript sagt das dann deutlich und behält den alten Wert.
+Beide Eingaben lassen sich auch vorgeben:
+
+```bash
+ZIEL_VORGABE=benutzer@rechner FFURL_VORGABE=http://rechner:8080 ./setup_i3.sh
+```
+
 ### ⚠️ Termux verträgt keine Teil-Aktualisierungen
 
 Das Setup macht darum **immer** ein `pkg upgrade`. Das ist keine Bequemlichkeit,

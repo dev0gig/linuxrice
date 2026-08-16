@@ -150,8 +150,9 @@ if fehlt firefox; then
 fi
 
 # Kuer: schoener, aber nicht kriegsentscheidend.
-#   ttf-dejavu      Schrift. btop auf dem Server zeichnet seine Graphen mit
-#                   Braille-Zeichen — ohne passende Schrift sieht das kaputt aus.
+#   ttf-dejavu      Schrift. htop und tmux auf dem Server zeichnen ihre Balken
+#                   und Linien mit Sonderzeichen — ohne passende Schrift sieht
+#                   das kaputt aus.
 #   xorg-xsetroot   ersetzt den haesslichen X-Standard-Mauszeiger ("X") durch
 #                   einen normalen Pfeil.
 # ttf-dejavu steht weiter unten beim Terminal — dort ist es Pflicht, nicht Kuer.
@@ -187,8 +188,8 @@ fi
 # In Termux gibt es KEIN Paket namens "xterm". "xterm" ist nur ein virtueller
 # Name, den das Paket ATERM bereitstellt (Provides: xterm). aterm ist ein Fork
 # des alten rxvt von 1998, aus der Zeit VOR Unicode: klassische X-Core-Fonts,
-# kein UTF-8. Umlaute, Rahmenlinien und die Braille-Zeichen, mit denen btop
-# seine Graphen malt, kommen als Buchstabensalat heraus — und tmux ueber SSH
+# kein UTF-8. Umlaute, Rahmenlinien und die Sonderzeichen, mit denen htop
+# seine Balken malt, kommen als Buchstabensalat heraus — und tmux ueber SSH
 # ist damit praktisch unbenutzbar, weil dessen Trennlinien zerfallen.
 #
 # Frueher stand hier "inst_opt rxvt-unicode". Dieses Paket gibt es in Termux
@@ -315,7 +316,7 @@ floating_modifier $mod
 # --- Terminal -------------------------------------------------------------
 # Diese Zeile setzt setup_i3.sh je nach dem, was auf dem Geraet vorhanden ist.
 # Im Normalfall steht hier lxterminal — ein VTE-Terminal, das echtes UTF-8
-# kann. Nur so werden Umlaute, tmux-Linien und die Braille-Graphen von btop
+# kann. Nur so werden Umlaute, tmux-Linien und die Balken von htop
 # richtig dargestellt.
 #
 # Schrift, Farben und Bildlauf stehen NICHT hier, sondern in
@@ -622,7 +623,7 @@ while true; do
   printf '\n'
   printf '   1   Server      SSH + tmux "cc"\n'
   printf '   2   Server pur  SSH ohne tmux\n'
-  printf '   3   Auslastung  btop auf dem Server\n'
+  printf '   3   Auslastung  htop auf dem Server\n'
   printf '   4   Terminal    nur die Shell\n'
   # Punkt 5 und 6 nur ausserhalb der grafischen Sitzung: in einem xterm laeuft
   # die Sitzung ja schon, ein zweiter Start wuerde die eigene abschiessen.
@@ -656,18 +657,32 @@ while true; do
       _menu_pause || { clear; break; }
       ;;
     3)
-      # btop laeuft AUF dem Server, nicht auf dem Handy — nur so sieht man die
+      # htop laeuft AUF dem Server, nicht auf dem Handy — nur so sieht man die
       # Auslastung, die einen wirklich interessiert. Das "-t" ist Pflicht,
-      # sonst bekommt btop kein richtiges Terminal und startet nicht.
+      # sonst bekommt htop kein richtiges Terminal und startet nicht.
+      #
+      # Vorher wird nachgeschaut, OB es htop dort ueberhaupt gibt. Sonst
+      # blitzt nur ein "command not found" auf und ist gleich wieder weg —
+      # so steht stattdessen der Installationsbefehl da.
+      # Der Rechnername steht in keiner dieser Meldungen — Menue-Ausgaben
+      # landen in Screenshots und Chats. Wer ihn braucht, schaut in die Conf.
       clear
       if [ -z "$MENU_HOST" ]; then
         _kein_ziel
-      elif ! ssh "$MENU_HOST" -t btop; then
-        # Der Rechnername steht hier bewusst nicht — Menue-Ausgaben landen in
-        # Screenshots und Chats. Wer den Namen braucht, schaut in die Conf.
-        printf '\n  Das hat nicht geklappt. Falls btop auf dem Server noch\n'
-        printf '  fehlt, dort einmal ausfuehren:\n'
-        printf '    sudo apt install -y btop\n'
+      else
+        ssh "$MENU_HOST" 'command -v htop >/dev/null 2>&1'
+        _rc=$?
+        if [ "$_rc" = 0 ]; then
+          ssh "$MENU_HOST" -t htop || true
+        elif [ "$_rc" = 255 ]; then
+          # 255 kommt von ssh selbst: Server nicht erreichbar, Anmeldung
+          # abgelehnt und aehnliches. Das ist KEIN fehlendes htop.
+          printf '\n  Der Server war nicht erreichbar.\n'
+        else
+          printf '\n  Auf dem Server ist kein htop installiert.\n'
+          printf '  Dort einmal ausfuehren:\n'
+          printf '    sudo apt install htop\n'
+        fi
       fi
       _menu_pause || { clear; break; }
       ;;

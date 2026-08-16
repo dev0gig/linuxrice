@@ -150,9 +150,9 @@ Das ist der eigentliche Punkt dieses Ordners, darum ausführlich:
   Terminal-Aufruf in der i3-Config. Spart eine Datei und ein Paket.
 - **Rofi und `sxhkd`.** Bei zwei Programmen braucht es keine App-Suche, und i3
   bringt Tastenkürzel selbst mit.
-- **`yazi`, `btop`, `htop`, `tmux` lokal.** Läuft alles auf dem Server, wo es
+- **`yazi`, `htop`, `tmux` lokal.** Läuft alles auf dem Server, wo es
   hingehört — die Auslastung des Servers ist die interessante, nicht die des
-  Handys. `btop` ist im Termux-Repo ohnehin nicht vorhanden (Stand 16.8.2026).
+  Handys.
 
 ## Tastenkürzel
 
@@ -351,7 +351,7 @@ Terminalfenster innerhalb der Sitzung:
 ```
    1   Server      SSH + tmux "cc"
    2   Server pur  SSH ohne tmux
-   3   Auslastung  btop auf dem Server
+   3   Auslastung  htop auf dem Server
    4   Terminal    nur die Shell
    5   Desktop     i3 starten
    6   Desktop alt XFCE starten
@@ -365,7 +365,7 @@ Brücke für die Testphase; nach dem Löschen des XFCE-Starters verschwindet er.
 
 In i3 ist das Menü praktischer als in der Termux-App: Du kannst mehrere Terminals
 öffnen und in jedem einen anderen Punkt wählen — etwa Arbeitsfläche 2 mit der
-tmux-Sitzung und Arbeitsfläche 3 mit `btop`.
+tmux-Sitzung und Arbeitsfläche 3 mit `htop`.
 
 **Der Servername steht nicht im Repo.** Das Setup fragt einmal danach und legt ihn
 in `~/.termux-menu.conf` ab. Zum Ändern nur diese Datei anfassen —
@@ -443,9 +443,10 @@ praktisch nichts.
   Programme, die OpenGL über GLX ansprechen.
 - **i3 kachelt.** Öffnest du ein zweites Fenster auf derselben Arbeitsfläche,
   teilt i3 den Schirm. Bei einem Fenster pro Arbeitsfläche fällt das nie auf.
-- **`btop` fehlt im Termux-Repo** (Stand 16.8.2026) — deshalb läuft es über SSH
-  auf dem Server, was ohnehin die interessantere Auslastung zeigt.
-- **Braille-Zeichen in btop** brauchen eine passende Schrift. Sieht der Graph
+- **`htop` läuft über SSH auf dem Server**, nicht auf dem Handy — das zeigt
+  die interessantere Auslastung. Fehlt es dort, sagt das Menü es und nennt
+  den Befehl `sudo apt install htop`.
+- **Sonderzeichen in htop** brauchen eine passende Schrift. Sehen die Balken
   kaputt aus, fehlt `ttf-dejavu` — nicht das Terminal tauschen.
 - Zink/turnip auf Termux-X11 ist kein offiziell unterstützter Pfad und kann bei
   Mesa- oder Termux-X11-Updates brechen.
@@ -461,7 +462,7 @@ des alten rxvt aus der Zeit *vor* Unicode. Zwei Folgen:
    `bad option` ab — und dann startet **überhaupt kein Terminal**, auch nicht
    über die Tastenkürzel.
 2. Viel schlimmer: **es kann kein UTF-8.** Sonderzeichen, Rahmenlinien, Umlaute
-   und die Braille-Graphen von `btop` werden falsch dargestellt. Das ist keine
+   und die Balken von `htop` werden falsch dargestellt. Das ist keine
    Einstellungssache — aterm benutzt klassische X-Core-Fonts, da hilft keine
    Schriftgröße und keine Schriftart. Genau deshalb hieß der Nachfolger später
    rxvt-**unicode**.

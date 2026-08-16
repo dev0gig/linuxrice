@@ -96,7 +96,19 @@ inst() {
   pkg install -y -o Dpkg::Options::="--force-confnew" "$@" && return 0
   echo "  ⚠️  fehlgeschlagen: $*"
   FEHLT="$FEHLT $*"
-  return 1
+  # ⚠️ Hier MUSS 0 zurueckkommen, nicht 1.
+  # Ganz oben steht "set -e": Sobald eine Funktion einen Fehlerwert liefert,
+  # beendet die Shell das ganze Skript. Mit "return 1" waere der Lauf also
+  # trotzdem abgebrochen — genau das, was diese Funktion verhindern soll.
+  # Gemerkt wird der Fehlschlag stattdessen in FEHLT und am Ende gemeldet.
+  return 0
+}
+
+# Prueft, ob ein Paket vorhin durchgefallen ist.
+# Die Leerzeichen um beide Seiten sorgen dafuer, dass "firefox" nicht
+# versehentlich in einem laengeren Paketnamen gefunden wird.
+fehlt() {
+  case " $FEHLT " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
 # Fuer Kuer-Pakete: darf fehlen, taucht am Ende NICHT als Mangel auf.
@@ -119,7 +131,8 @@ inst mesa mesa-vulkan-icd-freedreno
 inst i3 xterm openssh
 
 echo "--- Firefox (~66 MB, der grosse Brocken) ---"
-if ! inst firefox; then
+inst firefox
+if fehlt firefox; then
   echo ""
   echo "  i3 wird trotzdem fertig eingerichtet und ist startbar."
   echo "  Zwei haeufige Ursachen:"
@@ -411,7 +424,11 @@ if [ ! -f "$CONF" ]; then
     echo "  Kein Ziel angegeben — bitte spaeter eintragen in: $CONF"
   fi
 else
-  echo "  $CONF ist schon da — bleibt unveraendert."
+  # Nicht erneut fragen: Sonst wuerde bei jedem Lauf die vorhandene Eingabe
+  # ueberschrieben. Stattdessen zeigen, was gilt und wo man es aendert.
+  echo "  Server steht schon fest, es wird nicht erneut gefragt:"
+  echo "      $(grep -v '^[[:space:]]*#' "$CONF" 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 1)"
+  echo "  Aendern: $CONF bearbeiten."
 fi
 
 # Das alte Menue vorher zur Seite legen. Es wird gleich ueberschrieben, und
@@ -599,6 +616,11 @@ if [ ! -f "$FFCONF" ]; then
   [ -n "$FFURL" ] && printf '%s\n' "$FFURL" > "$FFCONF"
 fi
 FFURL="$(grep -v '^[[:space:]]*#' "$FFCONF" 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 1)"
+if [ -n "$FFURL" ]; then
+  echo "  Startseite steht schon fest, es wird nicht erneut gefragt:"
+  echo "      $FFURL"
+  echo "  Aendern: $FFCONF bearbeiten und das Setup nochmal starten."
+fi
 
 # Profil suchen. Firefox legt es unter einem zufaelligen Namen an, der echte
 # Pfad steht in profiles.ini. Zuerst das als Standard markierte nehmen.

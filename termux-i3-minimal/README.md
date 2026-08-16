@@ -29,6 +29,20 @@ desk
 
 Alles Weitere ist vorkonfiguriert — Terminal, Darkmode und Firefox.
 
+### Beim erneuten Ausführen wird nicht nochmal gefragt
+
+Das Skript ist gefahrlos wiederholbar: Konfigurationsdateien werden neu
+geschrieben, aber die beiden **Eingaben** werden nur beim ersten Mal abgefragt.
+Sonst würde jeder Lauf deine Antworten überschreiben.
+
+| Wert | Liegt in | Ändern |
+|---|---|---|
+| SSH-Ziel fürs Menü | `~/.termux-menu.conf` | Datei bearbeiten |
+| Firefox-Startseite | `~/.i3-firefox.conf` | Datei bearbeiten, dann Setup erneut starten |
+
+Das Setup zeigt bei jedem Lauf an, welche Werte gerade gelten. Wer wieder gefragt
+werden will, löscht die jeweilige Datei.
+
 ### ⚠️ Termux verträgt keine Teil-Aktualisierungen
 
 Das Setup macht darum **immer** ein `pkg upgrade`. Das ist keine Bequemlichkeit,

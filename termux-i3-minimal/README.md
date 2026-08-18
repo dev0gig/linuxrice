@@ -298,16 +298,18 @@ deutlich größer. Zahl ändern, Sitzung neu starten, fertig. Kein Paket nötig.
 2. Den Namen dieses Ordners in `XCURSOR_THEME`.
 
 ```bash
-export XCURSOR_THEME=GoogleDot-Blue
+export XCURSOR_THEME=capitaine-cursors-light
 ```
 
-Das Setup lädt **GoogleDot-Blue** selbst herunter, falls es noch nicht da ist —
-aus [ful1e5/Google_Cursor](https://github.com/ful1e5/Google_Cursor).
+Das Setup lädt **Capitaine (hell)** selbst herunter, falls es noch nicht da
+ist — als fertig gebautes Arch-Linux-Paket, denn das
+[Original-Repo](https://github.com/keeferrourke/capitaine-cursors) enthält
+nur Quellen zum Selberbauen.
 
 Jedes andere X-Cursor-Thema geht genauso: entpacken nach `~/.icons/`, Namen
-eintragen. Aus demselben Repo gibt es `GoogleDot-Black`, `-White` und `-Red`;
-für eine andere Farbe nur die beiden Zeilen im Setup-Skript anpassen
-(`CURSOR_THEME` und `CURSOR_URL`).
+eintragen. Im selben Paket steckt auch die dunkle Variante
+`capitaine-cursors`; für ein anderes Thema nur die beiden Zeilen im
+Setup-Skript anpassen (`CURSOR_THEME` und `CURSOR_URL`).
 
 **Fehlt der Ordner, geht nichts kaputt:** X nimmt dann einfach seinen
 Standardzeiger, und `XCURSOR_SIZE` wirkt trotzdem.

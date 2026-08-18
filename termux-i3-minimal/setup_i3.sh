@@ -161,20 +161,24 @@ inst_opt xorg-xsetroot
 # --- Mauszeiger-Thema ----------------------------------------------------
 # Der X-Standardzeiger ist winzig und altbacken. Die Groesse allein macht
 # XCURSOR_SIZE im Startskript — das hier ist nur das Aussehen.
+# Capitaine gibt es nirgends fertig gebaut zum Herunterladen — ausser als
+# Arch-Linux-Paket. Darum kommt es von dort: nur entpacken, nichts bauen.
+# Zum Entpacken (.zst) braucht tar das Paket zstd.
 # Faellt der Download aus, ist das nicht schlimm: Ohne den Ordner nimmt X
 # seinen Standardzeiger, und XCURSOR_SIZE wirkt trotzdem.
-CURSOR_THEME="GoogleDot-Blue"
-CURSOR_URL="https://github.com/ful1e5/Google_Cursor/releases/latest/download/GoogleDot-Blue.tar.gz"
+CURSOR_THEME="capitaine-cursors-light"
+CURSOR_URL="https://archlinux.org/packages/extra/any/capitaine-cursors/download/"
 if [ -d "$HOME/.icons/$CURSOR_THEME" ]; then
   echo "  Mauszeiger $CURSOR_THEME ist schon da."
 else
   echo "--- Mauszeiger $CURSOR_THEME ---"
+  inst_opt zstd
   CTMP="$(mktemp -d)"
-  if curl -fsSL -o "$CTMP/cursor.tar.gz" "$CURSOR_URL" \
-     && tar -xf "$CTMP/cursor.tar.gz" -C "$CTMP" \
-     && [ -d "$CTMP/$CURSOR_THEME" ]; then
+  if curl -fsSL -o "$CTMP/cursor.pkg.tar.zst" "$CURSOR_URL" \
+     && tar --zstd -xf "$CTMP/cursor.pkg.tar.zst" -C "$CTMP" usr/share/icons \
+     && [ -d "$CTMP/usr/share/icons/$CURSOR_THEME" ]; then
     mkdir -p "$HOME/.icons"
-    mv "$CTMP/$CURSOR_THEME" "$HOME/.icons/"
+    mv "$CTMP/usr/share/icons/$CURSOR_THEME" "$HOME/.icons/"
     echo "  installiert nach ~/.icons/$CURSOR_THEME"
   else
     echo "  Hinweis: Download fehlgeschlagen — X nimmt seinen Standardzeiger."
@@ -405,7 +409,7 @@ export XCURSOR_SIZE=32
 # AUSSEHEN: Der Name muss einem Ordner ~/.icons/<Name>/cursors/ entsprechen.
 # Fehlt der Ordner, nimmt X einfach seinen Standardzeiger — es geht also
 # nichts kaputt, wenn hier etwas Falsches steht.
-export XCURSOR_THEME=GoogleDot-Blue
+export XCURSOR_THEME=capitaine-cursors-light
 
 # Ohne eine UTF-8-Sprachumgebung zeigt auch ein moderner Terminal Umlaute und
 # Rahmenlinien falsch an — er weiss dann schlicht nicht, dass die Bytes

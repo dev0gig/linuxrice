@@ -1,0 +1,57 @@
+! ---- Globale dunkle Defaults fuer alle X-Anwendungen ----
+*background:             #1c1c1c
+*foreground:             #d0d0d0
+*cursorColor:            #d0d0d0
+*borderColor:            #2e2e2e
+*highlightColor:         #87afdf
+
+! Font-Rendering
+Xft.antialias:  1
+Xft.hinting:    1
+Xft.hintstyle:  hintslight
+Xft.dpi:        96
+
+! ---- xterm: dunkles Farbschema ----
+XTerm*background:        #1c1c1c
+XTerm*foreground:        #d0d0d0
+XTerm*cursorColor:       #d0d0d0
+XTerm*pointerColorBackground: #1c1c1c
+
+! ANSI-Farben (dunkel abgestimmt)
+XTerm*color0:  #2e2e2e
+XTerm*color8:  #5c5c5c
+XTerm*color1:  #d75f5f
+XTerm*color9:  #ff8787
+XTerm*color2:  #87af87
+XTerm*color10: #afdfaf
+XTerm*color3:  #dfaf87
+XTerm*color11: #ffdfaf
+XTerm*color4:  #87afdf
+XTerm*color12: #afdfff
+XTerm*color5:  #af87af
+XTerm*color13: #dfafdf
+XTerm*color6:  #87afaf
+XTerm*color14: #afdfdf
+XTerm*color7:  #d0d0d0
+XTerm*color15: #ffffff
+
+! Lesbare Schrift + UTF-8 (fuer Umlaute/deutsche Meldungen)
+XTerm*faceName:          Red Hat Mono
+XTerm*faceSize:          11
+XTerm*utf8:              1
+XTerm*locale:            true
+XTerm*saveLines:         10000
+XTerm*scrollBar:         false
+XTerm*metaSendsEscape:   true
+
+! ---- i3 / X11 Cursor ----
+Xcursor.theme: Nordzy-cursors
+
+! ---- Copy & Paste in xterm ----
+! Ctrl+C ist im Terminal SIGINT (Abbruch) und kann nicht zum Kopieren dienen,
+! daher die ueblichen Terminal-Tastenkombinationen mit zusaetzlichem Shift:
+XTerm*vt100.translations: #override \n\
+    Ctrl Shift <Key>C: copy-selection(CLIPBOARD) \n\
+    Ctrl Shift <Key>V: insert-selection(CLIPBOARD) \n\
+    Shift <Key>Insert: insert-selection(CLIPBOARD, PRIMARY)
+Xcursor.size: 48

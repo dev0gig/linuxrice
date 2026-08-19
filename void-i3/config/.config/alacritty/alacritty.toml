@@ -1,0 +1,65 @@
+# ---- Font ----
+# Red Hat Mono (wie i3bar / Fenstertitel). Fehlende Glyphen (Icons) holt
+# fontconfig automatisch aus Symbols Nerd Font Mono.
+[font]
+size = 13.0
+
+[font.normal]
+family = "Red Hat Mono"
+style = "Regular"
+
+[font.bold]
+family = "Red Hat Mono"
+style = "Bold"
+
+[font.italic]
+family = "Red Hat Mono"
+style = "Italic"
+
+[font.bold_italic]
+family = "Red Hat Mono"
+style = "Bold Italic"
+
+# ---- Design: Terminal komplett Graustufen-Monochrom ----
+# Hintergrund #1e1e1e, Schrift graeuliches Weiss (#c9c9c9, augenschonend,
+# kein hartes Reinweiss). Auch die ANSI-Farben sind auf Graustufen gemappt,
+# abgestuft hell genug, dass sich Prompt/ls/Syntax noch unterscheiden lassen.
+# Kein opacity/Transparenz: mit picom schien das Wallpaper durch und gab dem
+# Terminal einen olivgruen-gelben Stich, obwohl der Hintergrund #1e1e1e neutral ist.
+[window]
+opacity = 1.0
+
+[colors.primary]
+background = "#1e1e1e"
+foreground = "#c9c9c9"
+
+[colors.cursor]
+text   = "#1e1e1e"
+cursor = "#c9c9c9"
+
+[colors.normal]
+black   = "#3a3a3a"
+red     = "#9a9a9a"
+green   = "#bcbcbc"
+yellow  = "#d0d0d0"
+blue    = "#8a8a8a"
+magenta = "#a8a8a8"
+cyan    = "#c4c4c4"
+white   = "#c9c9c9"
+
+[colors.bright]
+black   = "#555555"
+red     = "#b4b4b4"
+green   = "#d6d6d6"
+yellow  = "#e4e4e4"
+blue    = "#a0a0a0"
+magenta = "#c0c0c0"
+cyan    = "#dcdcdc"
+white   = "#e8e8e8"
+
+# Mittelklick fuegt NICHT die Auswahl ein (Primary Selection).
+# Einfuegen laeuft ausschliesslich ueber die Tastatur:
+#   Strg+Shift+C / Strg+Shift+V im Terminal
+[[mouse.bindings]]
+mouse = "Middle"
+action = "None"

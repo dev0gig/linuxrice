@@ -1,0 +1,13 @@
+#!/bin/sh
+# Terminal fuer Arbeitsflaeche 3: Verbindung zum entfernten Rechner.
+#
+# Nach dem Ende der SSH-Sitzung -- ob durch "exit", Verbindungsabbruch oder
+# falsches Passwort -- bleibt eine lokale Shell stehen. Sonst wuerde das
+# Fenster einfach verschwinden und Arbeitsflaeche 3 waere leer.
+#
+# Ohne SSH-Schluessel fragt ssh jedes Mal nach dem Passwort. Passwortlos
+# geht es mit: ssh-keygen -t ed25519 && ssh-copy-id @@SSH_TARGET@@
+ssh @@SSH_TARGET@@
+echo
+echo "--- SSH-Sitzung beendet. Neu verbinden mit: @@REMOTE_ALIAS_NAME@@ ---"
+exec "${SHELL:-/bin/bash}"

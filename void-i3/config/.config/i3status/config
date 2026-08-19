@@ -1,0 +1,98 @@
+# i3status configuration file.
+# see "man i3status" for documentation.
+# Diese Datei MUSS als UTF-8 gespeichert bleiben.
+#
+# Design: Leiste monochrom-grau, NUR die Icons tragen Gruvbox-Akzentfarben.
+# Farbe ist damit reine Signalfunktion (welches Modul / Warnung), nie Dekoration.
+#
+# ACHTUNG: Die Icons stehen hier als echte UTF-8-Zeichen, wurden aber ueber
+# Python-Codepoints erzeugt (siehe Notiz). Niemals per sed mit rohem Glyph
+# im Suchmuster anfassen -- so sind die Icons fuer CPU/WLAN/Uhr schon einmal
+# spurlos aus der Datei verschwunden (leere <span></span> blieben zurueck).
+#
+# Icons (Symbols Nerd Font Mono):
+#   CPU 󰘚 md-chip        Temp 󰔏 md-thermometer   RAM  fa-memory
+#   HDD 󰋊 md-harddisk    WLAN 󰖩 md-wifi          Vol 󰕾 md-volume_high
+#   Akku 󰁾 md-battery_60  Datum 󰃭 md-calendar      Uhr 󰅐 md-clock_outline
+
+general {
+        colors   = false
+        markup   = "pango"
+        interval = 5
+        # Hinweis: bei output_format=i3bar zeichnet i3bar den Trenner selbst,
+        # die general-Option "separator" ist dort wirkungslos.  Der Abstand
+        # zwischen den Modulen steckt deshalb als Leerzeichen in den Formaten.
+}
+
+order += "cpu_usage"
+order += "cpu_temperature 0"
+order += "memory"
+order += "disk /"
+order += "wireless _first_"
+order += "volume master"
+order += "battery all"
+order += "tztime date"
+order += "tztime local"
+
+cpu_usage {
+        format = "  <span foreground='#83a598'>󰘚</span> <span foreground='#9a9a9a'>%usage</span>  "
+        max_threshold = 90
+        format_above_threshold = "  <span foreground='#fb4934'>󰘚</span> <span foreground='#fb4934'>%usage</span>  "
+}
+
+# coretemp liegt auf hwmon4, temp1_input ist die Package-Temperatur
+cpu_temperature 0 {
+        format = "  <span foreground='#d3869b'>󰔏</span> <span foreground='#9a9a9a'>%degrees °C</span>  "
+        path   = "/sys/class/hwmon/hwmon4/temp1_input"
+        max_threshold = 85
+        format_above_threshold = "  <span foreground='#fb4934'>󰔏</span> <span foreground='#fb4934'>%degrees °C</span>  "
+}
+
+memory {
+        format             = "  <span foreground='#8ec07c'></span> <span foreground='#9a9a9a'>%used</span>  "
+        threshold_degraded = "2G"
+        format_degraded    = "  <span foreground='#fb4934'></span> <span foreground='#fb4934'>%used (nur %available frei)</span>  "
+}
+
+disk "/" {
+        format            = "  <span foreground='#d5c4a1'>󰋊</span> <span foreground='#9a9a9a'>%avail frei</span>  "
+        low_threshold     = 10
+        threshold_type    = percentage_avail
+        format_below_threshold = "  <span foreground='#fb4934'>󰋊</span> <span foreground='#fb4934'>%avail frei</span>  "
+}
+
+wireless _first_ {
+        format_up   = "  <span foreground='#b8bb26'>󰖩</span> <span foreground='#9a9a9a'>%essid %quality</span>  "
+        format_down = "  <span foreground='#555555'>󰖪</span> <span foreground='#555555'>kein WLAN</span>  "
+}
+
+volume master {
+        device        = "pulse"
+        format        = "  <span foreground='#83a598'>󰕾</span> <span foreground='#9a9a9a'>%volume</span>  "
+        format_muted  = "  <span foreground='#555555'>󰖁</span> <span foreground='#555555'>stumm</span>  "
+}
+
+battery all {
+        format          = "  <span foreground='#9a9a9a'>%status</span> <span foreground='#9a9a9a'>%percentage %remaining</span>  "
+        format_down     = ""
+        status_chr      = "<span foreground='#83a598'>󰂄</span>"
+        status_bat      = "<span foreground='#fabd2f'>󰁾</span>"
+        status_full     = "<span foreground='#83a598'>󰁹</span>"
+        status_unk      = "<span foreground='#555555'>󰂑</span>"
+        low_threshold   = 20
+        threshold_type  = percentage
+        integer_battery_capacity = true
+        hide_seconds    = true
+}
+
+tztime date {
+        # Ohne locale liefert strftime englische Wochentage ("Wed" statt "Mi")
+        locale = "de_DE.UTF-8"
+        format = "  <span foreground='#a89984'>󰃭</span> <span foreground='#9a9a9a'>%a %d.%m.</span>  "
+}
+
+# Das abschliessende Leerzeichen ist Absicht: ohne es schneidet i3bar die
+# letzte Ziffer der Uhrzeit am rechten Bildschirmrand ab.
+tztime local {
+        format = "  <span foreground='#fe8019'>󰅐</span> <span foreground='#e8e8e8'>%H:%M</span>   "
+}

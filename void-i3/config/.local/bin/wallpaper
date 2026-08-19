@@ -1,0 +1,20 @@
+#!/bin/sh
+# wallpaper [datei]  -- Hintergrundbild setzen (bleibt ueber Neustarts erhalten)
+# wallpaper           -- ohne Argument: Auswahl per rofi aus ~/Bilder/Wallpapers
+WPDIR="$HOME/Bilder/Wallpapers"
+MODE="${WALLPAPER_MODE:---bg-fill}"
+
+img="$1"
+if [ -z "$img" ]; then
+    img=$(find "$WPDIR" -maxdepth 1 -type f \
+          \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) |
+          sort | rofi -dmenu -i -p "Wallpaper")
+fi
+
+[ -z "$img" ] && exit 0
+if [ ! -f "$img" ]; then
+    echo "wallpaper: '$img' nicht gefunden" >&2
+    exit 1
+fi
+
+exec feh "$MODE" "$img"

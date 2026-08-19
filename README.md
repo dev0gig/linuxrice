@@ -9,10 +9,19 @@ chronologisch; nur der erste in dieser Liste ist aktuell. Daneben steht mit
 
 ### [`void-i3`](void-i3/)
 
-Void Linux mit i3. Bisher darin: [`workspaces-vitals`](void-i3/workspaces-vitals/)
-— Arbeitsfläche 4 als festes Systemmonitor-Dashboard aus btop, glances,
-bandwhich und einer selbstgezeichneten Uhr, gehalten von einer
-zellij-Sitzung in einem randlosen Alacritty-Fenster.
+Void Linux mit i3, ohne Display-Manager und ohne Desktop-Umgebung. Ein
+Skript richtet nach der Installation alles ein — Pakete, Dienste, Schriften,
+Tastatur, Touchpad und vier feste Arbeitsflächen:
+
+```sh
+xbps-fetch -o setup.sh https://raw.githubusercontent.com/dev0gig/linuxrice/main/void-i3/setup.sh
+sh setup.sh
+```
+
+Arbeitsfläche 4 ist ein Systemmonitor-Dashboard aus btop, glances, bandwhich
+und einer selbstgezeichneten Uhr in einer zellij-Sitzung — mit
+[eigener README](void-i3/workspaces-vitals/), weil zellij, glances und
+tty-clock dabei jeweils eine eigene Falle aufstellen.
 
 ## ✅ In Benutzung — Termux
 

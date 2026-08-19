@@ -1,0 +1,3 @@
+# HP ENVY x360: hp_wmi meldet WLAN beim Boot als soft-blocked.
+# Sobald das rfkill-Geraet auftaucht, soft-block wieder aufheben.
+SUBSYSTEM=="rfkill", ATTR{type}=="wlan", ATTR{soft}="0"

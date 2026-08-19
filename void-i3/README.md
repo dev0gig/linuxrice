@@ -1,12 +1,124 @@
 # void-i3
 
-Void Linux mit i3 auf einem Notebook — im Gegensatz zu den `termux-*`-Ordnern
-also ein normaler Rechner, kein Telefon.
+Void Linux mit i3 auf einem Notebook (HP ENVY x360, 1920x1080) — im Gegensatz
+zu den `termux-*`-Ordnern also ein gewöhnlicher Rechner, kein Telefon.
 
-### [`workspaces-vitals`](workspaces-vitals/)
+Kein Display-Manager, keine Desktop-Umgebung, kein Panel. `.bash_profile`
+startet X beim Login auf tty1, `.xinitrc` startet i3, fertig. Vier feste
+Arbeitsflächen: Browser, lokales Terminal, SSH-Sitzung und ein
+Systemmonitor-Dashboard.
 
-Arbeitsflaeche 4 als festes Systemmonitor-Dashboard: ein randloses
-Alacritty-Fenster mit einer zellij-Sitzung darin — btop links ueber die volle
-Hoehe, rechts Uhr, Datentraeger, Sensoren und Netzdurchsatz. Enthaelt die
-Begruendungen fuer saemtliche Groessenangaben, weil zellij, glances und
-tty-clock dabei jeweils eine eigene Falle aufstellen.
+## Einrichten
+
+Nach einer frischen Void-Installation (Basissystem, noch kein Xorg):
+
+```sh
+xbps-fetch -o setup.sh https://raw.githubusercontent.com/dev0gig/linuxrice/main/void-i3/setup.sh
+sh setup.sh
+```
+
+`xbps-fetch` liegt jedem Void bei — `curl` und `git` sind auf einem frischen
+System noch nicht da. Das Skript holt sich den Rest des Repos selbst. Wer
+schon geklont hat, ruft stattdessen `sh void-i3/setup.sh` auf.
+
+Das Skript fragt zu Beginn nach dem SSH-Ziel für Arbeitsfläche 3 und den
+Beschriftungen für die Arbeitsflächen 2 und 3 — im Repo stehen dafür nur
+Platzhalter, keine echten Rechnernamen. Danach läuft es ohne Rückfragen
+durch und ist **mehrfach ausführbar**: was es überschreibt, legt es vorher
+als `<datei>.vor-void-i3` daneben.
+
+Es richtet ein:
+
+| | |
+| --- | --- |
+| Pakete | Xorg ohne Display-Manager, i3, rofi, picom, Alacritty, Firefox, PCManFM und die Werkzeuge des Dashboards |
+| Dienste | `dhcpcd`, `wpa_supplicant`, `tailscaled` |
+| Locale | `de_DE.UTF-8` erzeugen (Systemsprache bleibt `C.UTF-8`), Konsolentastatur auf `de` |
+| Schriften | Red Hat Mono nach `/usr/share/fonts`, dazu die fontconfig-Regel, die `monospace` darauf umbiegt |
+| Mauszeiger | Nordzy nach `~/.icons` |
+| Eingabe | deutsches Tastaturlayout in X, Touchpad mit natürlichem Scrollen und Tap-to-Click, Drei-Finger-Gesten |
+| Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten |
+| Firefox | Mittelklick fügt nicht mehr ein |
+| Dashboard | das komplette [`workspaces-vitals`](workspaces-vitals/) auf Arbeitsfläche 4 |
+
+Was danach von Hand kommt — WLAN, Tailscale-Anmeldung, `sensors-detect`,
+eigene Hintergrundbilder, Firefox-Profil — listet das Skript am Ende noch
+einmal auf.
+
+## Aufbau des Ordners
+
+```
+setup.sh              das Einrichtungsskript
+config/               wird nach $HOME kopiert
+system/               wird nach / kopiert (mit sudo)
+workspaces-vitals/    das Dashboard von Arbeitsfläche 4, mit eigener README
+```
+
+`config/` und `workspaces-vitals/home/` überschneiden sich nicht: die Dateien
+des Dashboards liegen **nur** unter `workspaces-vitals`, `setup.sh` kopiert
+von beiden Stellen. So gibt es von jeder Datei genau eine Fassung.
+
+## Arbeitsflächen
+
+| | Inhalt | Fensterklasse |
+| --- | --- | --- |
+| 1 | Firefox | `firefox` |
+| 2 | lokales Terminal | `autostart-term` |
+| 3 | SSH-Sitzung, hält nach dem Ende eine lokale Shell offen | `remote-term` |
+| 4 | Vitals-Dashboard | `vitals-dashboard` |
+
+Jedes Autostart-Fenster hat eine eigene Fensterklasse — damit landet genau
+*dieses* Fenster auf seiner Fläche, während normal gestartete Terminals sich
+unverändert verhalten. Die Beschriftungen setzt `~/.local/bin/i3-workspace-names`
+live nach der Fensterklasse; die Nummer bleibt vorn stehen, deshalb
+funktionieren `workspace number N` und die `assign`-Regeln weiter.
+
+## Tastenbelegung
+
+| Taste | Wirkung |
+| --- | --- |
+| `Strg+Alt+T` | Terminal |
+| `$mod+space` / `$mod+d` | rofi |
+| `$mod+Shift+d` | dmenu (Rückfallebene) |
+| `$mod+f` | Firefox |
+| `$mod+e` | Dateimanager |
+| `$mod+Shift+f` | Vollbild |
+| `$mod+t` | Aufteilung umschalten |
+| `Strg+q` | Fenster schließen |
+| `$mod+Shift+w` | Hintergrundbild wählen |
+| `$mod+1` … `$mod+4` | Arbeitsflächen |
+
+Deutsches Tastaturlayout — deshalb steht in den Bindings `$mod+odiaeresis`
+statt `$mod+semicolon`.
+
+## Stolpersteine, die hier schon gelöst sind
+
+* **Komma und Semikolon in `exec`-Zeilen** sind für i3 Befehlstrenner. Ein
+  `-combi-modes drun,run` bringt rofi zwar zum Laufen, wirft aber jedes Mal
+  einen Parse-Fehler samt rotem `i3-nagbar`. Lösung: das ganze Kommando in
+  Anführungszeichen.
+* **`i3-msg reload` startet `i3status` nicht neu.** Die Leiste zeigt weiter
+  die alte Ausgabe; erst `i3-msg restart` startet i3bar samt i3status neu
+  (und behält dabei Fenster und Layout).
+* **Die Höhe der i3bar** kommt aus `padding` im `bar {}`-Block. Ein `height`
+  wie zu i3-gaps-Zeiten kennt i3 nicht.
+* **`default_border none` greift nur bei neuen Fenstern.** Bestehende
+  behalten ihren Rahmen auch über `i3-msg restart` hinweg — einmalig
+  `i3-msg '[class=".*"] border none'`.
+* **Symbole in der Leiste** kommen aus `nerd-fonts-symbols-ttf`, eingebunden
+  als Pango-Fallback hinter dem Textfont. Zum Ändern **nicht** `sed` mit dem
+  rohen Glyph benutzen — das greift unzuverlässig; stattdessen Python mit
+  Codepoints. Und Symbole über die Glyphennamen suchen, nicht durch Raten:
+  Nerd Fonts v3 legt Font Awesome 6 nach `ed00-efcf`, nicht in den alten
+  Bereich `f000-f385`.
+* **`monospace` → Red Hat Mono** steht in `/etc/fonts/conf.d/56-redhat-mono.conf`.
+  Die **56** ist zwingend: `57-dejavu-sans-mono.conf` setzt DejaVu als
+  `monospace`, und die zuerst geladene Datei gewinnt. Zwei Minuszeichen
+  hintereinander in einem XML-Kommentar legen die Datei still lahm.
+* **Der Gelbstich im Terminal** kam nicht vom Farbschema, sondern von
+  `opacity` in `alacritty.toml` — picom ließ das Wallpaper durchscheinen.
+* **Mittelklick-Einfügen** hat unter X11 keinen globalen Schalter, es ist pro
+  Toolkit zu setzen: GTK 3 und 4, Alacritty, Firefox — alle vier Stellen
+  richtet `setup.sh` ein.
+* Die Fallstricke rund um zellij, glances und die Uhr stehen in der
+  [README des Dashboards](workspaces-vitals/).

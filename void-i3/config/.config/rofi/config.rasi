@@ -1,0 +1,53 @@
+/* rofi - Monochrom-Grau (Chrome), Icons als einzige Farbtraeger.
+   Konsequent eckig: border-radius ueberall explizit 0. */
+configuration {
+    terminal:   "alacritty";
+    font:       "Red Hat Mono 11";
+    show-icons:  true;
+    icon-theme: "Papirus-Dark";
+}
+
+* {
+    bg:      #1e1e1e;
+    bg-sel:  #2a2a2a;
+    line:    #3a3a3a;
+    fg:      #e8e8e8;
+    fg-dim:  #9a9a9a;
+    urgent:  #fb4934;
+
+    background-color: transparent;
+    text-color:       @fg-dim;
+    border-radius:    0px;
+}
+
+window {
+    width:            34%;
+    background-color: @bg;
+    border:           1px;
+    border-color:     @line;
+    border-radius:    0px;
+    padding:          0;
+}
+
+mainbox { children: [ inputbar, listview ]; }
+
+inputbar {
+    background-color: @bg;
+    border:           0px 0px 1px 0px;
+    border-color:     @line;
+    padding:          9px 12px;
+    spacing:          8px;
+    children:         [ prompt, entry ];
+}
+
+prompt  { text-color: @fg-dim; }
+entry   { text-color: @fg; placeholder: "Suchen..."; placeholder-color: @fg-dim; }
+
+listview { lines: 10; scrollbar: false; padding: 4px 0px; }
+
+element          { padding: 6px 12px; spacing: 8px; children: [ element-icon, element-text ]; }
+element-icon     { size: 1.3em; vertical-align: 0.5; }
+element-text     { vertical-align: 0.5; text-color: inherit; }
+element normal   { text-color: @fg-dim; }
+element selected { background-color: @bg-sel; text-color: @fg; }
+element urgent   { text-color: @urgent; }

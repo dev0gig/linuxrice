@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Benennt i3-Arbeitsflaechen automatisch nach den Programmen, die darin laufen.
+
+Aus "2" wird "2: Alacritty", aus "1" wird "1: Firefox".  Die fuehrende Nummer
+bleibt erhalten -- i3 adressiert Arbeitsflaechen ueber "workspace number N",
+darum funktionieren $mod+1..0 und die assign-Regeln unveraendert weiter.
+
+Laeuft als Daemon, gestartet per exec_always aus der i3-Config.
+"""
+import os
+import re
+import signal
+import i3ipc
+
+# Einmalig-Lauf ueber eine PID-Datei absichern.  "pkill -f i3-workspace-names"
+# aus der i3-Config waere der naheliegende Weg, killt aber die eigene
+# exec-Shell gleich mit -- deren Kommandozeile enthaelt den Suchstring ja auch.
+PIDFILE = os.path.join(
+    os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "i3-workspace-names.pid"
+)
+
+
+def take_over():
+    """Eine evtl. noch laufende aeltere Instanz beenden und die PID-Datei uebernehmen."""
+    try:
+        old = int(open(PIDFILE).read().strip())
+        if old != os.getpid():
+            os.kill(old, signal.SIGTERM)
+    except (OSError, ValueError):
+        pass
+    try:
+        with open(PIDFILE, "w") as fh:
+            fh.write(str(os.getpid()))
+    except OSError:
+        pass
+
+MAXLEN = 22          # Laenge des Programmteils, danach wird gekuerzt
+SEP = " "            # Trenner zwischen mehreren Programmen auf einer Flaeche
+
+# Fensterklassen sind oft haesslich ("Pcmanfm", "Gimp-2.10") -- hier huebschen
+# wir die haeufigen auf.  Alles Uebrige bekommt nur ein grosses Anfangszeichen.
+PRETTY = {
+    "firefox": "Firefox",
+    "alacritty": "Terminal",
+    "autostart-term": "Terminal",
+    "remote-term": "Terminal",
+    "pcmanfm": "Dateien",
+    "xterm": "xterm",
+    "rofi": "rofi",
+    "thunderbird": "Mail",
+    "libreoffice": "LibreOffice",
+    "gimp": "GIMP",
+    "vlc": "VLC",
+    "mpv": "mpv",
+}
+
+
+# Feste Namen fuer die vier Stamm-Arbeitsflaechen.  Sie haben Vorrang vor der
+# dynamischen Benennung nach Fensterklasse -- der Name der SSH-Flaeche soll
+# auch dann stehen bleiben, wenn die Sitzung beendet oder die Flaeche leer ist.
+# Ab 5 aufwaerts wird weiter nach dem laufenden Programm benannt.
+STATIC = {
+    1: "Firefox",
+    2: "@@WS2_NAME@@",
+    3: "@@WS3_NAME@@",
+    4: "Vitals",
+}
+
+
+def label(con):
+    """Anzeigename fuer ein Fenster: window_class, sonst window_instance."""
+    name = (con.window_class or con.window_instance or "").strip()
+    if not name:
+        return None
+    key = name.lower()
+    if key in PRETTY:
+        return PRETTY[key]
+    # "Gimp-2.10" -> "Gimp", "Google-chrome" -> "Google-chrome"
+    base = re.split(r"[-_.]\d", name)[0]
+    return base[:1].upper() + base[1:]
+
+
+def rename(i3):
+    for ws in i3.get_tree().workspaces():
+        # Reihenfolge beibehalten, aber jedes Programm nur einmal nennen
+        names = []
+        for con in ws.leaves():
+            n = label(con)
+            if n and n not in names:
+                names.append(n)
+
+        num = ws.num
+        if num == -1:                       # unbenannte Sonderflaeche: nicht anfassen
+            continue
+
+        if num in STATIC:                   # feste Flaeche: Inhalt ist egal
+            new = f"{num}: {STATIC[num]}"
+        elif names:
+            text = SEP.join(names)
+            if len(text) > MAXLEN:
+                text = text[: MAXLEN - 1].rstrip() + "…"
+            new = f"{num}: {text}"
+        else:
+            new = str(num)                  # leere Flaeche: nur die Nummer
+
+        if new != ws.name:
+            # Doppelte Anfuehrungszeichen im Namen wuerden das Kommando zerlegen
+            old_q = ws.name.replace('"', r'\"')
+            new_q = new.replace('"', r'\"')
+            i3.command(f'rename workspace "{old_q}" to "{new_q}"')
+
+
+def main():
+    take_over()
+    i3 = i3ipc.Connection()
+
+    def on_event(i3_conn, event):
+        rename(i3_conn)
+
+    for ev in ("window::new", "window::close", "window::move",
+               "window::title", "workspace::init"):
+        i3.on(ev, on_event)
+
+    # Beim Beenden von i3 die Namen wieder auf die nackten Nummern zuruecksetzen,
+    # sonst startet die naechste Sitzung mit "1: Firefox" als statischem Namen.
+    def restore(i3_conn, event=None):
+        for ws in i3_conn.get_tree().workspaces():
+            if ws.num != -1 and ws.name != str(ws.num):
+                old_q = ws.name.replace('"', r'\"')
+                i3_conn.command(f'rename workspace "{old_q}" to "{ws.num}"')
+
+    i3.on("shutdown::restart", restore)
+    signal.signal(signal.SIGTERM, lambda *_: (restore(i3), i3.main_quit()))
+
+    rename(i3)
+    i3.main()
+
+
+if __name__ == "__main__":
+    main()

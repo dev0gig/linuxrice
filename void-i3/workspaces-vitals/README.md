@@ -44,10 +44,20 @@ als File-Capabilities.
 
 ## Einspielen
 
+Am einfachsten ueber [`../setup.sh`](../) -- das richtet das Dashboard
+zusammen mit dem Rest der Arbeitsumgebung ein und setzt dabei auch die
+absoluten Pfade richtig.
+
+Von Hand geht es so:
+
 ```sh
 cp -r home/.config/*  ~/.config/
 cp    home/.local/bin/vitals* ~/.local/bin/
 chmod 755 ~/.local/bin/vitals*
+
+# KDL kennt kein $HOME -- die Pfade im Layout muessen absolut sein
+sed -i "s|/home/user|$HOME|g" ~/.config/zellij/layouts/dashboard.kdl \
+                              ~/.local/bin/vitals-sensoren
 ```
 
 Dann die Zeilen aus `i3/vitals-auszug.conf` in `~/.config/i3/config`

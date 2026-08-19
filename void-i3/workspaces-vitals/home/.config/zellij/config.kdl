@@ -1,0 +1,40 @@
+// ~/.config/zellij/config.kdl
+//
+// Bewusst schlank gehalten: zellij wird hier nur als Halter fuer das
+// Vitals-Dashboard benutzt, nicht als taeglicher Multiplexer.
+
+// Rahmen an: sie tragen die Pane-Titel ("System", "Uhr", ...) und sind
+// damit Teil der Beschriftung, nicht nur Deko.
+pane_frames true
+
+mouse_mode true
+
+// Locked Mode als Start-Modus. zellij reicht dann jede Taste an das Programm
+// im Pane durch, btop und bandwhich bekommen ihre Tastenkuerzel also
+// vollstaendig -- und ein versehentlicher Tastendruck zerlegt das Dashboard
+// nicht. Entsperren mit Strg+g, zurueck mit Strg+g.
+//
+// Das steht hier global und nicht pro Session, weil zellij es nur ueber die
+// Config kennt: "zellij options --default-mode" wirkt auf eine bereits
+// LAUFENDE Session und bricht beim Starten mit "There is no active session!"
+// ab. Wer zellij spaeter normal nutzen will, nimmt die Zeile wieder raus.
+default_mode "locked"
+copy_command "xclip -selection clipboard"
+
+// Kein Wiederherstellen alter Sitzungen von der Platte. Sonst holt zellij
+// nach einem Neustart ein eingefrorenes Dashboard von gestern zurueck,
+// statt die Kommandos frisch zu starten.
+session_serialization false
+
+// Beim harten Schliessen des Terminals die Panes wirklich beenden.
+on_force_close "quit"
+
+// Kein lokaler Webserver. Ein Dashboard braucht keinen Netzwerk-Listener.
+web_server false
+
+// Kein "About Zellij"-Tippfenster und keine Release Notes beim Start.
+// Beides legt sich als schwebendes Pane mitten ueber das Dashboard.
+// Die zwei Schalter tauchen in "zellij setup --dump-config" nicht auf,
+// existieren in 0.44 aber (im Binary nachweisbar).
+show_startup_tips false
+show_release_notes false

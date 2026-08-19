@@ -1,0 +1,141 @@
+// ~/.config/zellij/layouts/dashboard.kdl
+//
+// Festes Dashboard-Layout fuer Arbeitsflaeche 4 (Vitals), ausgelegt auf
+// 1920x1080 = 192x43 Zellen bei Red Hat Mono 13.
+//
+//   +-------------------------------+--------------------+
+//   |                               | Datum + Uhr   (11) |
+//   |                               +---------+----------+
+//   |   System (btop)               | Daten-  | Sensoren |
+//   |   volle Hoehe, 138 Spalten    | traeger |          |  17 Zeilen
+//   |                               |  (27)   |   (27)   |
+//   |   CPU + Kerntemperaturen      +---------+----------+
+//   |   RAM / Swap                  |                    |
+//   |   Platten mit Balken          |  Netzverkehr  (15) |
+//   |   Netzdurchsatz, Prozesse     |                    |
+//   +-------------------------------+--------------------+
+//         138 Spalten                     54 Spalten
+//
+// btop bekommt die volle Hoehe: es hat fuenf Kaesten uebereinander und
+// braucht die Zeilen, sonst kuerzt es die Prozessliste weg.
+//
+// Es laufen nur echte TUIs. Die frueheren Panes aus dust und duf in einer
+// "while true"-Schleife sind raus: beide messen die Breite beim Start und
+// schreiben stur weiter; in einer Kommandosubstitution sehen sie sogar gar
+// kein Terminal und raten auf 80 Spalten. In einem schmaleren Pane brach
+// die Ausgabe darum um und die Tabelle zerfiel. dust war ohnehin das
+// falsche Werkzeug: es misst Verzeichnisgroessen im Dateibaum, nicht die
+// Belegung von Partitionen.
+//
+// Merke zur KDL-Syntax: split_direction="vertical" meint eine SENKRECHTE
+// Trennlinie, die Panes stehen also nebeneinander. "horizontal" stapelt
+// sie uebereinander. Das ist genau andersherum, als man es zuerst liest.
+//
+// ================= Warum 138/54 und nicht glatt 144/48 =================
+// glances braucht pro Pane mindestens 25 Spalten. Der Grund steht in
+// plugins/sensors/__init__.py: die Beschriftung wird auf "Panebreite - 12"
+// aufgefuellt, der Messwert danach rechtsbuendig in ein fest 14 Zeichen
+// breites Feld gesetzt. Unter 25 Spalten passt die Wertzeile nicht mehr
+// ins Pane und glances laesst sie KOMPLETT weg -- die Sensoren standen
+// dann ohne Temperaturen da, der Datentraeger ohne "W/s" und "Total".
+// Nachgemessen fuer beide Panes bei 23/24/25/26 Spalten; 25 ist die
+// Schwelle.
+//
+// Dazu kommt der Panerahmen von zellij: er kostet links und rechts je eine
+// Spalte. Ein Pane der Breite 25 laesst glances also nur 23 -- damit fehlt
+// die Wertspalte weiterhin. Nutzbar muessen 25 sein, das Pane also 27
+// breit. Zwei davon sind 54 Spalten fuer die rechte Seite.
+//
+// btop bleibt damit bei 138 von 192 Spalten = 72 %. Wer die drei Viertel
+// genau haben will, muss auf eine der beiden Wertspalten verzichten oder
+// Datentraeger und Sensoren wieder uebereinander stapeln.
+//
+// Der grosse Abstand zwischen Beschriftung und Wert laesst sich NICHT
+// wegstellen: beide Feldbreiten sind im glances-Quelltext fest verdrahtet,
+// es gibt dafuer keinen Schalter in der Konfiguration. Er wird von selbst
+// klein, je schmaler das Pane ist -- bei 25 Spalten ist er bereits am
+// Minimum.
+//
+// ================= Die Regel zu den Groessenangaben =====================
+// zellij 0.44 verlangt: sobald ein Container eine eigene Groesse hat, muss
+// JEDES seiner Kinder ebenfalls eine haben. Und in der Verschachtelung
+// greifen nur GANZE ZAHLEN (Zellen), keine Prozente.
+//
+// Die beiden Fehlerbilder, beide hier nachgemessen:
+//   * ein Kind ohne Groesse in einer festen Spalte -> zellij bricht ab mit
+//     "Implicit sizing within fixed-size panes is not supported", das
+//     Terminal schliesst sich sofort wieder.
+//   * durchgehend Prozente ueber zwei Ebenen -> kein Fehler, aber zellij
+//     verwirft still ALLE Angaben und teilt jede Ebene gleichmaessig auf.
+//     Aus 75/25 wurde 50/50 und aus 24/56/20 wurde 33/33/33.
+// Genau daran sind die frueheren Versuche gescheitert.
+//
+// Die Zahlen muessen AUFGEHEN, und zwar auf die volle Terminalgroesse:
+// 138+54 = 192 Spalten, 27+27 = 54 Spalten, 11+17+15 = 43 Zeilen. Schon
+// eine Zeilensumme von 42 genuegte, damit zellij beim Start abbricht und
+// sich das Terminal sofort wieder schliesst.
+//
+// Die 43 Zeilen sind gemessen, nicht geraten -- 1050 Bildpunkte
+// Arbeitsflaeche (1080 minus 30 fuer die i3bar) geteilt durch die
+// Zellenhoehe. Nach jeder Aenderung an Schriftgroesse oder Barhoehe neu
+// messen:
+//   alacritty -e sh -c 'stty size > /tmp/size.txt; sleep 2'
+// Kontrolle des fertigen Layouts:
+//   zellij --session vitals action dump-layout
+
+layout {
+    pane split_direction="vertical" {
+
+        // ================= btop, volle Hoehe =============================
+        pane size=138 name="System" {
+            command "btop"
+        }
+
+        // ================= Rechte Spalte =================================
+        pane size=54 split_direction="horizontal" {
+
+            // 11 Zeilen: 2 fuer den Rahmen, dann Datumszeile, Leerzeile
+            // und fuenf Zeilen Ziffern -- macht 7, der Rest ist Luft.
+            // Weniger als 9 Zeilen Innenraum schneidet die Ziffern an.
+            //
+            // Hier lief bis zuletzt tty-clock. Das konnte das Datum nur
+            // UNTER die Ziffern setzen und brauchte dafuer 14 Zeilen, und
+            // es zeichnete die Datumszeile nach einer Groessenaenderung
+            // des Terminals nicht wieder -- was beim Start jedes Mal
+            // passiert, weil zellij das Pane erst in Vorgabegroesse
+            // anlegt. Die drei gesparten Zeilen gehen an den Netzverkehr.
+            pane size=11 name="Uhr" {
+                command "/home/user/.local/bin/vitals-clock"
+            }
+
+            // Mittlere Reihe: Datentraeger und Sensoren nebeneinander, je
+            // 25 Spalten. Beide sind glances-Instanzen und damit echte
+            // TUIs -- sie messen ihre Panebreite selbst und ordnen die
+            // Tabellen um, wenn es eng wird.
+            //
+            // 17 Zeilen, und keine weniger: 15 Zeilen Innenraum sind die
+            // Ueberschrift "SENSORS" plus zwoelf Sensorzeilen, und glances
+            // haelt darunter noch zwei Zeilen frei. Bei 15 Zeilen Panehoehe
+            // fielen Luefter 2 und Akku still unter den Tisch -- die Zeilen
+            // waren sichtbar leer, glances hatte sie gar nicht erst
+            // gezeichnet. Nachgemessen bei 13/14/15/16 Zeilen Innenraum.
+            // Was hier uebrig bleibt, bekommt der Netzverkehr.
+            pane size=17 split_direction="vertical" {
+                pane size=27 name="Datentraeger" {
+                    command "/home/user/.local/bin/vitals-datentraeger"
+                }
+                pane size=27 name="Sensoren" {
+                    command "/home/user/.local/bin/vitals-sensoren"
+                    args "alle"
+                }
+            }
+
+            // Kein sudo noetig: das Void-Paket setzt dem Binary bereits
+            // cap_net_raw, cap_net_admin, cap_sys_ptrace und
+            // cap_dac_read_search als File-Capabilities.
+            pane size=15 name="Netzverkehr" {
+                command "bandwhich"
+            }
+        }
+    }
+}

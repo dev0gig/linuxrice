@@ -1,0 +1,22 @@
+#!/bin/sh
+# Startet das Dashboard auf Arbeitsflaeche 4 (Vitals).
+#
+# Laeuft die Session schon (etwa nach "i3 restart", oder wenn das Terminal
+# mit Strg+q geschlossen wurde -- das killt nur den Client, nicht die
+# Session), wird sie wieder angeheftet statt eine zweite aufzumachen.
+#
+# Fallstrick: "zellij --session vitals --layout dashboard" tut NICHT das
+# Erwartete. Die Kombination aus --session und --layout heisst fuer zellij
+# "haenge das Layout der Session vitals als neuen Tab an" -- gibt es die
+# Session noch nicht, bricht es mit "There is no active session!" ab und
+# das Terminal schliesst sich sofort wieder. Richtig ist
+# --new-session-with-layout, das immer eine neue Session aufmacht.
+#
+# Locked Mode und alles Weitere stehen in ~/.config/zellij/config.kdl;
+# als Kommandozeilen-Schalter beim Start gibt es sie nicht.
+SESSION=vitals
+
+if zellij list-sessions --short 2>/dev/null | grep -qx "$SESSION"; then
+    exec zellij attach "$SESSION"
+fi
+exec zellij --session "$SESSION" --new-session-with-layout dashboard

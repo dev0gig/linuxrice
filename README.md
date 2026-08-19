@@ -1,9 +1,20 @@
 # linuxrice
 
-Linux-Arbeitsumgebungen auf dem Samsung Galaxy Z Fold 7 — über Termux, ohne
-Root. Vier Anläufe, chronologisch. Nur der erste in der Liste ist aktuell.
+Linux-Arbeitsumgebungen zum Nachbauen. Die `termux-*`-Ordner sind vier
+Anläufe auf dem Samsung Galaxy Z Fold 7 — über Termux, ohne Root,
+chronologisch; nur der erste in dieser Liste ist aktuell. Daneben steht mit
+`void-i3` das Setup eines gewöhnlichen Notebooks.
 
-## ✅ In Benutzung
+## 🖥️ Notebook
+
+### [`void-i3`](void-i3/)
+
+Void Linux mit i3. Bisher darin: [`workspaces-vitals`](void-i3/workspaces-vitals/)
+— Arbeitsfläche 4 als festes Systemmonitor-Dashboard aus btop, glances,
+bandwhich und einer selbstgezeichneten Uhr, gehalten von einer
+zellij-Sitzung in einem randlosen Alacritty-Fenster.
+
+## ✅ In Benutzung — Termux
 
 ### [`termux-i3-minimal`](termux-i3-minimal/)
 

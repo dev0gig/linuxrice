@@ -32,12 +32,13 @@ Es richtet ein:
 | | |
 | --- | --- |
 | Pakete | Xorg ohne Display-Manager, i3, rofi, picom, Alacritty, Firefox, PCManFM und die Werkzeuge des Dashboards |
-| Dienste | `dhcpcd`, `wpa_supplicant`, `tailscaled` |
+| Dienste | `dbus`, `dhcpcd`, `wpa_supplicant`, `tailscaled`, `bluetoothd` |
 | Locale | `de_DE.UTF-8` erzeugen (Systemsprache bleibt `C.UTF-8`), Konsolentastatur auf `de` |
 | Schriften | Red Hat Mono nach `/usr/share/fonts`, dazu die fontconfig-Regel, die `monospace` darauf umbiegt |
 | Mauszeiger | Nordzy nach `~/.icons` |
 | Eingabe | deutsches Tastaturlayout in X, Touchpad mit natürlichem Scrollen und Tap-to-Click, Drei-Finger-Gesten |
 | Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten |
+| Bluetooth | `bluez`; der Adapter bleibt nach dem Booten aus und geht erst auf Klick an |
 | Firefox | Mittelklick fügt nicht mehr ein |
 | Dashboard | das komplette [`workspaces-vitals`](workspaces-vitals/) auf Arbeitsfläche 4 |
 
@@ -90,6 +91,24 @@ funktionieren `workspace number N` und die `assign`-Regeln weiter.
 
 Deutsches Tastaturlayout — deshalb steht in den Bindings `$mod+odiaeresis`
 statt `$mod+semicolon`.
+
+## Klicks in der Statusleiste
+
+`i3status` kann keine Mausklicks entgegennehmen, darum läuft die Leiste über
+`~/.local/bin/i3status-melder`: der Wrapper reicht `i3status` durch, macht
+einzelne Blöcke anklickbar und hängt zwei eigene an — Bluetooth links neben
+dem WLAN, die Glocke des Benachrichtigungs-Verlaufs ganz rechts.
+
+| Block | Linksklick | Rechtsklick |
+| --- | --- | --- |
+| Bluetooth | Funk an/aus | Menü: suchen, koppeln, verbinden, trennen |
+| WLAN | Funk an/aus | — |
+| Ton | stumm um (Mausrad: lauter/leiser) | — |
+| Glocke | Verlauf ansehen | Verlauf leeren |
+
+Das Bluetooth-Icon zeigt den Zustand: stumpf heißt aus, blau heißt an, und
+sobald ein Gerät verbunden ist, steht sein Name daneben. Dieselben Schritte
+gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
 
 ## Stolpersteine, die hier schon gelöst sind
 

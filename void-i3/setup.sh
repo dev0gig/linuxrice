@@ -100,6 +100,11 @@ PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils
 # F-Tasten, acpi liest Akku und Temperatur.
 PAKETE="$PAKETE dunst libnotify brightnessctl playerctl acpi"
 
+# Bluetooth. bluez bringt bluetoothd und bluetoothctl mit; bedient wird beides
+# ueber den Bluetooth-Block in der Leiste (~/.local/bin/bluetooth). Ein
+# Tray-Applet wie blueman braucht es dafuer nicht.
+PAKETE="$PAKETE bluez"
+
 # Das Vitals-Dashboard auf Arbeitsflaeche 4.
 PAKETE="$PAKETE zellij btop glances bandwhich tty-clock lm_sensors"
 
@@ -118,10 +123,29 @@ sudo xbps-install -Syu || true          # erster Lauf aktualisiert ggf. nur xbps
 sudo xbps-install -Sy $PAKETE
 gut "Pakete installiert"
 
+# ---------------------------------------------------------------- Bluetooth
+
+schritt "Bluetooth"
+# AutoEnable=false: der Adapter bleibt nach dem Booten aus und geht erst auf
+# Klick an (Bluetooth-Block in der Leiste). Muss stehen, bevor bluetoothd das
+# erste Mal startet -- sonst schaltet er den Adapter sofort ein.
+if [ -f /etc/bluetooth/main.conf ]; then
+    if grep -q '^AutoEnable=false' /etc/bluetooth/main.conf; then
+        info "Bluetooth startet bereits ausgeschaltet"
+    else
+        sudo sed -i 's/^#\?AutoEnable=true$/AutoEnable=false/' /etc/bluetooth/main.conf
+        gut "Bluetooth startet ausgeschaltet"
+    fi
+else
+    warn "/etc/bluetooth/main.conf fehlt, AutoEnable nicht gesetzt"
+fi
+
 # ------------------------------------------------------------------ Dienste
 
 schritt "Dienste"
-for d in dhcpcd wpa_supplicant tailscaled; do
+# dbus muss mit: bluetoothd bricht ohne ihn ab ("sv check dbus" in seinem
+# run-Skript), und die Meldungen von dunst laufen ebenfalls darueber.
+for d in dbus dhcpcd wpa_supplicant tailscaled bluetoothd; do
     if [ ! -e "/etc/sv/$d" ]; then
         warn "$d gibt es nicht, uebersprungen"
     elif [ -e "/var/service/$d" ]; then

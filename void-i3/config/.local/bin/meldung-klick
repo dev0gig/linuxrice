@@ -1,0 +1,316 @@
+#!/usr/bin/python3
+# meldung-klick -- ein Klick auf eine Benachrichtigung holt das Programm nach
+#                  vorn, von dem sie kommt.
+#
+# Laeuft als Hintergrundprozess aus der i3-Config, wie akku-wache und
+# netz-ton. dunst selbst kann das nicht: seine Mausbelegung kennt nur die
+# eingebauten Aktionen (close_current, do_action, context ...), ein eigenes
+# Skript laesst sich an einen Klick nicht binden.
+#
+# WIE ES TROTZDEM GEHT: dunst schickt beim Schliessen einer Meldung das
+# Standardsignal org.freedesktop.Notifications.NotificationClosed mit einem
+# Grund mit -- 1 = Zeit abgelaufen, 2 = vom Benutzer weggeklickt, 3 = vom
+# Programm geschlossen. Nur bei Grund 2 wird hier gesprungen.
+#
+# ZWEI FALLSTRICKE, die das gekostet hat:
+#
+#   * Das Signal ist GERICHTET: dunst schickt es an genau den Absender der
+#     Meldung ("-> destination=:1.455"), nicht in die Runde. "gdbus monitor"
+#     filtert auf den Absender und sieht davon nichts -- die Ausgabe bleibt
+#     leer, obwohl geklickt wurde. Es braucht dbus-monitor, das den Bus mit
+#     einer eigenen Regel mithoert.
+#   * "stdbuf -oL" davor, sonst blockpuffert die Ausgabe in der Pipe und die
+#     Klicks kommen erst nach Kilobytes an. Derselbe Fehler wie beim
+#     Verlaufszaehler in ~/.local/bin/i3status-melder.
+#
+# Welches Programm die Meldung geschickt hat, steht danach im Verlauf
+# (appname). Der Verlauf kommt ueber gdbus, weil dunstctl dafuer busctl
+# braucht und das ein systemd-Werkzeug ist -- auf Void gibt es das nicht.
+# Siehe auch ~/.local/bin/benachrichtigungen, das denselben Weg geht.
+
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+import time
+from queue import Empty, Queue
+
+DIENST = "org.freedesktop.Notifications"
+OBJEKT = "/org/freedesktop/Notifications"
+SCHNITT = "org.dunstproject.cmd0"
+
+GRUND_WEGGEKLICKT = 2
+
+# Wer keine Fenster hat, muss gar nicht erst gesucht werden. Das sind die
+# eigenen Melder aus ~/.local/bin -- ein Klick darauf soll die Meldung nur
+# schliessen, sonst nichts.
+OHNE_FENSTER = {"osd", "akku-wache", "netz-ton", "benachrichtigungen", "melde-ton", ""}
+
+# Rechtsklick raeumt in dunst ALLE Meldungen weg (close_all), und jede davon
+# meldet ebenfalls Grund 2. Kommt mehr als eine Schliessung dicht hintereinander,
+# war es also das Aufraeumen und kein gezielter Klick -- dann wird nicht
+# gesprungen. Bei nur einer offenen Meldung sind Links- und Rechtsklick
+# allerdings nicht unterscheidbar; dann gewinnt der Sprung.
+SALVE = 0.2            # Sekunden, in denen weitere Schliessungen dazugezaehlt werden
+
+LAUFDIR = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+PIDDATEI = os.path.join(LAUFDIR, "meldung-klick.pid")
+LOGDATEI = os.path.join(LAUFDIR, "meldung-klick.log")
+
+TEXT = r"(?:[^'\\]|\\.)*"
+EINTRAG = re.compile(r"'appname': <'(" + TEXT + r")'>.*?'id': <(?:uint32 )?(\d+)>", re.S)
+SIGNALKOPF = re.compile(r"member=NotificationClosed\b")
+ZAHL = re.compile(r"^\s*uint32 (\d+)\s*$")
+
+
+def notiz(text):
+    """Kurzes Protokoll -- trennt bei Beschwerden 'nicht erkannt' von 'nicht gefunden'."""
+    try:
+        with open(LOGDATEI, "a") as f:
+            f.write(time.strftime("%H:%M:%S ") + text + "\n")
+    except OSError:
+        pass
+
+
+# ---- nur eine Instanz -----------------------------------------------------
+# i3 startet das Skript per exec_always bei jedem Neuladen erneut. Ein
+# "pkill -f meldung-klick" wuerde die eigene Shell mit erwischen, darum wie
+# bei netz-ton der Umweg ueber eine PID-Datei.
+def alleinstellen():
+    try:
+        with open(PIDDATEI) as f:
+            alt = int(f.read().strip())
+        if alt != os.getpid():
+            os.kill(alt, 15)
+    except (OSError, ValueError, ProcessLookupError):
+        pass
+    try:
+        with open(PIDDATEI, "w") as f:
+            f.write(str(os.getpid()))
+    except OSError:
+        pass
+
+
+# ---- Verlauf --------------------------------------------------------------
+def absender(kennung):
+    """appname der Meldung mit dieser Nummer, oder None."""
+    fertig = subprocess.run(
+        ["gdbus", "call", "--session", "--dest", DIENST, "--object-path", OBJEKT,
+         "--method", SCHNITT + ".NotificationListHistory"],
+        capture_output=True, text=True)
+    if fertig.returncode != 0:
+        return None
+    for app, nummer in EINTRAG.findall(fertig.stdout):
+        if int(nummer) == kennung:
+            return entmaskieren(app)
+    return None
+
+
+def entmaskieren(s):
+    aus, i = [], 0
+    while i < len(s):
+        if s[i] == "\\" and i + 1 < len(s):
+            aus.append({"n": "\n", "t": "\t", "r": "\r"}.get(s[i + 1], s[i + 1]))
+            i += 2
+        else:
+            aus.append(s[i])
+            i += 1
+    return "".join(aus)
+
+
+# ---- Fenster finden -------------------------------------------------------
+def schluessel(s):
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def fenster():
+    """Alle Fenster aus dem i3-Baum, das zuletzt benutzte zuerst.
+
+    Die Reihenfolge kommt aus der Liste "focus" jedes Containers: dort stehen
+    die Kinder nach zuletzt fokussiert sortiert. Wer den Baum in dieser
+    Reihenfolge absteigt, findet bei mehreren Fenstern derselben Anwendung
+    (zwei Firefox-Fenster) automatisch das zuletzt benutzte zuerst.
+    """
+    fertig = subprocess.run(["i3-msg", "-t", "get_tree"], capture_output=True, text=True)
+    if fertig.returncode != 0:
+        return []
+    aus = []
+
+    def gehe(knoten, flaeche):
+        if knoten.get("type") == "workspace":
+            flaeche = knoten.get("name", "")
+        if knoten.get("window"):
+            merkmale = knoten.get("window_properties") or {}
+            aus.append({
+                "id": knoten["id"],
+                "class": merkmale.get("class", ""),
+                "instance": merkmale.get("instance", ""),
+                "titel": merkmale.get("title", "") or knoten.get("name", ""),
+                "flaeche": flaeche,
+            })
+        kinder = list(knoten.get("nodes", [])) + list(knoten.get("floating_nodes", []))
+        reihe = knoten.get("focus", [])
+        kinder.sort(key=lambda k: reihe.index(k["id"]) if k["id"] in reihe else len(reihe))
+        for k in kinder:
+            gehe(k, flaeche)
+
+    gehe(json.loads(fertig.stdout), "")
+    return aus
+
+
+def aus_desktopdatei(app):
+    """StartupWMClass aus der .desktop-Datei -- fuer Programme, deren
+    Meldungsname nicht wie ihre Fensterklasse heisst."""
+    ziel = schluessel(app)
+    for verz in ("/usr/share/applications",
+                 os.path.expanduser("~/.local/share/applications"),
+                 "/usr/local/share/applications"):
+        try:
+            dateien = os.listdir(verz)
+        except OSError:
+            continue
+        for datei in dateien:
+            if not datei.endswith(".desktop"):
+                continue
+            try:
+                with open(os.path.join(verz, datei), errors="replace") as f:
+                    inhalt = f.read()
+            except OSError:
+                continue
+            namen = re.findall(r"^Name=(.*)$", inhalt, re.M)
+            passt = schluessel(datei[:-8]) == ziel or any(schluessel(n) == ziel for n in namen)
+            if not passt:
+                continue
+            klasse = re.search(r"^StartupWMClass=(.*)$", inhalt, re.M)
+            if klasse:
+                return klasse.group(1).strip()
+            return datei[:-8]
+    return None
+
+
+def suche(app):
+    """Bestes Fenster zu einem Meldungsnamen, oder None."""
+    liste = fenster()
+    if not liste:
+        return None
+    gesucht = [schluessel(app)]
+    dazu = aus_desktopdatei(app)
+    if dazu and schluessel(dazu) not in gesucht:
+        gesucht.append(schluessel(dazu))
+
+    # Von genau nach ungenau: erst Fensterklasse und -kennung ganz gleich,
+    # dann als Wortanfang, zuletzt irgendwo im Fenstertitel. Innerhalb einer
+    # Stufe gewinnt das zuletzt benutzte Fenster.
+    for pruefe in (
+        lambda f, n: schluessel(f["instance"]) == n or schluessel(f["class"]) == n,
+        lambda f, n: schluessel(f["class"]).startswith(n) or n.startswith(schluessel(f["class"]) or "\0"),
+        lambda f, n: n in schluessel(f["titel"]),
+    ):
+        for n in gesucht:
+            if not n:
+                continue
+            for f in liste:
+                if pruefe(f, n):
+                    return f
+    return None
+
+
+def hervorholen(f):
+    # Ein Fenster in der Ablage (scratchpad) laesst sich nicht einfach
+    # fokussieren, das holt erst "scratchpad show" auf den Bildschirm.
+    if f["flaeche"] == "__i3_scratch":
+        befehl = "[con_id=%d] scratchpad show" % f["id"]
+    else:
+        befehl = "[con_id=%d] focus" % f["id"]
+    subprocess.run(["i3-msg", befehl], capture_output=True, text=True)
+
+
+# ---- Hauptschleife --------------------------------------------------------
+def lauscher(warteschlange):
+    """dbus-monitor lesen und (Nummer, Grund) je Signal weiterreichen."""
+    befehl = ["stdbuf", "-oL", "dbus-monitor", "--session",
+              "type='signal',interface='org.freedesktop.Notifications',"
+              "member='NotificationClosed'"]
+    while True:
+        vorgang = subprocess.Popen(befehl, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                   text=True)
+        werte, offen = [], False
+        for zeile in vorgang.stdout:
+            if SIGNALKOPF.search(zeile):
+                werte, offen = [], True
+                continue
+            if not offen:
+                continue
+            treffer = ZAHL.match(zeile)
+            if treffer:
+                werte.append(int(treffer.group(1)))
+                if len(werte) == 2:
+                    warteschlange.put((werte[0], werte[1]))
+                    offen = False
+            else:
+                offen = False
+        vorgang.wait()
+        notiz("dbus-monitor beendet, neuer Versuch in 2 s")
+        time.sleep(2)
+
+
+def main():
+    if not os.environ.get("DISPLAY"):
+        sys.stderr.write("meldung-klick: kein DISPLAY\n")
+        return 1
+    alleinstellen()
+
+    warteschlange = Queue()
+    threading.Thread(target=lauscher, args=(warteschlange,), daemon=True).start()
+    notiz("gestartet")
+
+    while True:
+        kennung, grund = warteschlange.get()
+        if grund != GRUND_WEGGEKLICKT:
+            continue
+
+        # Salve abwarten: kam in dieser Zeit noch eine Schliessung, war es
+        # das Aufraeumen per Rechtsklick und kein gezielter Klick.
+        ende = time.monotonic() + SALVE
+        weitere = 0
+        while True:
+            rest = ende - time.monotonic()
+            if rest <= 0:
+                break
+            try:
+                _, g = warteschlange.get(timeout=rest)
+            except Empty:
+                break
+            if g == GRUND_WEGGEKLICKT:
+                weitere += 1
+        if weitere:
+            notiz("%d weitere Schliessungen -- Aufraeumen, kein Sprung" % weitere)
+            continue
+
+        app = absender(kennung)
+        if app is None:
+            # Meldungen mit history_ignore (die OSD-Balken) stehen nicht im
+            # Verlauf -- dann gibt es auch nichts, wohin man springen koennte.
+            notiz("Meldung %d nicht im Verlauf" % kennung)
+            continue
+        if app.strip() in OHNE_FENSTER:
+            notiz("%s hat kein Fenster" % app)
+            continue
+
+        ziel = suche(app)
+        if not ziel:
+            notiz("kein Fenster zu '%s'" % app)
+            continue
+        notiz("'%s' -> %s (%s)" % (app, ziel["class"] or "?", ziel["titel"][:40]))
+        hervorholen(ziel)
+
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)

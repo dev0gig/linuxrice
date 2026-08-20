@@ -97,6 +97,13 @@ exec_always --no-startup-id ~/.local/bin/akku-wache
 # gemaechlich pollen.
 exec_always --no-startup-id ~/.local/bin/netz-ton
 
+# Ein Klick auf eine Meldung holt das Programm nach vorn, von dem sie kommt.
+# dunst kann das nicht selbst -- an einen Mausklick laesst sich dort nur eine
+# seiner eingebauten Aktionen binden, kein eigenes Skript. Der Dienst hoert
+# darum am D-Bus mit, welche Meldung weggeklickt wurde, und fokussiert das
+# passende Fenster ueber i3. Beendet seinen Vorgaenger per PID-Datei.
+exec_always --no-startup-id ~/.local/bin/meldung-klick
+
 # Die beiden LEDs in F8 (Mikrofon) und F5 (Ton) einmal an den tatsaechlichen
 # Mute-Zustand angleichen. Noetig, weil der Codec sie beim Booten in seinem
 # Ruhezustand laesst -- sie blieben sonst dunkel, obwohl vielleicht stumm

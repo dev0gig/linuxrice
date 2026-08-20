@@ -70,6 +70,13 @@
     # Mausbedienung: jeder Klick macht die Meldung sofort weg. Links schliesst
     # die angeklickte, rechts alle auf einmal; die Mitte oeffnet zusaetzlich
     # die hinterlegte Aktion (z. B. den Tab einer Firefox-Meldung).
+    #
+    # Der Linksklick springt ausserdem zu dem Programm, von dem die Meldung
+    # kommt. Das steht bewusst NICHT hier: an einen Klick laesst sich nur eine
+    # der eingebauten Aktionen binden, kein eigenes Skript. Den Sprung macht
+    # darum ~/.local/bin/meldung-klick, ein Dienst aus der i3-Config, der am
+    # D-Bus mithoert, welche Meldung weggeklickt wurde. "do_action" waere kein
+    # Ersatz: ohne hinterlegte Aktion oeffnet es das Kontextmenue.
     mouse_left_click = close_current
     mouse_middle_click = do_action, close_current
     mouse_right_click = close_all

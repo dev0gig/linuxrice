@@ -1,0 +1,21 @@
+#!/bin/sh
+# Default rc.local for void; add your custom commands here.
+#
+# This is run by runit in stage 2 before the services are executed
+# (see /etc/runit/2).
+
+# WLAN-Softblock aufheben (hp_wmi blockt beim Boot).
+#
+# Streng genommen erledigt das schon die udev-Regel
+# /etc/udev/rules.d/60-rfkill-unblock.rules, sobald das rfkill-Geraet
+# auftaucht. Die Zeile bleibt trotzdem stehen: sie kostet nichts und faengt
+# den Fall ab, dass das Geraet schon vor dem Laden der Regeln da war.
+rfkill unblock wifi
+
+# /run liegt auf tmpfs, /run/user ist nach dem Boot also weg.
+# pam_dumb_runtime_dir (steht als Void-Standard in /etc/pam.d/system-login)
+# legt darin beim Login /run/user/<uid> an und setzt XDG_RUNTIME_DIR -- das
+# Elternverzeichnis erzeugt es aber nicht selbst. Ohne diese zwei Zeilen
+# findet PipeWire kein Laufzeitverzeichnis und startet gar nicht erst.
+mkdir -p /run/user
+chmod 755 /run/user

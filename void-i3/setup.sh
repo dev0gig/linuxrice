@@ -100,13 +100,24 @@ PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils
 # F-Tasten, acpi liest Akku und Temperatur.
 PAKETE="$PAKETE dunst libnotify brightnessctl playerctl acpi"
 
+# Ton. PipeWire ersetzt hier PulseAudio und JACK; wireplumber ist die
+# Geraeteverwaltung, ohne die PipeWire zwar laeuft, aber nichts verschaltet.
+# alsa-pipewire legt das ALSA-Plugin dazu, damit auch Programme Ton machen,
+# die stur ueber ALSA gehen. alsa-utils bringt amixer und den alsa-Dienst,
+# rtkit gibt den Audio-Threads Echtzeitprioritaet (sonst knackst es unter
+# Last).
+PAKETE="$PAKETE pipewire wireplumber alsa-pipewire alsa-utils rtkit"
+
 # Bluetooth. bluez bringt bluetoothd und bluetoothctl mit; bedient wird beides
 # ueber den Bluetooth-Block in der Leiste (~/.local/bin/bluetooth). Ein
 # Tray-Applet wie blueman braucht es dafuer nicht.
 PAKETE="$PAKETE bluez"
 
-# Das Vitals-Dashboard auf Arbeitsflaeche 4.
-PAKETE="$PAKETE zellij btop glances bandwhich tty-clock lm_sensors"
+# Das Vitals-Dashboard auf Arbeitsflaeche 4. Kein tty-clock mehr: die Uhr
+# ist ein eigenes Skript (vitals-clock), weil tty-clock das Datum nur unter
+# die Ziffern setzen konnte und es nach einer Groessenaenderung gar nicht
+# mehr zeichnete.
+PAKETE="$PAKETE zellij btop glances bandwhich lm_sensors"
 
 # Fuer die LEDs in F5 und F8: gcc uebersetzt das winzige Hilfsprogramm
 # tasten-led, setcap (aus libcap-progs) gibt ihm die noetige Capability.
@@ -114,8 +125,11 @@ PAKETE="$PAKETE zellij btop glances bandwhich tty-clock lm_sensors"
 PAKETE="$PAKETE gcc libcap-progs"
 
 # Werkzeuge, die im Alltag dazugehoeren.
+# duf und dust sind bewusst raus: die beiden hatten Panes im Dashboard, sind
+# dort aber gescheitert (sie messen die Breite einmal beim Start und
+# schreiben stur weiter). Ihre Aufgabe hat glances uebernommen.
 PAKETE="$PAKETE git github-cli rclone xclip ImageMagick nodejs tailscale
-        duf dust fonttools"
+        fonttools"
 
 info "xbps wird aufgefrischt und die Paketliste installiert."
 sudo xbps-install -Syu || true          # erster Lauf aktualisiert ggf. nur xbps
@@ -140,12 +154,36 @@ else
     warn "/etc/bluetooth/main.conf fehlt, AutoEnable nicht gesetzt"
 fi
 
+# ----------------------------------------------------------------------- Ton
+
+schritt "Ton"
+# PipeWire liest nur seine eigene Konfiguration. WirePlumber und die
+# PulseAudio-Schnittstelle kommen erst dazu, wenn ihre Beispieldateien in
+# /etc/pipewire/pipewire.conf.d/ verlinkt sind -- ohne sie laeuft zwar ein
+# pipewire, es verschaltet aber nichts und kein Programm findet ein Ausgabe-
+# geraet. Symlinks statt Kopien, damit Updates der Beispiele durchschlagen.
+sudo mkdir -p /etc/pipewire/pipewire.conf.d
+for paar in "wireplumber/10-wireplumber.conf" "pipewire/20-pipewire-pulse.conf"; do
+    ziel="/usr/share/examples/$paar"
+    name=$(basename "$paar")
+    if [ ! -e "$ziel" ]; then
+        warn "$ziel fehlt -- Paket nicht installiert?"
+    elif [ -e "/etc/pipewire/pipewire.conf.d/$name" ]; then
+        info "$name ist bereits verlinkt"
+    else
+        sudo ln -s "$ziel" "/etc/pipewire/pipewire.conf.d/$name"
+        gut "$name verlinkt"
+    fi
+done
+
 # ------------------------------------------------------------------ Dienste
 
 schritt "Dienste"
 # dbus muss mit: bluetoothd bricht ohne ihn ab ("sv check dbus" in seinem
 # run-Skript), und die Meldungen von dunst laufen ebenfalls darueber.
-for d in dbus dhcpcd wpa_supplicant tailscaled bluetoothd; do
+# alsa stellt die Mischerpegel beim Booten wieder her, rtkit vergibt die
+# Echtzeitprioritaet fuer PipeWire.
+for d in dbus dhcpcd wpa_supplicant tailscaled bluetoothd alsa rtkit; do
     if [ ! -e "/etc/sv/$d" ]; then
         warn "$d gibt es nicht, uebersprungen"
     elif [ -e "/var/service/$d" ]; then
@@ -240,13 +278,19 @@ for rel in etc/X11/xorg.conf.d/00-keyboard.conf \
            etc/fonts/conf.d/56-redhat-mono.conf \
            etc/udev/rules.d/60-rfkill-unblock.rules \
            etc/udev/hwdb.d/61-hp-envy-fkeys.hwdb \
-           etc/profile.d/claude-code.sh; do
+           etc/profile.d/claude-code.sh \
+           etc/rc.local; do
     sudo mkdir -p "/$(dirname "$rel")"
     sichern_system "/$rel"
     sudo cp "$QUELLE/system/$rel" "/$rel"
     info "/$rel"
 done
 sudo fc-cache -f >/dev/null 2>&1 || true
+
+# /etc/runit/2 ruft die Datei als "[ -x /etc/rc.local ] && /etc/rc.local" auf.
+# Ohne das Ausfuehrrecht wird sie beim Booten stillschweigend uebersprungen --
+# und cp behaelt die Rechte einer bereits vorhandenen Zieldatei bei.
+sudo chmod 755 /etc/rc.local
 
 # Die hwdb-Datei wirkt erst, wenn sie nach /etc/udev/hwdb.bin uebersetzt ist.
 # Der trigger zieht sie fuer die bereits angemeldeten Tastaturen nach, sodass

@@ -32,12 +32,13 @@ Es richtet ein:
 | | |
 | --- | --- |
 | Pakete | Xorg ohne Display-Manager, i3, rofi, picom, Alacritty, Firefox, PCManFM und die Werkzeuge des Dashboards |
-| Dienste | `dbus`, `dhcpcd`, `wpa_supplicant`, `tailscaled`, `bluetoothd` |
+| Dienste | `dbus`, `dhcpcd`, `wpa_supplicant`, `tailscaled`, `bluetoothd`, `alsa`, `rtkit` |
 | Locale | `de_DE.UTF-8` erzeugen (Systemsprache bleibt `C.UTF-8`), Konsolentastatur auf `de` |
 | Schriften | Red Hat Mono nach `/usr/share/fonts`, dazu die fontconfig-Regel, die `monospace` darauf umbiegt |
 | Mauszeiger | Nordzy nach `~/.icons` |
 | Eingabe | deutsches Tastaturlayout in X, Touchpad mit natürlichem Scrollen und Tap-to-Click, Drei-Finger-Gesten |
 | Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten |
+| Ton | PipeWire mit WirePlumber und PulseAudio-Schnittstelle, dazu `/run/user` aus `rc.local` — ohne das startet PipeWire nicht |
 | Bluetooth | `bluez`; der Adapter bleibt nach dem Booten aus und geht erst auf Klick an |
 | Firefox | Mittelklick fügt nicht mehr ein |
 | Dashboard | das komplette [`workspaces-vitals`](workspaces-vitals/) auf Arbeitsfläche 4 |

@@ -18,10 +18,9 @@ xbps-fetch -o setup.sh https://raw.githubusercontent.com/dev0gig/linuxrice/main/
 sh setup.sh
 ```
 
-Arbeitsfläche 4 ist ein Systemmonitor-Dashboard aus btop, glances, bandwhich
-und einer selbstgezeichneten Uhr in einer zellij-Sitzung — mit
-[eigener README](void-i3/workspaces-vitals/), weil zellij, glances und
-tty-clock dabei jeweils eine eigene Falle aufstellen.
+Arbeitsfläche 4 zeigt btop über die volle Fläche. Bedienen lässt es sich dort
+ganz normal — nur schließen nicht: die Fenstertaste ist für diese Fläche
+ausgenommen und ein beendetes btop startet sofort wieder.
 
 ## ✅ In Benutzung — Termux
 

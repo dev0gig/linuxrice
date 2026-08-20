@@ -58,16 +58,15 @@ als `<datei>.vor-void-i3` daneben.
 > | `config/.bashrc` | `@@REMOTE_ALIAS@@` statt eines fertigen `alias` |
 > | `config/.local/bin/i3-workspace-names` | `@@WS2_NAME@@`, `@@WS3_NAME@@` |
 > | `config/.local/bin/remote-shell` | `@@SSH_TARGET@@`, `@@REMOTE_ALIAS_NAME@@`; heißt lokal anders |
-> | `workspaces-vitals/home/…` | `/home/user` als Platzhalter, den `setup.sh` auf `$HOME` setzt |
 >
-> Änderungen an diesen fünf also von Hand nachziehen. Alles Übrige darf
+> Änderungen an diesen vier also von Hand nachziehen. Alles Übrige darf
 > direkt kopiert werden.
 
 Es richtet ein:
 
 | | |
 | --- | --- |
-| Pakete | Xorg ohne Display-Manager, i3, rofi, picom, Alacritty, PCManFM, Flatpak und die Werkzeuge des Dashboards |
+| Pakete | Xorg ohne Display-Manager, i3, rofi, picom, Alacritty, PCManFM, Flatpak, btop |
 | Dienste | `dbus`, `dhcpcd`, `wpa_supplicant`, `tailscaled`, `bluetoothd`, `alsa`, `rtkit` |
 | Locale | `de_DE.UTF-8` erzeugen (Systemsprache bleibt `C.UTF-8`), Konsolentastatur auf `de` |
 | Schriften | Red Hat Mono nach `/usr/share/fonts`, dazu die fontconfig-Regel, die `monospace` darauf umbiegt |
@@ -77,7 +76,7 @@ Es richtet ein:
 | Ton | PipeWire mit WirePlumber und PulseAudio-Schnittstelle, dazu `dumb_runtime_dir` (nicht in `base-system`) und `/run/user` aus `rc.local` — ohne `XDG_RUNTIME_DIR` startet PipeWire nicht |
 | Bluetooth | `bluez`; der Adapter bleibt nach dem Booten aus und geht erst auf Klick an |
 | Browser | Chrome (Standard) und Brave als Flatpak von Flathub |
-| Dashboard | das komplette [`workspaces-vitals`](workspaces-vitals/) auf Arbeitsfläche 4 |
+| Systemmonitor | btop über die volle Arbeitsfläche 4, unschließbar (`config/.local/bin/vitals-btop`) |
 
 Was danach von Hand kommt — WLAN, Tailscale-Anmeldung, `sensors-detect`,
 eigene Hintergrundbilder, Anmeldung in Chrome — listet das Skript am Ende
@@ -89,12 +88,7 @@ noch einmal auf.
 setup.sh              das Einrichtungsskript
 config/               wird nach $HOME kopiert
 system/               wird nach / kopiert (mit sudo)
-workspaces-vitals/    das Dashboard von Arbeitsfläche 4, mit eigener README
 ```
-
-`config/` und `workspaces-vitals/home/` überschneiden sich nicht: die Dateien
-des Dashboards liegen **nur** unter `workspaces-vitals`, `setup.sh` kopiert
-von beiden Stellen. So gibt es von jeder Datei genau eine Fassung.
 
 ## Arbeitsflächen
 
@@ -103,7 +97,7 @@ von beiden Stellen. So gibt es von jeder Datei genau eine Fassung.
 | 1 | Chrome (Autostart, keine eigene Taste — sonst rofi) | `Google-chrome` |
 | 2 | lokales Terminal | `autostart-term` |
 | 3 | SSH-Sitzung, hält nach dem Ende eine lokale Shell offen | `remote-term` |
-| 4 | Vitals-Dashboard | `vitals-dashboard` |
+| 4 | btop über die volle Fläche | `vitals-dashboard` |
 | 5 | Dateimanager Yazi, volle Fläche ohne Rahmen | `yazi-term` |
 
 Jedes Autostart-Fenster hat eine eigene Fensterklasse — damit landet genau
@@ -193,8 +187,8 @@ was einen Editor aufruft (`git commit`, `crontab`, …).
 **Kitty wurde bewusst nicht genommen.** Das einzige Argument wäre Yazis
 Bildvorschau im Terminal gewesen — Alacritty kann kein Sixel und kein
 Kitty-Graphics-Protokoll. Dafür ist `nsxiv` aber ohnehin die bessere Lösung,
-und ein Terminalwechsel hätte `i3/config`, `rofi/config.rasi` und das
-zellij-Layout angefasst.
+und ein Terminalwechsel hätte `i3/config` und `rofi/config.rasi`
+angefasst.
 
 ## Klicks in der Statusleiste
 
@@ -278,5 +272,10 @@ gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
 * **Neue `.desktop`-Dateien brauchen `update-desktop-database`.** Ohne den
   Aufruf auf `~/.local/share/applications` findet der Dateimanager sie erst
   nach der nächsten Anmeldung.
-* Die Fallstricke rund um zellij, glances und die Uhr stehen in der
-  [README des Dashboards](workspaces-vitals/).
+* **btop auf Fläche 4 lässt sich nicht schließen** — und das ist Absicht.
+  Zwei Teile greifen ineinander: `i3/config` nimmt die Klasse
+  `vitals-dashboard` von `Mod+Shift+q` und `Strg+q` aus, und
+  `~/.local/bin/vitals-btop` startet btop in einer Schleife sofort neu, wenn
+  es über `q`, `Strg+C` oder das Esc-Menü beendet wird. Alles andere in btop
+  — sortieren, filtern, Maus, Menü — funktioniert unverändert. Ein `flock`
+  in derselben Datei hält die Zahl der Fenster bei genau einem.

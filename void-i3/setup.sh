@@ -1,7 +1,7 @@
 #!/bin/sh
 # void-i3/setup.sh -- richtet nach einer frischen Void-Installation die
 # komplette Arbeitsumgebung ein: Xorg, i3, Terminal, Schriften, Cursor,
-# Touchpad, Tastatur und das Vitals-Dashboard auf Arbeitsflaeche 4.
+# Touchpad, Tastatur und btop auf Arbeitsflaeche 4 (Vitals).
 #
 # Aufruf aus dem geklonten Repo heraus:
 #     sh void-i3/setup.sh
@@ -56,8 +56,6 @@ if [ -z "$QUELLE" ] || [ ! -d "$QUELLE/config" ]; then
     [ -d "$QUELLE/config" ] || fehler "Das Repo sieht anders aus als erwartet."
     gut "nach $QUELLE entpackt"
 fi
-VITALS="$QUELLE/workspaces-vitals/home"
-[ -d "$VITALS" ] || fehler "workspaces-vitals fehlt neben dem Skript."
 
 # ------------------------------------------------------------------- Fragen
 
@@ -137,11 +135,12 @@ PAKETE="$PAKETE pipewire wireplumber alsa-pipewire alsa-utils rtkit dumb_runtime
 # Tray-Applet wie blueman braucht es dafuer nicht.
 PAKETE="$PAKETE bluez"
 
-# Das Vitals-Dashboard auf Arbeitsflaeche 4. Kein tty-clock mehr: die Uhr
-# ist ein eigenes Skript (vitals-clock), weil tty-clock das Datum nur unter
-# die Ziffern setzen konnte und es nach einer Groessenaenderung gar nicht
-# mehr zeichnete.
-PAKETE="$PAKETE zellij btop glances bandwhich lm_sensors"
+# btop fuellt Arbeitsflaeche 4 (Vitals) allein und ueber die volle Flaeche.
+# Hier standen frueher zellij, glances, bandwhich und eine selbstgezeichnete
+# Uhr als geteiltes Dashboard -- das ist raus, btop zeigt dieselben Werte
+# ohne festes Layout, das an Schriftgroesse und Barhoehe haengt.
+# lm_sensors bleibt: btop liest die Temperaturen darueber.
+PAKETE="$PAKETE btop lm_sensors"
 
 # Fuer die LEDs in F5 und F8: gcc uebersetzt das winzige Hilfsprogramm
 # tasten-led, setcap (aus libcap-progs) gibt ihm die noetige Capability.
@@ -157,9 +156,6 @@ PAKETE="$PAKETE gcc libcap-progs"
 PAKETE="$PAKETE yazi helix nano glow bat nsxiv desktop-file-utils"
 
 # Werkzeuge, die im Alltag dazugehoeren.
-# duf und dust sind bewusst raus: die beiden hatten Panes im Dashboard, sind
-# dort aber gescheitert (sie messen die Breite einmal beim Start und
-# schreiben stur weiter). Ihre Aufgabe hat glances uebernommen.
 PAKETE="$PAKETE git github-cli rclone xclip ImageMagick nodejs tailscale
         fonttools"
 
@@ -408,7 +404,7 @@ schritt "Konfiguration im Benutzerverzeichnis"
 # Die Dateiliste kommt per Here-Dokument statt per Pipe in die Schleife,
 # sonst liefe sie in einer Subshell und der Zaehler bliebe bei 0.
 GESICHERT=0
-for quelle in "$QUELLE/config" "$VITALS"; do
+for quelle in "$QUELLE/config"; do
     while read -r f; do
         [ -n "$f" ] || continue
         sichern "$quelle/${f#./}" "$HOME/${f#./}"
@@ -419,9 +415,6 @@ LISTE
 done
 [ "$GESICHERT" -eq 0 ] || info "$GESICHERT Dateien liegen als .vor-void-i3 gesichert"
 cp -r "$QUELLE/config/." "$HOME/"
-
-# Das Dashboard kommt aus workspaces-vitals -- dort liegt die einzige Kopie.
-cp -r "$VITALS/." "$HOME/"
 chmod 755 "$HOME"/.local/bin/* "$HOME/.config/i3/wallpaper.sh"
 gut "Dateien abgelegt"
 
@@ -434,12 +427,6 @@ update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 # ------------------------------------------------------------- Platzhalter
 
 schritt "Platzhalter einsetzen"
-
-# Die Pfade im zellij-Layout muessen absolut sein -- KDL kennt kein $HOME.
-sed -i "s|/home/user|$HOME|g" \
-    "$HOME/.config/zellij/layouts/dashboard.kdl" \
-    "$HOME/.local/bin/vitals-sensoren"
-info "Pfade im Dashboard auf $HOME gesetzt"
 
 sed -i "s|@@WS2_NAME@@|$WS2_NAME|" "$HOME/.local/bin/i3-workspace-names"
 
@@ -489,7 +476,7 @@ else
     warn "i3 meldet etwas an der Konfiguration:"
     i3 -C -c "$HOME/.config/i3/config" 2>&1 | sed 's/^/      /'
 fi
-for s in "$HOME"/.local/bin/vitals "$HOME"/.local/bin/wallpaper "$HOME/.config/i3/wallpaper.sh"; do
+for s in "$HOME"/.local/bin/vitals-btop "$HOME"/.local/bin/wallpaper "$HOME/.config/i3/wallpaper.sh"; do
     [ -f "$s" ] && { sh -n "$s" && info "ok: $(basename "$s")"; }
 done
 

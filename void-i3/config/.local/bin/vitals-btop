@@ -1,0 +1,36 @@
+#!/bin/sh
+# btop auf Arbeitsflaeche 4 (Vitals), volle Flaeche.
+#
+# Tastatur und Maus laufen ganz normal: sortieren, filtern, das Menue mit
+# Esc, Mausklicks und Scrollen -- alles wie in btop ueblich. Das EINZIGE,
+# was nicht gehen soll, ist die Anzeige loszuwerden. Dafuer greifen drei
+# Dinge ineinander:
+#
+#   * Die Schleife unten. Druckt jemand "q" oder Strg+C oder waehlt im
+#     Esc-Menue "Quit", faellt btop heraus und wird sofort wieder
+#     gestartet. Das Fenster bleibt dabei stehen -- es haengt an dieser
+#     Schleife, nicht an btop.
+#   * Der Ausschluss in ~/.config/i3/config: die Bindungen fuer
+#     Mod+Shift+q und Strg+q lassen die Klasse vitals-dashboard aus, das
+#     Fenster laesst sich also auch nicht zuschieben.
+#   * Die Sperre gleich hier drunter, damit es bei genau einem Fenster
+#     bleibt.
+
+# Nur EINE Ausgabe: der Schreiblock auf die Datei wird gehalten, so lange
+# die Schleife laeuft. Startet etwas eine zweite Ausgabe (etwa ein zweites
+# "exec" nach einem verunglueckten i3-Start), bekommt sie den Lock nicht
+# und beendet sich sofort -- ihr Terminalfenster geht damit gleich wieder
+# zu, und auf Flaeche 4 bleibt genau ein btop stehen.
+SPERRE=${XDG_RUNTIME_DIR:-/tmp}/vitals-btop.lock
+exec 9>"$SPERRE"
+flock -n 9 || exit 0
+
+# Die Bremse am Ende faengt den Fall ab, dass btop gar nicht erst hochkommt
+# (fehlt das Binary oder ist das Terminal zu klein, beendet es sich sofort).
+# Ohne sie liefe die Schleife heiss und wuerde einen Kern voll auslasten.
+while :; do
+    start=$(cut -d. -f1 /proc/uptime)
+    btop
+    ende=$(cut -d. -f1 /proc/uptime)
+    [ "$((ende - start))" -lt 2 ] && sleep 2
+done

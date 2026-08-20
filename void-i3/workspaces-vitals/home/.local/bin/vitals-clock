@@ -131,8 +131,25 @@ def aufraeumen(*_):
 
 
 def main():
+    # SIGTERM ist der geordnete Weg: zellij schickt ihn beim Beenden der
+    # Session, dann darf die Uhr aufraeumen und gehen.
     signal.signal(signal.SIGTERM, aufraeumen)
-    signal.signal(signal.SIGINT, aufraeumen)
+
+    # SIGINT dagegen wird ausdruecklich ueberhoert. Grund: zellij laeuft
+    # laut config.kdl im Locked Mode und reicht damit JEDE Taste an das
+    # Pane durch -- auch Strg+C. Ist die Uhr angeklickt (mouse_mode ist an)
+    # und faellt ein Strg+C, bekam sie SIGINT, lief in aufraeumen() und
+    # beendete sich mit Status 0. Im Pane stand danach still
+    # "EXIT CODE: 0", der Rest des Dashboards lief weiter.
+    #
+    # Genau so ist sie am 20.08.2026 um 13:36 gestorben. Nachweisbar an
+    # der 0: eine Ausnahme im Python haette 1 ergeben, und ein Signal ohne
+    # Behandlung gar keinen Code -- zellij schreibt dann nur "EXITED" in
+    # den Panetitel. Nachgemessen mit einer Probesession und SIGKILL.
+    #
+    # Die Uhr nimmt keine Eingaben entgegen, ihr fehlt also nichts, wenn
+    # sie Strg+C nicht mehr hoert.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     sys.stdout.write("\033[?25l")          # Cursor weg, er blinkt sonst mitten im Bild
 
     zuletzt = None

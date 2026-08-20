@@ -67,7 +67,7 @@ disk "/" {
 }
 
 wireless _first_ {
-        format_up   = "  <span foreground='#b8bb26'>󰖩</span> <span foreground='#9a9a9a'>%essid %quality</span>  "
+        format_up   = "  <span foreground='#b8bb26'>󰖩</span> <span foreground='#9a9a9a'>%essid</span>  "
         format_down = "  <span foreground='#555555'>󰖪</span> <span foreground='#555555'>kein WLAN</span>  "
 }
 

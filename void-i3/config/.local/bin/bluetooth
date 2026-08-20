@@ -1,0 +1,214 @@
+#!/usr/bin/python3
+# bluetooth  -- Bluetooth an/aus und Geraete verbinden
+#
+# Aufgerufen vom Bluetooth-Block in der i3-Leiste (siehe ~/.local/bin/i3status-melder):
+#
+#   Linksklick  -> "bluetooth um"   (Funk an/aus)
+#   Rechtsklick -> "bluetooth"      (Menue per rofi)
+#
+# Ohne DISPLAY oder ohne rofi geht die Liste nach stdout, damit sich Bluetooth
+# auch im Terminal bedienen laesst (wie bei ~/.local/bin/benachrichtigungen).
+#
+# WARUM bluetoothctl und nicht D-Bus direkt: python-dbus ist hier nicht
+# installiert, und org.bluez ueber "gdbus call" anzusprechen hiesse
+# GetManagedObjects-Ausgabe von Hand zu zerlegen. bluetoothctl ist Teil von
+# bluez, liegt also ohnehin da, und seine Ausgabe ist zeilenweise lesbar.
+#
+# Rechte: keine noetig. /usr/share/dbus-1/system.d/bluetooth.conf erlaubt
+# "send_destination=org.bluez" im Default-Kontext, also jedem Benutzer --
+# polkit gibt es auf diesem Rechner nicht.
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+BT = "\U000f00af"        # nf-md-bluetooth
+BT_AUS = "\U000f00b2"    # nf-md-bluetooth_off
+BT_VERB = "\U000f00b1"   # nf-md-bluetooth_connect
+SUCHE = "\U000f0349"     # nf-md-magnify
+
+# bluetoothctl faerbt seine Ausgabe auch dann, wenn sie in eine Pipe geht.
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+# "Device F4:B3:01:8D:07:DD Kopfhoerer"
+GERAET = re.compile(r"^Device ([0-9A-F:]{17}) (.*)$", re.M)
+
+SCAN_SEKUNDEN = 8
+
+
+def ctl(*argumente, timeout=10):
+    """bluetoothctl aufrufen und die Ausgabe ohne Farbcodes zurueckgeben."""
+    try:
+        fertig = subprocess.run(["bluetoothctl", *argumente],
+                                capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return ANSI.sub("", fertig.stdout)
+
+
+def an():
+    """True, wenn der Adapter eingeschaltet ist."""
+    return "Powered: yes" in ctl("show", timeout=5)
+
+
+def vorhanden():
+    return bool(ctl("list", timeout=5).strip())
+
+
+def geraete(art=None):
+    """Liste (MAC, Name). art="Paired"/"Connected" schraenkt ein."""
+    ausgabe = ctl("devices", art) if art else ctl("devices")
+    return GERAET.findall(ausgabe)
+
+
+def einschalten():
+    # rfkill zuerst: bei gesetztem Softblock scheitert "power on" mit
+    # org.bluez.Error.Blocked. Braucht kein sudo, weil /dev/rfkill per
+    # udev-Regel der Gruppe wheel gehoert (siehe 60-rfkill-unblock.rules).
+    subprocess.run(["rfkill", "unblock", "bluetooth"], capture_output=True)
+    ctl("power", "on")
+
+
+def ausschalten():
+    # Nur "power off", kein "rfkill block": der Funk ist damit genauso aus,
+    # aber der Adapter bleibt fuer bluetoothd sichtbar und laesst sich ohne
+    # Umweg ueber rfkill wieder einschalten.
+    ctl("power", "off")
+
+
+def melden(text, symbol=BT):
+    """Kurze Rueckmeldung ueber dunst -- im Terminal nach stdout."""
+    if os.environ.get("DISPLAY") and shutil.which("dunstify"):
+        subprocess.run(["dunstify", "-a", "bluetooth", "-u", "low",
+                        symbol + "  " + text], capture_output=True)
+    else:
+        print(text)
+
+
+def verbinden(mac, name):
+    melden("Verbinde mit " + name + " ...")
+    ausgabe = ctl("connect", mac, timeout=25)
+    if "Connection successful" in ausgabe:
+        melden(name + " verbunden", BT_VERB)
+    else:
+        melden("Verbindung zu " + name + " fehlgeschlagen", BT_AUS)
+
+
+def trennen(mac, name):
+    ctl("disconnect", mac, timeout=15)
+    melden(name + " getrennt")
+
+
+def koppeln(mac, name):
+    """Kopplung samt Vertrauen -- ohne "trust" fragt bluez bei jeder spaeteren
+    Verbindung erneut nach, und ohne laufenden Agenten scheitert das dann."""
+    melden("Koppele " + name + " ...")
+    ausgabe = ctl("pair", mac, timeout=40)
+    if "Pairing successful" not in ausgabe and "AlreadyExists" not in ausgabe:
+        melden("Kopplung mit " + name + " fehlgeschlagen", BT_AUS)
+        return
+    ctl("trust", mac)
+    verbinden(mac, name)
+
+
+def suchen():
+    """Umgebung absuchen. bluetoothctl beendet sich mit --timeout selbst;
+    die gefundenen Geraete stehen danach in "devices"."""
+    melden("Suche " + str(SCAN_SEKUNDEN) + " Sekunden lang ...", SUCHE)
+    ctl("--timeout", str(SCAN_SEKUNDEN), "scan", "on",
+        timeout=SCAN_SEKUNDEN + 10)
+
+
+def menue():
+    if not vorhanden():
+        melden("Kein Bluetooth-Adapter gefunden", BT_AUS)
+        return
+
+    laeuft = an()
+    gekoppelt = geraete("Paired")
+    verbunden = dict(geraete("Connected")) if laeuft else {}
+
+    zeilen = [(BT_AUS + "  Bluetooth ausschalten") if laeuft
+              else (BT + "  Bluetooth einschalten")]
+    schalter = len(zeilen)
+
+    eintraege = []
+    if laeuft:
+        zeilen.append(SUCHE + "  Geraete suchen ...")
+        schalter = len(zeilen)
+        for mac, name in gekoppelt:
+            zustand = "verbunden" if mac in verbunden else "gekoppelt"
+            zeilen.append("{}  {:<28.28}  {}".format(
+                BT_VERB if mac in verbunden else BT, name, zustand))
+            eintraege.append((mac, name, mac in verbunden, True))
+        # Nach einer Suche stehen auch ungekoppelte Geraete in "devices".
+        bekannt = {mac for mac, _ in gekoppelt}
+        for mac, name in geraete():
+            if mac not in bekannt:
+                zeilen.append("{}  {:<28.28}  neu".format(BT, name))
+                eintraege.append((mac, name, False, False))
+
+    if not (os.environ.get("DISPLAY") and shutil.which("rofi")):
+        for z in zeilen:
+            print(z)
+        return
+
+    fertig = subprocess.run(
+        ["rofi", "-dmenu", "-i", "-no-custom", "-format", "i",
+         "-p", BT + " Bluetooth", "-lines", str(min(len(zeilen), 14)),
+         # Warum die drei Zustaende ausgeschrieben stehen: siehe
+         # ~/.local/bin/benachrichtigungen -- sonst streift rofi die Liste beige.
+         "-theme-str",
+         "element normal.normal    { background-color: @bg; text-color: @fg-dim; }"
+         "element alternate.normal { background-color: @bg; text-color: @fg-dim; }"
+         "element selected.normal  { background-color: @bg-sel; text-color: @fg; }"],
+        input="\n".join(zeilen), capture_output=True, text=True)
+    if fertig.returncode != 0 or not fertig.stdout.strip():
+        return                      # mit Escape abgebrochen
+
+    gewaehlt = int(fertig.stdout.strip())
+    if gewaehlt == 0:
+        ausschalten() if laeuft else einschalten()
+        return
+    if laeuft and gewaehlt == 1:
+        suchen()
+        menue()                     # mit den Funden noch einmal aufblenden
+        return
+
+    mac, name, ist_verbunden, ist_gekoppelt = eintraege[gewaehlt - schalter]
+    if ist_verbunden:
+        trennen(mac, name)
+    elif ist_gekoppelt:
+        verbinden(mac, name)
+    else:
+        koppeln(mac, name)
+
+
+def main():
+    befehl = sys.argv[1] if len(sys.argv) > 1 else "menue"
+    if befehl == "an":
+        einschalten()
+    elif befehl == "aus":
+        ausschalten()
+    elif befehl == "um":
+        ausschalten() if an() else einschalten()
+    elif befehl == "zustand":
+        # "kein Adapter" ist etwas anderes als "aus" -- die Leiste laesst den
+        # Bluetooth-Block in dem Fall ganz weg, statt ihn stumpf anzuzeigen.
+        if not vorhanden():
+            print("kein Adapter")
+            return
+        print("an" if an() else "aus")
+        for mac, name in geraete("Connected"):
+            print("verbunden: {}  {}".format(mac, name))
+    elif befehl == "menue":
+        menue()
+    else:
+        print("Aufruf: bluetooth [an|aus|um|zustand|menue]", file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

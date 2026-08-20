@@ -18,6 +18,12 @@
 #           laufen die LED in F5 und der OSD-Balken mit wie bei den Tasten.
 #   WLAN    Linksklick -> Funk an/aus per rfkill.
 #
+# Und es haengt links neben dem WLAN einen Bluetooth-Block ein -- i3status
+# kennt Bluetooth nicht, der Block stammt also ganz aus diesem Skript:
+#
+#   Linksklick  -> Funk an/aus, Rechtsklick -> Menue (Geraete verbinden).
+#   Beides ueber ~/.local/bin/bluetooth, das auch im Terminal bedienbar ist.
+#
 # WARUM ein Wrapper: i3status kann selbst keine Mausklicks entgegennehmen.
 # Klickbare Bloecke gibt es nur ueber das i3bar-Protokoll, und dafuer muss
 # im Kopf "click_events": true stehen -- das setzt hier dieses Skript, und
@@ -29,6 +35,7 @@
 # aktualisiert sich also im selben Moment, in dem eine Meldung kommt.
 # Klappt der Monitor nicht, wird bei jeder i3status-Zeile nachgefragt.
 
+import html
 import json
 import os
 import re
@@ -62,10 +69,26 @@ WLAN_AUS_TEXT = "  <span foreground='{0}'>{1}</span> <span foreground='{0}'>WLAN
 
 RFKILL = "/sys/class/rfkill"
 
+BLAU = "#83a598"
+
+# Bluetooth-Block: Icons und Zustaende. Farbe wie ueberall reine Signalfunktion --
+# blau heisst "Funk laeuft", stumpfes Grau heisst "aus".
+BT = "\U000f00af"        # nf-md-bluetooth         -- an, nichts verbunden
+BT_AUS = "\U000f00b2"    # nf-md-bluetooth_off     -- Funk aus
+BT_VERB = "\U000f00b1"   # nf-md-bluetooth_connect -- Geraet verbunden
+
+BLUETOOTH = os.path.expanduser("~/.local/bin/bluetooth")
+
+# Zustand des Adapters, gefuellt von bt_abfragen(): None heisst "noch nichts
+# gelesen", ein leeres dict heisst "kein Adapter da" -- dann faellt der Block weg.
+bt = None
+bt_gelesen = 0.0
+
 anzahl = 0
 letzte_zeile = []
 schloss = threading.Lock()
 monitor_laeuft = False
+bt_monitor_laeuft = False
 
 
 def verlauf_laenge():
@@ -160,6 +183,114 @@ def wlan_umschalten():
         threading.Thread(target=nachziehen, daemon=True).start()
 
 
+def bt_abfragen():
+    """Adapterzustand von ~/.local/bin/bluetooth holen.
+
+    Die Abfrage laeuft ueber dasselbe Skript, das auch die Klicks ausfuehrt --
+    so steht die Logik (bluetoothctl, rfkill, Namen der Geraete) an einer
+    Stelle statt zweimal leicht verschieden. Kostet einen Prozess, faellt aber
+    kaum ins Gewicht: aufgerufen wird sie nicht im Takt, sondern nur wenn
+    bluez eine Aenderung meldet (siehe bt_monitor).
+    """
+    global bt, bt_gelesen
+    bt_gelesen = time.monotonic()
+    try:
+        fertig = subprocess.run([BLUETOOTH, "zustand"],
+                                capture_output=True, text=True, timeout=8)
+    except (OSError, subprocess.SubprocessError):
+        bt = {}                     # bluetoothd haengt oder ist weg
+        return
+    zeilen = fertig.stdout.splitlines()
+    if not zeilen or zeilen[0].startswith("kein"):
+        bt = {}
+        return
+    bt = {
+        "an": zeilen[0].strip() == "an",
+        "geraete": [z.split("  ", 1)[1].strip()
+                    for z in zeilen[1:] if z.startswith("verbunden: ")],
+    }
+
+
+def bt_block():
+    """Der Bluetooth-Block, oder None solange kein Adapter bekannt ist."""
+    if not bt:
+        return None
+    if not bt["an"]:
+        text = "  <span foreground='{0}'>{1}</span> <span foreground='{0}'>aus</span>  ".format(
+            STUMPF, BT_AUS)
+        return {"name": "bluetooth", "full_text": text, "markup": "pango"}
+
+    geraete = bt["geraete"]
+    if not geraete:
+        icon, wort = BT, "an"
+    elif len(geraete) == 1:
+        # Gekuerzt, damit ein langer Geraetename die Leiste nicht verschiebt;
+        # escape(), weil der Name als Pango-Markup gelesen wird und ein "&"
+        # im Namen sonst die ganze Zeile ungueltig machen wuerde.
+        icon, wort = BT_VERB, html.escape(geraete[0][:16])
+    else:
+        icon, wort = BT_VERB, "{} Geraete".format(len(geraete))
+    text = "  <span foreground='{}'>{}</span> <span foreground='{}'>{}</span>  ".format(
+        BLAU, icon, GRAU, wort)
+    return {"name": "bluetooth", "full_text": text, "markup": "pango"}
+
+
+def bt_einfuegen(bloecke):
+    """Den Bluetooth-Block links neben das WLAN haengen -- die beiden Funk-
+    Anzeigen stehen damit beieinander. Ohne WLAN-Block kommt er ans Ende der
+    i3status-Bloecke, also noch vor die Glocke."""
+    block = bt_block()
+    if block is None:
+        return bloecke
+    stelle = len(bloecke)
+    for i, b in enumerate(bloecke):
+        if b.get("name") == "wireless":
+            stelle = i
+            break
+    return bloecke[:stelle] + [block] + bloecke[stelle:]
+
+
+def bt_nachziehen():
+    """Nach einem Klick den Zustand nachlesen: Ein- und Ausschalten laeuft
+    ueber mehrere Zwischenstufen ("off-enabling"), und der letzte Schritt
+    kommt erst nach gut einer Sekunde."""
+    for _ in range(4):
+        time.sleep(1.5)
+        bt_abfragen()
+        neu_zeichnen()
+
+
+def bt_monitor():
+    """Auf Aenderungen von org.bluez lauschen -- gleiche Bauart wie monitor()
+    fuer dunst, nur auf dem System-Bus.
+
+    Gemeldet wird jedes PropertiesChanged; waehrend einer Geraetesuche sind
+    das viele pro Sekunde. Darum wird hoechstens einmal je Sekunde wirklich
+    nachgefragt, sonst liefe fuer jedes gefundene Geraet ein Prozess an."""
+    global bt_monitor_laeuft
+    if not shutil.which("stdbuf"):
+        return
+    befehl = ["stdbuf", "-oL", "gdbus", "monitor", "--system", "--dest", "org.bluez"]
+    while True:
+        try:
+            lauscher = subprocess.Popen(
+                befehl, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                encoding="utf-8", errors="replace")
+        except OSError:
+            return
+        bt_monitor_laeuft = True
+        for _zeile in lauscher.stdout:
+            if time.monotonic() - bt_gelesen < 1.0:
+                continue
+            bt_abfragen()
+            neu_zeichnen()
+        bt_monitor_laeuft = False
+        # bluetoothd neu gestartet oder gar nicht da: warten, dann neu binden
+        time.sleep(5)
+        bt_abfragen()
+        neu_zeichnen()
+
+
 def glocken_block():
     if anzahl:
         text = "  <span foreground='{}'>{}</span> <span foreground='{}'>{}</span>   ".format(
@@ -181,7 +312,7 @@ def ausgeben(bloecke):
 
     ensure_ascii=False: die Icons sollen als echtes UTF-8 rausgehen wie bei
     i3status auch, nicht als \\uXXXX-Ersatzpaare."""
-    bloecke = wlan_block_ersetzen(bloecke)
+    bloecke = bt_einfuegen(wlan_block_ersetzen(bloecke))
     with schloss:
         sys.stdout.write(json.dumps(bloecke + [glocken_block()], ensure_ascii=False) + ",\n")
         sys.stdout.flush()
@@ -255,6 +386,14 @@ def klicks():
                 wlan_umschalten()
             continue
 
+        if name == "bluetooth":
+            if taste == 1:
+                subprocess.Popen([BLUETOOTH, "um"])
+                threading.Thread(target=bt_nachziehen, daemon=True).start()
+            elif taste == 3:
+                subprocess.Popen([BLUETOOTH])
+            continue
+
         if name != "dunst":
             continue
         if taste == 1:
@@ -278,6 +417,7 @@ def main():
     i3status = subprocess.Popen(["i3status"], stdout=subprocess.PIPE,
                                 encoding="utf-8", errors="replace")
     anzahl = verlauf_laenge()
+    bt_abfragen()
 
     # Kopfzeile von i3status uebernehmen und um click_events ergaenzen
     kopf = json.loads(i3status.stdout.readline())
@@ -287,6 +427,7 @@ def main():
 
     threading.Thread(target=klicks, daemon=True).start()
     threading.Thread(target=monitor, daemon=True).start()
+    threading.Thread(target=bt_monitor, daemon=True).start()
 
     for zeile in i3status.stdout:
         zeile = zeile.strip().lstrip(",")
@@ -299,6 +440,8 @@ def main():
         letzte_zeile = bloecke
         if not monitor_laeuft:          # Notnagel, falls der Monitor fehlt
             anzahl = verlauf_laenge()
+        if not bt_monitor_laeuft:       # dasselbe fuer den Bluetooth-Block
+            bt_abfragen()
         ausgeben(bloecke)
 
 

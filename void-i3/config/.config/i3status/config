@@ -77,6 +77,9 @@ volume master {
         format_muted  = "  <span foreground='#555555'>󰖁</span> <span foreground='#555555'>stumm</span>  "
 }
 
+# Der Akku sitzt seit dem Umbau rechts aussen. Das Padding hier ist wirkungslos,
+# i3status schneidet es beim battery-Modul ab; den Randabstand setzt darum
+# ~/.local/bin/i3status-melder (akku_abtrennen).
 battery all {
         format          = "  <span foreground='#9a9a9a'>%status</span> <span foreground='#9a9a9a'>%percentage</span>  "
         format_down     = ""
@@ -98,11 +101,13 @@ battery all {
 tztime date {
         # Ohne locale liefert strftime englische Wochentage ("Wed" statt "Mi")
         locale = "de_DE.UTF-8"
-        format = "  <span foreground='#a89984'>󰃭</span> <span foreground='#9a9a9a'>%a %d.%m.</span>  "
+        format = "  <span foreground='#a89984'>󰃭</span> <span foreground='#9a9a9a'>%a %d.%m.</span>"
 }
 
-# Das abschliessende Leerzeichen ist Absicht: ohne es schneidet i3bar die
-# letzte Ziffer der Uhrzeit am rechten Bildschirmrand ab.
+# Datum und Uhr werden in ~/.local/bin/i3status-melder zu EINEM Block
+# verschmolzen (siehe zeit_zusammenfassen). Darum hat das Datum hinten kein
+# Padding mehr und die Uhr vorn nur ein einzelnes Leerzeichen: sonst klaffte
+# zwischen beiden eine Luecke von vier Leerzeichen.
 tztime local {
-        format = "  <span foreground='#fe8019'>󰅐</span> <span foreground='#e8e8e8'>%H:%M</span>   "
+        format = " <span foreground='#fe8019'>󰅐</span> <span foreground='#e8e8e8'>%H:%M</span>  "
 }

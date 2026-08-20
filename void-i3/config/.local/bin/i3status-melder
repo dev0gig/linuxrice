@@ -677,31 +677,79 @@ def system_zusammenfassen(bloecke):
     return aus
 
 
+def zeit_zusammenfassen(bloecke):
+    """Datum und Uhr zu einem Block "zeit" verschmelzen.
+
+    i3status liefert beide als eigenen Block (name "tztime", unterschieden
+    ueber instance "date" bzw. "local"). Als zwei Bloecke zeichnet i3bar
+    dazwischen einen Trenner und haelt Abstand -- verschmolzen stehen sie
+    dicht beieinander und lesen sich als eine Angabe. Die Texte kommen
+    unveraendert aus ~/.config/i3status/config, die Abstaende stecken dort
+    in den Formaten.
+    """
+    teile = [b for b in bloecke if b.get("name") == "tztime"]
+    if len(teile) < 2:
+        return bloecke
+    block = {
+        "name": "zeit",
+        "full_text": "".join(b.get("full_text", "") for b in teile),
+        "markup": "pango",
+    }
+    aus = []
+    for b in bloecke:
+        if b.get("name") != "tztime":
+            aus.append(b)
+        elif b is teile[0]:         # der neue Block sitzt an der Stelle des ersten
+            aus.append(block)
+    return aus
+
+
+def akku_abtrennen(bloecke):
+    """Den Akku-Block aus der Reihe nehmen -- er kommt in ausgeben() ganz
+    nach rechts. Rueckgabe: (Rest, Akku-Bloecke).
+
+    Das Padding wird hier gesetzt und nicht in ~/.config/i3status/config:
+    i3status schneidet Leerzeichen am Rand des battery-Formats ab. Ohne den
+    Zuschlag klebt der Prozentwert am rechten Bildschirmrand, und i3bar
+    schneidet dort die letzte Ziffer ab.
+    """
+    akku = [dict(b, full_text="  " + b.get("full_text", "") + "   ")
+            for b in bloecke if b.get("name") == "battery"]
+    rest = [b for b in bloecke if b.get("name") != "battery"]
+    return rest, akku
+
+
 def glocken_block():
+    # Padding und Trenner wie bei den uebrigen Bloecken: die Glocke stand
+    # frueher rechts aussen (dort waere ein Trenner ins Leere gezeichnet
+    # worden), seit dem Umbau steht rechts von ihr noch der Akku.
     if anzahl:
-        text = "  <span foreground='{}'>{}</span> <span foreground='{}'>{}</span>   ".format(
+        text = "  <span foreground='{}'>{}</span> <span foreground='{}'>{}</span>  ".format(
             GELB, GLOCKE, GRAU, anzahl)
     else:
-        text = "  <span foreground='{}'>{}</span>   ".format(STUMPF, GLOCKE_AUS)
+        text = "  <span foreground='{}'>{}</span>  ".format(STUMPF, GLOCKE_AUS)
     return {
         "name": "dunst",
         "full_text": text,
         "markup": "pango",
-        "separator": False,
-        "separator_block_width": 0,
     }
 
 
 def ausgeben(bloecke):
-    """Eine Zeile des i3bar-Protokolls schreiben. Die Glocke kommt ans Ende,
-    denn i3bar zeichnet den ersten Block links und den letzten rechts.
+    """Eine Zeile des i3bar-Protokolls schreiben. i3bar zeichnet den ersten
+    Block links und den letzten rechts; die Reihenfolge rechts aussen wird
+    darum hier festgelegt und nicht ueber "order" in der i3status-Konfiguration:
+
+        ... System, Bluetooth, WLAN, Tailscale, Ton | Datum+Uhr | Glocke | Akku
 
     ensure_ascii=False: die Icons sollen als echtes UTF-8 rausgehen wie bei
     i3status auch, nicht als \\uXXXX-Ersatzpaare."""
-    bloecke = ts_einfuegen(bt_einfuegen(wlan_block_ersetzen(
-        system_zusammenfassen(bloecke))))
+    bloecke = zeit_zusammenfassen(ts_einfuegen(bt_einfuegen(wlan_block_ersetzen(
+        system_zusammenfassen(bloecke)))))
+    rest, akku = akku_abtrennen(bloecke)
+    zeile = rest + [glocken_block()] + akku
     with schloss:
-        sys.stdout.write(json.dumps(bloecke + [glocken_block()], ensure_ascii=False) + ",\n")
+        sys.stdout.write(json.dumps(zeile, ensure_ascii=False) + ",\n")
         sys.stdout.flush()
 
 

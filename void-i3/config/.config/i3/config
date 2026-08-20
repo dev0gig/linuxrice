@@ -425,9 +425,13 @@ exec --no-startup-id picom -b
 bar {
         position top
         # Nicht i3status direkt, sondern der Wrapper ~/.local/bin/i3status-melder:
-        # er reicht i3status durch und haengt rechts die Glocke fuer den
+        # er reicht i3status durch und haengt die Glocke fuer den
         # Benachrichtigungs-Verlauf an (Linksklick oeffnet ihn, Rechtsklick
         # leert ihn). Klickbare Bloecke kann i3status selbst nicht liefern.
+        #
+        # Der Wrapper legt auch die Reihenfolge rechts aussen fest -- nicht
+        # "order" in ~/.config/i3status/config:
+        #   ... Ton | Datum+Uhr | Glocke | Akku
         #
         # Derselbe Wrapper fasst CPU, Temperatur, RAM und Platte zu einem
         # Block ganz links zusammen -- sichtbar ist nur das CPU-Icon mit dem

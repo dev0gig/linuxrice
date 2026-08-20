@@ -119,6 +119,10 @@ exec_always --no-startup-id libinput-gestures-setup restart
 # (PID-Datei) -- ein "pkill -f" hier wuerde die eigene exec-Shell mit killen.
 exec_always --no-startup-id ~/.local/bin/i3-workspace-names
 
+# Verlauf der Benachrichtigungen (dasselbe wie ein Klick auf die Glocke
+# ganz rechts in der Leiste).
+bindsym $mod+n exec --no-startup-id ~/.local/bin/benachrichtigungen
+
 # Wallpaper wechseln: Auswahl per rofi aus ~/Bilder/Wallpapers
 bindsym $mod+Shift+w exec --no-startup-id ~/.local/bin/wallpaper
 
@@ -367,7 +371,11 @@ exec --no-startup-id picom -b
 # finds out, if available)
 bar {
         position top
-        status_command i3status
+        # Nicht i3status direkt, sondern der Wrapper ~/.local/bin/i3status-melder:
+        # er reicht i3status durch und haengt rechts die Glocke fuer den
+        # Benachrichtigungs-Verlauf an (Linksklick oeffnet ihn, Rechtsklick
+        # leert ihn). Klickbare Bloecke kann i3status selbst nicht liefern.
+        status_command ~/.local/bin/i3status-melder
         # Pango-Syntax: erst die Familienliste (Komma-getrennt), die Groesse
         # ganz am Ende gilt fuer alle. Groesse 11 statt 10, damit die Icons
         # zur hoeheren Leiste passen.

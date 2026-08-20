@@ -102,7 +102,8 @@ funktionieren `workspace number N` und die `assign`-Regeln weiter.
 | `Strg+Alt+T` | Terminal |
 | `$mod+space` / `$mod+d` | rofi |
 | `$mod+Shift+d` | dmenu (Rückfallebene) |
-| `$mod+e` | Dateimanager |
+| `$mod+e` | Dateimanager Yazi (Terminal) |
+| `Strg+$mod+e` | Dateimanager PCManFM (Fenster) |
 | `$mod+Shift+f` | Vollbild |
 | `$mod+t` | Aufteilung umschalten |
 | `Strg+q` | Fenster schließen |
@@ -125,6 +126,43 @@ clipmenu nicht. Solange er lebt, steht darin allerdings alles im Klartext,
 auch kopierte Passwörter. Eine Ausnahmeliste über `CM_IGNORE_WINDOW` geht nur
 nach Fensterklasse und hilft deshalb nicht gegen ein Passwort-Plugin im
 Browser — das wäre dieselbe Klasse wie der Browser selbst.
+
+## Dateien, Text und Code
+
+Zwei Dateimanager nebeneinander, mit klarer Aufgabenteilung:
+
+* **Yazi** auf `$mod+e` ist der Alltagsweg. Es läuft in Alacritty und lässt
+  sich komplett mit den Cursortasten bedienen — hoch/runter bewegen, rechts
+  in den Ordner hinein, links wieder heraus. `hjkl` liegt parallel darauf,
+  man muss es aber nicht benutzen. Maus ist über `mouse_events` in
+  `~/.config/yazi/yazi.toml` eingeschaltet.
+* **PCManFM** auf `Strg+$mod+e` bleibt für die zwei Dinge, die ein
+  TUI-Dateimanager nicht kann: Dateien per Drag-and-Drop in andere Fenster
+  ziehen und Bilder als Vorschaubilder durchblättern. Es kostet 1,4 MB, und
+  nichts im System hängt davon ab — deshalb steht es hier statt weg zu sein.
+
+Ordner bleiben absichtlich bei PCManFM zugeordnet (`inode/directory`), damit
+„Ordner öffnen" aus den Browser-Downloads weiter funktioniert. Yazi steht
+dafür im Rechtsklick unter „Öffnen mit".
+
+Zum Ansehen und Bearbeiten:
+
+| Werkzeug | Wofür |
+| --- | --- |
+| `hx` (Helix) | Editor für Text, Markdown und Code; LSP ist eingebaut |
+| `nano` | schneller Notausgang für „eine Zeile ändern" |
+| `glow -p` | Markdown gerendert im Terminal lesen |
+| `bat` | `cat` mit Syntaxhervorhebung (als Alias auf `cat` gelegt) |
+| `nsxiv` | Bilder in einem richtigen Fenster |
+
+`EDITOR=hx` in der `.bashrc` wirkt auch in Yazi: `Enter` auf einer Textdatei
+öffnet Helix gleich im selben Terminalfenster, ohne ein zweites Alacritty.
+
+**Kitty wurde bewusst nicht genommen.** Das einzige Argument wäre Yazis
+Bildvorschau im Terminal gewesen — Alacritty kann kein Sixel und kein
+Kitty-Graphics-Protokoll. Dafür ist `nsxiv` aber ohnehin die bessere Lösung,
+und ein Terminalwechsel hätte `i3/config`, `rofi/config.rasi` und das
+zellij-Layout angefasst.
 
 ## Klicks in der Statusleiste
 
@@ -194,5 +232,19 @@ gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
   Eintrag steht deshalb direkt in `~/.config/mimeapps.list`.
 * **Die `assign`-Regel trifft `Google-chrome`, nicht `chrome`.** Die WM_CLASS
   des Flatpak-Fensters vorher mit `i3-msg -t get_tree` nachsehen, nicht raten.
+* **`Terminal=true` in einer `.desktop`-Datei ist hier eine Falle.** libfm
+  sucht sich dann selbst ein Terminal und landet bei `xterm` — falsche
+  Schrift, falsche Farben. Genau so kommen `Helix.desktop` und `yazi.desktop`
+  aus den Paketen. Die eigenen Einträge unter
+  `~/.local/share/applications/*-alacritty.desktop` rufen Alacritty deshalb
+  ausdrücklich im `Exec` auf und lassen `Terminal=false`.
+* **`xdg-mime query filetype` und der Dateimanager sind sich nicht einig.**
+  Für eine `.md` liefert das Shellskript `text/plain` (es fällt auf
+  `file --mime-type` zurück), `gio info` dagegen `text/markdown` — und *das*
+  benutzt libfm. Beim Prüfen von Zuordnungen also `gio info` fragen. In
+  `mimeapps.list` stehen beide Typen, damit es egal ist, welcher Weg greift.
+* **Neue `.desktop`-Dateien brauchen `update-desktop-database`.** Ohne den
+  Aufruf auf `~/.local/share/applications` findet der Dateimanager sie erst
+  nach der nächsten Anmeldung.
 * Die Fallstricke rund um zellij, glances und die Uhr stehen in der
   [README des Dashboards](workspaces-vitals/).

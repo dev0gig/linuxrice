@@ -1,3 +1,15 @@
 # HP ENVY x360: hp_wmi meldet WLAN beim Boot als soft-blocked.
 # Sobald das rfkill-Geraet auftaucht, soft-block wieder aufheben.
-SUBSYSTEM=="rfkill", ATTR{type}=="wlan", ATTR{soft}="0"
+#
+# ACTION=="add" ist zwingend und war anfangs vergessen: ohne den Filter
+# greift die Regel auch bei "change". Jedes "rfkill block wlan" erzeugt aber
+# genau so ein Ereignis -- udev hat den Block daraufhin im selben Moment
+# wieder aufgehoben. WLAN liess sich schlicht nicht ausschalten, auch nicht
+# als root. Aufgefallen beim Bau des WLAN-Klicks in der Statusleiste.
+ACTION=="add", SUBSYSTEM=="rfkill", ATTR{type}=="wlan", ATTR{soft}="0"
+
+# Damit der WLAN-Klick in der Leiste ohne sudo schalten kann: /dev/rfkill
+# gehoert sonst root:root mit 0644, patrick duerfte nur lesen. Ein
+# Passwortdialog auf einen Leistenklick waere Unfug, polkit gibt es hier
+# nicht -- also die Gruppe wheel schreiben lassen, in der patrick ohnehin ist.
+KERNEL=="rfkill", SUBSYSTEM=="misc", GROUP="wheel", MODE="0660"

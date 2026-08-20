@@ -69,6 +69,7 @@ function aktion(c) {
     if (c ~ /set-sink-volume.*-/)          return "Leiser"
     if (c ~ /set-sink-mute/)               return "Ton stumm an/aus"
     if (c ~ /set-source-mute/)             return "Mikrofon stumm an/aus"
+    if (c ~ /benachrichtigungen/)          return "Benachrichtigungen: Verlauf"
     if (c ~ /wallpaper/)                   return "Hintergrundbild wechseln"
     if (c ~ /^firefox/)                    return "Firefox"
     if (c ~ /^pcmanfm/)                    return "Dateimanager (PCManFM)"

@@ -11,4 +11,6 @@ export GTK_THEME=Adwaita:dark
 export XCURSOR_THEME=Nordzy-cursors
 export XCURSOR_SIZE=48
 
-exec i3
+# Sitzung mit eigenem D-Bus starten -- WirePlumber und andere Dienste
+# finden den Bus sonst nur ueber den X11-Autolaunch (mehrere Busse).
+exec dbus-run-session i3

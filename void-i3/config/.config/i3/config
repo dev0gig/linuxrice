@@ -261,13 +261,12 @@ bindsym $mod+h split h
 # split in vertical orientation
 bindsym $mod+v split v
 
-# Chrome (Standardbrowser)
-bindsym $mod+f exec --no-startup-id $HOME/.local/bin/chrome
+# Die Browser haben bewusst keine eigene Taste: Chrome startet ohnehin per
+# Autostart auf Arbeitsflaeche 1, alles Weitere geht ueber rofi.
+# $mod+f und $mod+b sind damit frei.
 
-# Brave (Zweitbrowser mit Werbeblocker)
-bindsym $mod+b exec --no-startup-id $HOME/.local/bin/brave
-
-# enter fullscreen mode for the focused container (war vorher $mod+f)
+# enter fullscreen mode for the focused container (liegt auf Shift, weil
+# $mod+f frueher Firefox startete)
 bindsym $mod+Shift+f fullscreen toggle
 
 # change container layout (stacked, tabbed, toggle split)

@@ -503,7 +503,7 @@ ${FETT}Fertig.${AUS} Was jetzt noch von Hand kommt:
      Lesezeichen, Passwoerter und Tabs kommen dann vom Handy mit.
 
 Tastenbelegung in Kuerze:  Strg+Alt+T Terminal, \$mod+space rofi,
-\$mod+f Chrome, \$mod+b Brave, \$mod+e Dateien, Strg+q Fenster schliessen,
+\$mod+e Dateien, Strg+q Fenster schliessen,
 \$mod+1..4 Arbeitsflaechen.  Alles Weitere in ~/.config/i3/config.
 
 Ueberschriebene Dateien liegen als <datei>.vor-void-i3 daneben.

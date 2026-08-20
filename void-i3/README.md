@@ -84,7 +84,7 @@ von beiden Stellen. So gibt es von jeder Datei genau eine Fassung.
 
 | | Inhalt | Fensterklasse |
 | --- | --- | --- |
-| 1 | Chrome | `Google-chrome` |
+| 1 | Chrome (Autostart, keine eigene Taste — sonst rofi) | `Google-chrome` |
 | 2 | lokales Terminal | `autostart-term` |
 | 3 | SSH-Sitzung, hält nach dem Ende eine lokale Shell offen | `remote-term` |
 | 4 | Vitals-Dashboard | `vitals-dashboard` |
@@ -102,8 +102,6 @@ funktionieren `workspace number N` und die `assign`-Regeln weiter.
 | `Strg+Alt+T` | Terminal |
 | `$mod+space` / `$mod+d` | rofi |
 | `$mod+Shift+d` | dmenu (Rückfallebene) |
-| `$mod+f` | Chrome |
-| `$mod+b` | Brave |
 | `$mod+e` | Dateimanager |
 | `$mod+Shift+f` | Vollbild |
 | `$mod+t` | Aufteilung umschalten |

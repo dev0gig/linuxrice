@@ -71,8 +71,6 @@ function aktion(c) {
     if (c ~ /set-source-mute/)             return "Mikrofon stumm an/aus"
     if (c ~ /benachrichtigungen/)          return "Benachrichtigungen: Verlauf"
     if (c ~ /wallpaper/)                   return "Hintergrundbild wechseln"
-    if (c ~ /bin\/chrome$/)                 return "Chrome"
-    if (c ~ /bin\/brave$/)                  return "Brave"
     if (c ~ /^pcmanfm/)                    return "Dateimanager (PCManFM)"
     if (c ~ /^alacritty/)                  return "Terminal (Alacritty)"
     if (c ~ /^rofi/)                       return "Programmstarter (rofi)"

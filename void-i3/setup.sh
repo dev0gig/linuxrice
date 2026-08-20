@@ -370,17 +370,34 @@ fi
 
 # --------------------------------------------------------- Benutzerdateien
 
-sichern() {
-    [ -e "$1" ] && [ ! -e "$1.vor-void-i3" ] && cp -a "$1" "$1.vor-void-i3" || true
+sichern() {   # sichern <repo-datei> <ziel>
+    # Nur echte Abweichungen sichern: was schon identisch aus dem Repo kam,
+    # braucht keine Kopie. Eine vorhandene .vor-void-i3 bleibt stehen -- sie
+    # ist der Stand von VOR dem ersten Lauf, und genau den will man zurueck.
+    [ -e "$2" ] || return 0
+    cmp -s "$1" "$2" && return 0
+    [ -e "$2.vor-void-i3" ] || cp -a "$2" "$2.vor-void-i3"
 }
 
 schritt "Konfiguration im Benutzerverzeichnis"
-# Erst sichern, was schon da ist -- dann kopieren. cp -r auf den Punkt kopiert
-# auch die versteckten Dateien; "$QUELLE/config/." statt "$QUELLE/config/*".
-for f in .xinitrc .bash_profile .bashrc .Xresources .gtkrc-2.0; do
-    sichern "$HOME/$f"
+# Erst sichern, was schon da ist -- und zwar jede Datei, die gleich aus dem
+# Repo kommt, nicht nur eine Handvoll Dotfiles: auch alacritty.toml, dunstrc,
+# die Skripte in ~/.local/bin und die Dashboard-Konfiguration werden
+# ueberschrieben. Dann kopieren; cp -r auf den Punkt kopiert auch die
+# versteckten Dateien ("$QUELLE/config/." statt "$QUELLE/config/*").
+# Die Dateiliste kommt per Here-Dokument statt per Pipe in die Schleife,
+# sonst liefe sie in einer Subshell und der Zaehler bliebe bei 0.
+GESICHERT=0
+for quelle in "$QUELLE/config" "$VITALS"; do
+    while read -r f; do
+        [ -n "$f" ] || continue
+        sichern "$quelle/${f#./}" "$HOME/${f#./}"
+        [ -e "$HOME/${f#./}.vor-void-i3" ] && GESICHERT=$((GESICHERT + 1))
+    done <<LISTE
+$(cd "$quelle" && find . -type f)
+LISTE
 done
-sichern "$HOME/.config/i3/config"
+[ "$GESICHERT" -eq 0 ] || info "$GESICHERT Dateien liegen als .vor-void-i3 gesichert"
 cp -r "$QUELLE/config/." "$HOME/"
 
 # Das Dashboard kommt aus workspaces-vitals -- dort liegt die einzige Kopie.

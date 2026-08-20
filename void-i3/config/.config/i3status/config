@@ -19,6 +19,11 @@ general {
         colors   = false
         markup   = "pango"
         interval = 5
+        # Muss explizit stehen, seit die Leiste ueber ~/.local/bin/i3status-melder
+        # laeuft: i3status erraet das Format sonst am Elternprozess und faellt
+        # hinter dem Wrapper auf "none" (reiner Text) zurueck -- i3bar bekaeme
+        # dann kein JSON mehr.
+        output_format = "i3bar"
         # Hinweis: bei output_format=i3bar zeichnet i3bar den Trenner selbst,
         # die general-Option "separator" ist dort wirkungslos.  Der Abstand
         # zwischen den Modulen steckt deshalb als Leerzeichen in den Formaten.
@@ -73,7 +78,7 @@ volume master {
 }
 
 battery all {
-        format          = "  <span foreground='#9a9a9a'>%status</span> <span foreground='#9a9a9a'>%percentage %remaining</span>  "
+        format          = "  <span foreground='#9a9a9a'>%status</span> <span foreground='#9a9a9a'>%percentage</span>  "
         format_down     = ""
         status_chr      = "<span foreground='#83a598'>󰂄</span>"
         status_bat      = "<span foreground='#fabd2f'>󰁾</span>"
@@ -81,6 +86,11 @@ battery all {
         status_unk      = "<span foreground='#555555'>󰂑</span>"
         low_threshold   = 20
         threshold_type  = percentage
+        # i3status rechnet sonst gegen energy_full_design, also gegen den Neuzustand
+        # des Akkus. Der ist auf 82% abgenutzt, darum stand hier 77%, waehrend
+        # Kernel, netz-ton und akku-wache (alle ueber /sys ... /capacity) 94%
+        # melden. true bezieht den Wert wie alle anderen auf energy_full.
+        last_full_capacity = true
         integer_battery_capacity = true
         hide_seconds    = true
 }

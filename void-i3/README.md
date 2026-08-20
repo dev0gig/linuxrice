@@ -164,8 +164,15 @@ Zum Ansehen und Bearbeiten:
 | `bat` | `cat` mit Syntaxhervorhebung (als Alias auf `cat` gelegt) |
 | `nsxiv` | Bilder in einem richtigen Fenster |
 
-`EDITOR=hx` in der `.bashrc` wirkt auch in Yazi: `Enter` auf einer Textdatei
-öffnet Helix gleich im selben Terminalfenster, ohne ein zweites Alacritty.
+`Enter` auf einer Textdatei öffnet Helix — aber in einem **eigenen**
+Alacritty-Fenster, das i3 rechts neben Yazi kachelt. Yazis Vorgabe wäre
+`${EDITOR:-vi} %s` mit `block = true`; das lässt den Editor das Yazi-Fenster
+übernehmen, der Dateimanager verschwindet dahinter. Der `[opener]`-Abschnitt
+in `~/.config/yazi/yazi.toml` ersetzt das durch `orphan = true` und ein
+eigenes Fenster, damit beide nebeneinander stehen bleiben.
+
+`EDITOR=hx` aus der `.bashrc` bleibt trotzdem wichtig — für alles andere,
+was einen Editor aufruft (`git commit`, `crontab`, …).
 
 **Kitty wurde bewusst nicht genommen.** Das einzige Argument wäre Yazis
 Bildvorschau im Terminal gewesen — Alacritty kann kein Sixel und kein

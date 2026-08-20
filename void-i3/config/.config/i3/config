@@ -290,8 +290,9 @@ bindsym $mod+w layout tabbed
 bindsym $mod+t layout toggle split
 
 # Dateimanager: Yazi im Terminal auf Mod+e, PCManFM auf Ctrl+Mod+e.
-# Yazi ist der Alltagsweg -- Cursortasten reichen zur Bedienung, Enter auf
-# einer Textdatei oeffnet Helix gleich im selben Fenster (ueber $EDITOR).
+# Yazi ist der Alltagsweg -- Cursortasten reichen zur Bedienung. Enter auf
+# einer Textdatei startet Helix in einem eigenen Fenster, das i3 rechts
+# daneben kachelt; eingestellt ist das im [opener] von ~/.config/yazi/yazi.toml.
 #
 # Mod+e startet Yazi NICHT im gerade benutzten Fenster -- das wuerde die
 # Arbeitsflaeche kacheln und Yazi auf die Haelfte druecken. Stattdessen

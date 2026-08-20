@@ -18,6 +18,13 @@
 #           laufen die LED in F5 und der OSD-Balken mit wie bei den Tasten.
 #   WLAN    Linksklick -> Funk an/aus per rfkill.
 #
+# Ausserdem fasst es die vier Systemwerte von i3status (CPU, Temperatur, RAM,
+# Platte) zu EINEM Block ganz links zusammen: in der Leiste steht dann nur noch
+# das CPU-Icon mit dem Prozentwert, ein Linksklick wechselt auf die Vitals-
+# Flaeche, wo das Dashboard alles ausfuehrlich zeigt. Reisst einer der vier
+# Werte seine Warnschwelle, tritt er in der Leiste wieder hervor -- erkannt
+# wird das am Rot, das i3status ueber format_above_threshold selbst setzt.
+#
 # Und es haengt links neben dem WLAN einen Bluetooth-Block ein -- i3status
 # kennt Bluetooth nicht, der Block stammt also ganz aus diesem Skript:
 #
@@ -62,6 +69,20 @@ SCHNITT = "org.dunstproject.cmd0"
 
 VERLAUF = os.path.expanduser("~/.local/bin/benachrichtigungen")
 OSD = os.path.expanduser("~/.local/bin/osd")
+# Arbeitsflaeche und Fensterklasse des Vitals-Dashboards (siehe "assign" und
+# den Autostart in ~/.config/i3/config).
+VITALS_FLAECHE = "4"
+VITALS_KLASSE = "vitals-dashboard"
+VITALS_START = os.path.expanduser("~/.local/bin/vitals")
+
+# Die vier i3status-Module, die zu einem Block werden. Die Namen vergibt
+# i3status; der Block von 'disk "/"' heisst dort "disk_info", nicht "disk".
+SYSTEM_MODULE = ("cpu_usage", "cpu_temperature", "memory", "disk_info")
+
+# Die Warnfarbe aus ~/.config/i3status/config. An ihr -- und nicht an einer
+# zweiten Schwellenrechnung hier -- wird erkannt, ob ein Modul anschlaegt:
+# die Schwellen stehen so weiter nur an einer Stelle.
+WARNROT = "#fb4934"
 
 GLOCKE = "\U000f009a"       # nf-md-bell        -- Verlauf hat Eintraege
 GLOCKE_AUS = "\U000f009b"   # nf-md-bell_off    -- Verlauf ist leer
@@ -548,6 +569,60 @@ def ts_umschalten():
     threading.Thread(target=ts_nachziehen, daemon=True).start()
 
 
+def vitals_zeigen():
+    """Auf die Vitals-Flaeche wechseln.
+
+    Das Dashboard startet beim Anmelden mit und wird per "assign" auf diese
+    Flaeche gelegt; im Normalfall ist der Klick also nur ein Wechsel. Wurde
+    das Terminal doch einmal geschlossen (die zellij-Session ueberlebt das,
+    zu sehen ist davon aber nichts), wird es hier neu gestartet -- sonst
+    landete der Klick auf einer leeren Flaeche.
+    """
+    subprocess.run(["i3-msg", "workspace", "number", VITALS_FLAECHE],
+                   capture_output=True, timeout=5)
+    try:
+        baum = subprocess.run(["i3-msg", "-t", "get_tree"],
+                              capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return
+    if '"class": "{}"'.format(VITALS_KLASSE) in baum:
+        return
+    subprocess.Popen(["alacritty", "--class", VITALS_KLASSE, "-e", VITALS_START],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def system_zusammenfassen(bloecke):
+    """CPU, Temperatur, RAM und Platte zu einem Block "system" verschmelzen.
+
+    Angezeigt wird im Normalfall nur der CPU-Block, sonst die Bloecke, die
+    gerade rot sind: bei knappem Speicher steht also der Speicherwert da, bei
+    heisser CPU die Temperatur -- die Leiste bleibt ruhig, meldet sich aber,
+    wenn etwas ist. Alles zusammen zeigt ein Linksklick (siehe klicks()).
+
+    Uebernommen wird der fertige full_text von i3status; Icons, Farben und
+    Abstaende bleiben damit genau die aus ~/.config/i3status/config, hier
+    wird nichts nachgebaut. Die Bloecke werden auch nicht veraendert, nur
+    ausgelassen: letzte_zeile haelt dieselben Objekte fuers Neuzeichnen fest.
+    """
+    teile = [b for b in bloecke if b.get("name") in SYSTEM_MODULE]
+    if not teile:
+        return bloecke
+    warnend = [b for b in teile if WARNROT in b.get("full_text", "")]
+    zeigen = warnend or [b for b in teile if b.get("name") == "cpu_usage"] or teile[:1]
+    block = {
+        "name": "system",
+        "full_text": "".join(b.get("full_text", "") for b in zeigen),
+        "markup": "pango",
+    }
+    aus = []
+    for b in bloecke:
+        if b.get("name") not in SYSTEM_MODULE:
+            aus.append(b)
+        elif b is teile[0]:         # der neue Block sitzt an der Stelle des ersten
+            aus.append(block)
+    return aus
+
+
 def glocken_block():
     if anzahl:
         text = "  <span foreground='{}'>{}</span> <span foreground='{}'>{}</span>   ".format(
@@ -569,7 +644,8 @@ def ausgeben(bloecke):
 
     ensure_ascii=False: die Icons sollen als echtes UTF-8 rausgehen wie bei
     i3status auch, nicht als \\uXXXX-Ersatzpaare."""
-    bloecke = ts_einfuegen(bt_einfuegen(wlan_block_ersetzen(bloecke)))
+    bloecke = ts_einfuegen(bt_einfuegen(wlan_block_ersetzen(
+        system_zusammenfassen(bloecke))))
     with schloss:
         sys.stdout.write(json.dumps(bloecke + [glocken_block()], ensure_ascii=False) + ",\n")
         sys.stdout.flush()
@@ -612,10 +688,49 @@ def monitor():
         neu_zeichnen()
 
 
-def klicks():
-    """Klick-Ereignisse von i3bar lesen. Sie kommen als JSON-Strom:
-    erst "[", dann je Klick ein Objekt, ab dem zweiten mit fuehrendem Komma."""
+def nebenlaeufig(arbeit):
+    """Eine Klickaktion in einem eigenen Thread erledigen.
+
+    WARUM: i3bar schickt die Klicks durch eine Pipe und wartet, bis sie
+    angenommen sind. Wird in klicks() selbst gearbeitet, laeuft die Pipe voll
+    und i3bar blockiert beim Schreiben -- dann reagiert die GANZE Leiste
+    nicht mehr, auch die Arbeitsflaechen-Knoepfe, die i3bar sonst allein
+    bedient. Hier wird darum nur verteilt; gearbeitet wird nebenan.
+    """
+    threading.Thread(target=arbeit, daemon=True).start()
+
+
+def dunst_klick(taste):
+    """Verlauf oeffnen oder leeren, danach die Zahl an der Glocke nachziehen."""
     global anzahl
+    if taste == 1:
+        subprocess.Popen([VERLAUF])
+    elif taste == 3:
+        subprocess.run(
+            ["gdbus", "call", "--session", "--dest", DIENST,
+             "--object-path", OBJEKT, "--method",
+             SCHNITT + ".NotificationClearHistory"],
+            capture_output=True)
+    anzahl = verlauf_laenge()
+    neu_zeichnen()
+
+
+def bluetooth_klick(taste):
+    if taste == 1:
+        subprocess.Popen([BLUETOOTH, "um"])
+        bt_nachziehen()
+    elif taste == 3:
+        subprocess.Popen([BLUETOOTH])
+
+
+def klicks():
+    """Klick-Ereignisse von i3bar lesen und verteilen. Sie kommen als
+    JSON-Strom: erst "[", dann je Klick ein Objekt, ab dem zweiten mit
+    fuehrendem Komma.
+
+    Hier wird nichts ausgefuehrt, was laenger als ein Wimpernschlag dauert --
+    siehe nebenlaeufig().
+    """
     for zeile in sys.stdin:
         zeile = zeile.strip().lstrip(",")
         if not zeile or zeile == "[":
@@ -627,8 +742,6 @@ def klicks():
         name = ereignis.get("name")
         taste = ereignis.get("button")
 
-        # Ton und WLAN kehren gleich zurueck: die Glocke geht sie nichts an,
-        # und verlauf_laenge() unten waere eine D-Bus-Abfrage fuer nichts.
         if name == "volume":
             if taste == 1:
                 subprocess.Popen([OSD, "stumm"])
@@ -638,36 +751,27 @@ def klicks():
                 subprocess.Popen([OSD, "leiser"])
             continue
 
+        if name == "system":
+            if taste == 1:
+                nebenlaeufig(vitals_zeigen)
+            continue
+
         if name == "wireless":
             if taste == 1:
-                wlan_umschalten()
+                nebenlaeufig(wlan_umschalten)
             continue
 
         if name == "tailscale":
             if taste == 1:
-                ts_umschalten()
+                nebenlaeufig(ts_umschalten)
             continue
 
         if name == "bluetooth":
-            if taste == 1:
-                subprocess.Popen([BLUETOOTH, "um"])
-                threading.Thread(target=bt_nachziehen, daemon=True).start()
-            elif taste == 3:
-                subprocess.Popen([BLUETOOTH])
+            nebenlaeufig(lambda: bluetooth_klick(taste))
             continue
 
-        if name != "dunst":
-            continue
-        if taste == 1:
-            subprocess.Popen([VERLAUF])
-        elif taste == 3:
-            subprocess.run(
-                ["gdbus", "call", "--session", "--dest", DIENST,
-                 "--object-path", OBJEKT, "--method",
-                 SCHNITT + ".NotificationClearHistory"],
-                capture_output=True)
-        anzahl = verlauf_laenge()
-        neu_zeichnen()
+        if name == "dunst":
+            nebenlaeufig(lambda: dunst_klick(taste))
 
 
 def main():

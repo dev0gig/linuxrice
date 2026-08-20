@@ -106,7 +106,15 @@ PAKETE="$PAKETE dunst libnotify brightnessctl playerctl acpi"
 # die stur ueber ALSA gehen. alsa-utils bringt amixer und den alsa-Dienst,
 # rtkit gibt den Audio-Threads Echtzeitprioritaet (sonst knackst es unter
 # Last).
-PAKETE="$PAKETE pipewire wireplumber alsa-pipewire alsa-utils rtkit"
+#
+# dumb_runtime_dir ist KEIN Teil von base-system, obwohl /etc/pam.d/system-login
+# (aus pam-base) das Modul pam_dumb_runtime_dir.so schon eintraegt -- mit
+# fuehrendem "-", also stillschweigend uebersprungen, solange das Paket fehlt.
+# Ohne das Paket wird beim Login kein /run/user/<uid> angelegt und kein
+# XDG_RUNTIME_DIR gesetzt; PipeWire startet dann gar nicht erst, und zwar ohne
+# jede Fehlermeldung in der Sitzung. Das /run/user aus rc.local ist nur das
+# Elternverzeichnis dafuer.
+PAKETE="$PAKETE pipewire wireplumber alsa-pipewire alsa-utils rtkit dumb_runtime_dir"
 
 # Bluetooth. bluez bringt bluetoothd und bluetoothctl mit; bedient wird beides
 # ueber den Bluetooth-Block in der Leiste (~/.local/bin/bluetooth). Ein

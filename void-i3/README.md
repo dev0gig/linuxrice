@@ -38,7 +38,7 @@ Es richtet ein:
 | Mauszeiger | Nordzy nach `~/.icons` |
 | Eingabe | deutsches Tastaturlayout in X, Touchpad mit natürlichem Scrollen und Tap-to-Click, Drei-Finger-Gesten |
 | Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten |
-| Ton | PipeWire mit WirePlumber und PulseAudio-Schnittstelle, dazu `/run/user` aus `rc.local` — ohne das startet PipeWire nicht |
+| Ton | PipeWire mit WirePlumber und PulseAudio-Schnittstelle, dazu `dumb_runtime_dir` (nicht in `base-system`) und `/run/user` aus `rc.local` — ohne `XDG_RUNTIME_DIR` startet PipeWire nicht |
 | Bluetooth | `bluez`; der Adapter bleibt nach dem Booten aus und geht erst auf Klick an |
 | Firefox | Mittelklick fügt nicht mehr ein |
 | Dashboard | das komplette [`workspaces-vitals`](workspaces-vitals/) auf Arbeitsfläche 4 |

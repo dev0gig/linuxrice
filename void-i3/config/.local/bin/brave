@@ -1,0 +1,3 @@
+#!/bin/sh
+# Brave (Flatpak com.brave.Browser) -- Zweitbrowser mit eingebautem Werbeblocker.
+exec flatpak run com.brave.Browser "$@"

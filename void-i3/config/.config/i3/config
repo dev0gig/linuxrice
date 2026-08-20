@@ -41,7 +41,7 @@ font pango:Red Hat Mono 9, Symbols Nerd Font Mono 9
 # exec --no-startup-id nm-applet
 
 # ---- Autostart: feste Belegung der Arbeitsflaechen 1 bis 4 ----
-#   1: Firefox   2: lokales Terminal
+#   1: Chrome    2: lokales Terminal
 #   3: SSH-Sitzung   4: Vitals (zellij-Dashboard)
 #
 # Jedes Autostart-Fenster bekommt eine eigene Fensterklasse, damit nur genau
@@ -49,15 +49,15 @@ font pango:Red Hat Mono 9, Symbols Nerd Font Mono 9
 # verhalten sich unveraendert.
 #
 # Wichtig das Schluesselwort "number": die Flaechen heissen durch
-# ~/.local/bin/i3-workspace-names dauerhaft "1: Firefox", "2: <Name>" usw.
+# ~/.local/bin/i3-workspace-names dauerhaft "1: Chrome", "2: <Name>" usw.
 # Ohne "number" wuerde i3 den Namen exakt gegen "1" pruefen, keinen Treffer
 # finden und eine zweite, gleichnamige Flaeche danebenlegen.
-assign [class="(?i)firefox"]      number 1
+assign [class="(?i)google-chrome"] number 1
 assign [class="autostart-term"]   number 2
 assign [class="remote-term"]        number 3
 assign [class="vitals-dashboard"] number 4
 
-exec --no-startup-id firefox
+exec --no-startup-id $HOME/.local/bin/chrome
 exec --no-startup-id alacritty --class autostart-term
 exec --no-startup-id alacritty --class remote-term -e $HOME/.local/bin/remote-shell
 exec --no-startup-id alacritty --class vitals-dashboard -e $HOME/.local/bin/vitals
@@ -77,7 +77,7 @@ exec_always --no-startup-id "pgrep -x pipewire > /dev/null || pipewire"
 
 # ---- Benachrichtigungen ----
 # dunst ist der D-Bus-Dienst auf org.freedesktop.Notifications. Ohne ihn
-# verschwinden Meldungen von Firefox & Co. spurlos -- genau das war hier
+# verschwinden Meldungen von Chrome & Co. spurlos -- genau das war hier
 # lange der Fall, weil gar kein Dienst lief.
 #
 # Streng genommen startet ihn der D-Bus beim ersten Aufruf selbst
@@ -163,7 +163,7 @@ bindsym XF86MonBrightnessUp exec --no-startup-id ~/.local/bin/osd heller
 # (KEY_PREVIOUSSONG / KEY_NEXTSONG), nicht Spulen -- entsprechend die Befehle.
 # playerctl spricht MPRIS ueber den Sitzungs-D-Bus; ~/.xinitrc startet i3 mit
 # "dbus-run-session", darum erben diese Bindings den richtigen Bus.
-# Firefox meldet sich dort von selbst an, sobald Ton oder Video laeuft.
+# Chrome meldet sich dort von selbst an, sobald Ton oder Video laeuft.
 bindsym XF86AudioPrev exec --no-startup-id playerctl previous
 bindsym XF86AudioPlay exec --no-startup-id playerctl play-pause
 bindsym XF86AudioNext exec --no-startup-id playerctl next
@@ -213,8 +213,8 @@ bindsym Control+Mod1+t exec --no-startup-id alacritty
 # Dashboard, und "kill" wuerde sie alle auf einmal schliessen.
 #
 # Nachgemessen ueber "title_format" (faellt nicht auf, weil default_border
-# none keine Titelleisten zeichnet): mit Fokus auf Firefox trifft das
-# Kriterium genau Firefox, mit Fokus auf dem Dashboard gar nichts.
+# none keine Titelleisten zeichnet): mit Fokus auf Chrome trifft das
+# Kriterium genau Chrome, mit Fokus auf dem Dashboard gar nichts.
 bindsym $mod+Shift+q [con_id="__focused__" class="^(?!vitals-dashboard$).*$"] kill
 # Fenster schliessen mit Strg+q (i3 faengt die Taste global ab,
 # Programme sehen sie also nicht mehr selbst)
@@ -261,8 +261,11 @@ bindsym $mod+h split h
 # split in vertical orientation
 bindsym $mod+v split v
 
-# Firefox
-bindsym $mod+f exec --no-startup-id firefox
+# Chrome (Standardbrowser)
+bindsym $mod+f exec --no-startup-id $HOME/.local/bin/chrome
+
+# Brave (Zweitbrowser mit Werbeblocker)
+bindsym $mod+b exec --no-startup-id $HOME/.local/bin/brave
 
 # enter fullscreen mode for the focused container (war vorher $mod+f)
 bindsym $mod+Shift+f fullscreen toggle

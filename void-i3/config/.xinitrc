@@ -4,7 +4,7 @@
 # xterm-Farben & Fonts einlesen
 [ -f "$HOME/.Xresources" ] && xrdb -merge "$HOME/.Xresources"
 
-# Dark Mode fuer GTK-Anwendungen (Firefox, GTK-Dialoge, ...)
+# Dark Mode fuer GTK-Anwendungen (GTK-Dialoge, PCManFM, ...)
 export GTK_THEME=Adwaita:dark
 
 # Cursor-Theme und -Groesse (Nordzy, siehe ~/.icons)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Benennt i3-Arbeitsflaechen automatisch nach den Programmen, die darin laufen.
 
-Aus "2" wird "2: Alacritty", aus "1" wird "1: Firefox".  Die fuehrende Nummer
+Aus "2" wird "2: Alacritty", aus "1" wird "1: Chrome".  Die fuehrende Nummer
 bleibt erhalten -- i3 adressiert Arbeitsflaechen ueber "workspace number N",
 darum funktionieren $mod+1..0 und die assign-Regeln unveraendert weiter.
 
@@ -40,7 +40,8 @@ SEP = " "            # Trenner zwischen mehreren Programmen auf einer Flaeche
 # Fensterklassen sind oft haesslich ("Pcmanfm", "Gimp-2.10") -- hier huebschen
 # wir die haeufigen auf.  Alles Uebrige bekommt nur ein grosses Anfangszeichen.
 PRETTY = {
-    "firefox": "Firefox",
+    "google-chrome": "Chrome",
+    "brave-browser": "Brave",
     "alacritty": "Terminal",
     "autostart-term": "Terminal",
     "remote-term": "Terminal",
@@ -60,7 +61,7 @@ PRETTY = {
 # auch dann stehen bleiben, wenn die Sitzung beendet oder die Flaeche leer ist.
 # Ab 5 aufwaerts wird weiter nach dem laufenden Programm benannt.
 STATIC = {
-    1: "Firefox",
+    1: "Chrome",
     2: "@@WS2_NAME@@",
     3: "@@WS3_NAME@@",
     4: "Vitals",
@@ -75,7 +76,7 @@ def label(con):
     key = name.lower()
     if key in PRETTY:
         return PRETTY[key]
-    # "Gimp-2.10" -> "Gimp", "Google-chrome" -> "Google-chrome"
+    # "Gimp-2.10" -> "Gimp", "Vlc" -> "Vlc"
     base = re.split(r"[-_.]\d", name)[0]
     return base[:1].upper() + base[1:]
 
@@ -122,7 +123,7 @@ def main():
         i3.on(ev, on_event)
 
     # Beim Beenden von i3 die Namen wieder auf die nackten Nummern zuruecksetzen,
-    # sonst startet die naechste Sitzung mit "1: Firefox" als statischem Namen.
+    # sonst startet die naechste Sitzung mit "1: Chrome" als statischem Namen.
     def restore(i3_conn, event=None):
         for ws in i3_conn.get_tree().workspaces():
             if ws.num != -1 and ws.name != str(ws.num):

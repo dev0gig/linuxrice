@@ -1,0 +1,5 @@
+#!/bin/sh
+# Google Chrome (Flatpak com.google.Chrome).
+# Wrapper, damit in der i3-Config "chrome" steht statt der langen flatpak-Zeile
+# und zusaetzliche Schalter nur hier gepflegt werden muessen.
+exec flatpak run com.google.Chrome "$@"

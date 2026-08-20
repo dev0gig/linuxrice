@@ -131,7 +131,7 @@ def fenster():
     Die Reihenfolge kommt aus der Liste "focus" jedes Containers: dort stehen
     die Kinder nach zuletzt fokussiert sortiert. Wer den Baum in dieser
     Reihenfolge absteigt, findet bei mehreren Fenstern derselben Anwendung
-    (zwei Firefox-Fenster) automatisch das zuletzt benutzte zuerst.
+    (zwei Chrome-Fenster) automatisch das zuletzt benutzte zuerst.
     """
     fertig = subprocess.run(["i3-msg", "-t", "get_tree"], capture_output=True, text=True)
     if fertig.returncode != 0:

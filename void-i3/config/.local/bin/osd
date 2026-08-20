@@ -11,7 +11,7 @@
 # Der Stack-Tag sorgt dafuer, dass schnelles Tippen auf F7 EIN Panel
 # aktualisiert, statt fuenf uebereinanderzustapeln. Dringlichkeit "low",
 # damit die Balken nach 2 s verschwinden und echte Benachrichtigungen
-# (Firefox, Akkuwache) daneben stehen bleiben duerfen.
+# (Chrome, Akkuwache) daneben stehen bleiben duerfen.
 #
 # dunst muss nicht laufen: der D-Bus startet ihn beim ersten Aufruf selbst
 # (/usr/share/dbus-1/services/org.knopwob.dunst.service).

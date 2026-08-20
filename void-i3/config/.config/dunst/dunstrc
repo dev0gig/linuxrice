@@ -13,7 +13,7 @@
 # faerbt den Rahmen rot.
 #
 # Zwei Nutzungsarten teilen sich diese Konfiguration:
-#   1. echte Benachrichtigungen (Firefox, Akkuwache) -- bleiben stehen
+#   1. echte Benachrichtigungen (Chrome, Akkuwache) -- bleiben stehen
 #   2. OSD-Balken fuer Lautstaerke und Helligkeit -- verschwinden schnell
 # Getrennt werden sie ueber die Dringlichkeit: "low" ist das OSD.
 
@@ -60,7 +60,7 @@
     word_wrap = yes
     ellipsize = middle
 
-    # Symbole aus Programmen (z. B. Firefox) anzeigen, aber klein halten.
+    # Symbole aus Programmen (z. B. Chrome) anzeigen, aber klein halten.
     enable_recursive_icon_lookup = true
     icon_theme = "Papirus-Dark, Adwaita, hicolor"
     icon_position = left
@@ -69,7 +69,7 @@
 
     # Mausbedienung: jeder Klick macht die Meldung sofort weg. Links schliesst
     # die angeklickte, rechts alle auf einmal; die Mitte oeffnet zusaetzlich
-    # die hinterlegte Aktion (z. B. den Tab einer Firefox-Meldung).
+    # die hinterlegte Aktion (z. B. den Tab einer Chrome-Meldung).
     #
     # Der Linksklick springt ausserdem zu dem Programm, von dem die Meldung
     # kommt. Das steht bewusst NICHT hier: an einen Klick laesst sich nur eine
@@ -96,7 +96,7 @@
     timeout = 2
 
 [urgency_normal]
-    # Gewoehnliche Benachrichtigungen, etwa von Firefox.
+    # Gewoehnliche Benachrichtigungen, etwa von Chrome.
     background = "#e8e8e8"
     foreground = "#161616"
     frame_color = "#9a9a9a"

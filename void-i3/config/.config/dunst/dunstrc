@@ -4,9 +4,13 @@
 # Datei ist also vollstaendig selbst geschrieben. Was hier nicht steht,
 # bleibt auf dunsts eingebautem Standard.
 #
-# Design wie der Rest: monochromes Grau, eckig, keine Rundungen. Farbe ist
-# reine Signalfunktion -- nur die Dringlichkeitsstufe "critical" faerbt den
-# Rahmen rot (Gruvbox #fb4934, dasselbe Rot wie in i3status und i3).
+# Design: Die Meldungen sind bewusst HELL (dunkler Text auf hellem Grund) --
+# als einzige Flaeche der Sitzung. Der Rest des Desktops ist monochrom
+# dunkel, darum hebt sich eine Meldung so am staerksten ab, ohne dass dafuer
+# Farbe noetig waere. Die Werte sind die umgedrehte Palette des uebrigen
+# Setups: #e8e8e8 ist dort die Schriftfarbe, #161616 der Leistenhintergrund.
+# Eckig bleibt es, und Farbe bleibt reine Signalfunktion -- nur "critical"
+# faerbt den Rahmen rot.
 #
 # Zwei Nutzungsarten teilen sich diese Konfiguration:
 #   1. echte Benachrichtigungen (Firefox, Akkuwache) -- bleiben stehen
@@ -17,9 +21,11 @@
     monitor = 0
     follow = none
 
-    # Oben rechts, knapp unter der 30px hohen i3-Leiste.
-    origin = top-right
-    offset = (12, 42)
+    # Oben mittig, knapp unter der 30px hohen i3-Leiste. Bei top-center
+    # zaehlt nur der y-Wert des Versatzes, x muss 0 bleiben -- sonst waere
+    # die Meldung nicht mehr mittig.
+    origin = top-center
+    offset = (0, 42)
     width = (240, 420)
     height = (0, 180)
     notification_limit = 4
@@ -32,20 +38,23 @@
     corner_radius = 0
 
     # Fortschrittsbalken -- das ist der eigentliche OSD-Teil. dunst zeichnet
-    # ihn, sobald eine Meldung den Hinweis "int:value:N" mitbringt.
+    # ihn, sobald eine Meldung den Hinweis "int:value:N" mitbringt. Auf dem
+    # hellen Grund muss die Fuellung dunkel sein: das macht "highlight",
+    # sonst nimmt dunst die Rahmenfarbe und der Balken verschwaende.
     progress_bar = true
     progress_bar_height = 8
     progress_bar_frame_width = 0
     progress_bar_min_width = 210
     progress_bar_max_width = 390
     progress_bar_corner_radius = 0
+    highlight = "#3a3a3a"
 
     # Schrift wie in i3bar und rofi. Die Familienliste zuerst, Groesse am
     # Ende -- so greift sie fuer beide Familien.
     font = Red Hat Mono, Symbols Nerd Font Mono 11
     line_height = 0
     markup = full
-    format = "<b>%s</b>%n%b"
+    format = "<b>%s</b>\n%b"
     alignment = left
     vertical_alignment = center
     word_wrap = yes
@@ -58,8 +67,9 @@
     min_icon_size = 0
     max_icon_size = 32
 
-    # Mausbedienung: links wegklicken, rechts alle schliessen,
-    # mittig die hinterlegte Aktion oeffnen (z. B. Firefox-Meldung anklicken).
+    # Mausbedienung: jeder Klick macht die Meldung sofort weg. Links schliesst
+    # die angeklickte, rechts alle auf einmal; die Mitte oeffnet zusaetzlich
+    # die hinterlegte Aktion (z. B. den Tab einer Firefox-Meldung).
     mouse_left_click = close_current
     mouse_middle_click = do_action, close_current
     mouse_right_click = close_all
@@ -73,22 +83,43 @@
 
 [urgency_low]
     # Diese Stufe nutzen die OSD-Balken: kurz sichtbar, kein roter Rahmen.
-    background = "#1e1e1e"
-    foreground = "#e8e8e8"
-    frame_color = "#3a3a3a"
+    background = "#e8e8e8"
+    foreground = "#161616"
+    frame_color = "#9a9a9a"
     timeout = 2
 
 [urgency_normal]
     # Gewoehnliche Benachrichtigungen, etwa von Firefox.
-    background = "#1e1e1e"
-    foreground = "#e8e8e8"
-    frame_color = "#3a3a3a"
+    background = "#e8e8e8"
+    foreground = "#161616"
+    frame_color = "#9a9a9a"
     timeout = 8
 
 [urgency_critical]
     # Akku fast leer, CPU zu heiss. Bleibt stehen, bis man sie wegklickt --
-    # timeout 0 ist Absicht.
-    background = "#1e1e1e"
-    foreground = "#e8e8e8"
-    frame_color = "#fb4934"
+    # timeout 0 ist Absicht. Das Rot ist #cc241d statt des sonst ueblichen
+    # #fb4934: das helle Gruvbox-Rot verschwimmt auf hellem Grund.
+    background = "#e8e8e8"
+    foreground = "#161616"
+    frame_color = "#cc241d"
     timeout = 0
+
+# ---- Was NICHT in den Verlauf gehoert -------------------------------------
+# Der Verlauf (Glocke rechts in der Leiste, ~/.local/bin/benachrichtigungen)
+# soll echte Meldungen zeigen. OSD-Balken und die Netzteil-Quittung sind
+# fluechtige Rueckmeldungen auf einen Tastendruck -- jede Lautstaerkestufe
+# im Verlauf zu sammeln, macht ihn unbrauchbar. Sie werden weiter angezeigt,
+# nur eben nicht aufgehoben.
+[osd-nicht-merken]
+    appname = "osd"
+    history_ignore = yes
+
+[netz-ton-nicht-merken]
+    appname = "netz-ton"
+    history_ignore = yes
+
+# Auch die eigene Rueckmeldung des Verlaufs ("Verlauf ist leer") gehoert
+# nicht in den Verlauf -- sonst waere er nie wieder leer.
+[verlauf-nicht-merken]
+    appname = "benachrichtigungen"
+    history_ignore = yes

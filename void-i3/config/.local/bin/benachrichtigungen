@@ -1,0 +1,155 @@
+#!/usr/bin/python3
+# benachrichtigungen  -- den dunst-Verlauf ansehen
+#
+# Aufgerufen von der Glocke ganz rechts in der i3-Leiste (siehe
+# ~/.local/bin/i3status-melder) und von Mod+n. Zeigt die Liste per rofi;
+# ein Eintrag holt die Meldung zurueck auf den Bildschirm, die oberste
+# Zeile leert den Verlauf.
+#
+# WARUM gdbus und nicht dunstctl: dunstctl ruft fuer "history" das Programm
+# busctl auf -- das gehoert zu systemd und existiert auf Void nicht ("Command
+# busctl not found"). Ueber gdbus (glib, ohnehin da) geht dieselbe Schnittstelle.
+#
+# Ohne DISPLAY oder ohne rofi geht die Liste nach stdout, damit der Verlauf
+# auch im Terminal lesbar ist (wie bei ~/.local/bin/i3-hilfe).
+
+import html
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+DIENST = "org.freedesktop.Notifications"
+OBJEKT = "/org/freedesktop/Notifications"
+SCHNITT = "org.dunstproject.cmd0"
+
+GLOCKE = "\U000f009a"   # nf-md-bell
+MUELL = "\U000f01b4"    # nf-md-delete
+
+# dunst liefert den Verlauf als GVariant-Text. Die Schluessel stehen dort in
+# fester Reihenfolge, darum genuegt ein Muster pro Eintrag statt eines echten
+# Parsers. "(?:[^'\\]|\\.)*" liest einen Text bis zum naechsten unmaskierten
+# Hochkomma -- Meldungstexte duerfen also Hochkommata enthalten.
+TEXT = r"(?:[^'\\]|\\.)*"
+EINTRAG = re.compile(
+    r"'body': <'(" + TEXT + r")'>.*?"
+    r"'summary': <'(" + TEXT + r")'>, "
+    r"'appname': <'(" + TEXT + r")'>.*?"
+    r"'id': <(?:uint32 )?(\d+)>.*?"
+    r"'timestamp': <int64 (\d+)>.*?"
+    r"'urgency': <'(\w+)'>",
+    re.S,
+)
+
+
+def dbus(methode, *argumente):
+    """Ruft eine dunst-Methode auf und gibt die Rohausgabe zurueck."""
+    befehl = ["gdbus", "call", "--session", "--dest", DIENST,
+              "--object-path", OBJEKT, "--method", SCHNITT + "." + methode]
+    befehl += [str(a) for a in argumente]
+    fertig = subprocess.run(befehl, capture_output=True, text=True)
+    if fertig.returncode != 0:
+        sys.stderr.write("benachrichtigungen: " + fertig.stderr.strip() + "\n")
+        sys.exit(1)
+    return fertig.stdout
+
+
+def entmaskieren(s):
+    """GVariant-Maskierungen aufloesen (\\' \\\\ \\n \\t)."""
+    aus, i = [], 0
+    while i < len(s):
+        if s[i] == "\\" and i + 1 < len(s):
+            zeichen = s[i + 1]
+            aus.append({"n": "\n", "t": "\t", "r": "\r"}.get(zeichen, zeichen))
+            i += 2
+        else:
+            aus.append(s[i])
+            i += 1
+    return "".join(aus)
+
+
+def sauber(s):
+    """Pango-Auszeichnung entfernen -- die Liste zeigt reinen Text."""
+    s = re.sub(r"<[^>]*>", "", s)
+    return " ".join(html.unescape(s).split())
+
+
+def uhrzeit(zeitstempel):
+    """dunst stempelt mit CLOCK_MONOTONIC in Mikrosekunden, nicht mit der Uhr."""
+    alter = time.monotonic() - int(zeitstempel) / 1_000_000
+    return time.strftime("%H:%M", time.localtime(time.time() - alter))
+
+
+def verlauf():
+    roh = dbus("NotificationListHistory")
+    eintraege = []
+    for body, summary, app, kennung, stempel, dringlichkeit in EINTRAG.findall(roh):
+        eintraege.append({
+            "id": int(kennung),
+            "app": sauber(entmaskieren(app)),
+            "titel": sauber(entmaskieren(summary)),
+            "text": sauber(entmaskieren(body)),
+            "zeit": uhrzeit(stempel),
+            "dringlichkeit": dringlichkeit,
+        })
+    return eintraege
+
+
+def zeile(e):
+    kopf = "{}  {:<12.12}  {}".format(e["zeit"], e["app"] or "-", e["titel"] or "(ohne Titel)")
+    if e["text"]:
+        kopf += "  --  " + e["text"][:90]
+    if e["dringlichkeit"] == "CRITICAL":
+        kopf = "! " + kopf
+    return kopf
+
+
+def main():
+    eintraege = verlauf()
+    grafisch = os.environ.get("DISPLAY") and shutil.which("rofi")
+
+    if not grafisch:
+        for e in eintraege:
+            print(zeile(e))
+        if not eintraege:
+            print("(Verlauf ist leer)")
+        return
+
+    if not eintraege:
+        subprocess.run(["dunstify", "-a", "benachrichtigungen", "-u", "low",
+                        GLOCKE + "  Verlauf ist leer"])
+        return
+
+    zeilen = ["{}  Verlauf leeren ({})".format(MUELL, len(eintraege))]
+    zeilen += [zeile(e) for e in eintraege]
+
+    # -theme-str: ~/.config/rofi/config.rasi setzt bei den Zeilen nur die
+    # Schriftfarbe ("element normal { text-color: ... }"), nie den Hintergrund.
+    # Den holt sich rofi darum aus seinem mitgelieferten Standardthema und
+    # faerbt jede zweite Zeile beige -- die Liste sieht gestreift aus. Hier
+    # stehen die drei Zustaende deshalb ausgeschrieben; "normal.normal" ist
+    # noetig, weil die Regel des Standardthemas genau diesen Zustand faerbt
+    # und ein blosses "element" oder eine Variable dagegen nicht ankommt.
+    fertig = subprocess.run(
+        ["rofi", "-dmenu", "-i", "-no-custom", "-format", "i",
+         "-p", GLOCKE + " Verlauf", "-lines", str(min(len(zeilen), 14)),
+         "-theme-str",
+         "element normal.normal    { background-color: @bg; text-color: @fg-dim; }"
+         "element alternate.normal { background-color: @bg; text-color: @fg-dim; }"
+         "element selected.normal  { background-color: @bg-sel; text-color: @fg; }"],
+        input="\n".join(zeilen), capture_output=True, text=True)
+    if fertig.returncode != 0 or not fertig.stdout.strip():
+        return                      # mit Escape abgebrochen
+
+    gewaehlt = int(fertig.stdout.strip())
+    if gewaehlt == 0:
+        dbus("NotificationClearHistory")
+    else:
+        # PopHistory nimmt die Meldung aus dem Verlauf und zeigt sie erneut an
+        dbus("NotificationPopHistory", eintraege[gewaehlt - 1]["id"])
+
+
+if __name__ == "__main__":
+    main()

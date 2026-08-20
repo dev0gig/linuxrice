@@ -1,0 +1,309 @@
+#!/usr/bin/python3
+# i3status-melder  -- i3status mit einer Glocke ganz rechts in der Leiste
+#
+# i3bar ruft nicht mehr i3status direkt auf, sondern dieses Skript (siehe
+# "status_command" in ~/.config/i3/config). Es reicht alles von i3status
+# unveraendert durch und haengt rechts einen weiteren Block an:
+#
+#   Linksklick  -> ~/.local/bin/benachrichtigungen (Verlauf per rofi)
+#   Rechtsklick -> Verlauf sofort leeren
+#
+# Ausserdem macht es zwei Bloecke von i3status anklickbar. i3status vergibt
+# jedem Block einen Namen, an dem sich die Klicks auseinanderhalten lassen
+# ("wireless", "volume"). Auf die instance ist kein Verlass: dort steht der
+# aufgeloeste Wert, also "wlo1" statt "_first_".
+#
+#   Ton     Linksklick -> stumm um, Mausrad -> lauter/leiser.
+#           Beides ueber ~/.local/bin/osd, nicht ueber pactl direkt: nur so
+#           laufen die LED in F5 und der OSD-Balken mit wie bei den Tasten.
+#   WLAN    Linksklick -> Funk an/aus per rfkill.
+#
+# WARUM ein Wrapper: i3status kann selbst keine Mausklicks entgegennehmen.
+# Klickbare Bloecke gibt es nur ueber das i3bar-Protokoll, und dafuer muss
+# im Kopf "click_events": true stehen -- das setzt hier dieses Skript, und
+# es liest die Klick-Ereignisse, die i3bar daraufhin auf stdin schickt.
+#
+# Die Zahl neben der Glocke ist die Laenge des dunst-Verlaufs. Sie kommt
+# nicht aus einer Abfrage im Sekundentakt, sondern aus "gdbus monitor":
+# dunst meldet historyLength als geaenderte D-Bus-Eigenschaft, die Leiste
+# aktualisiert sich also im selben Moment, in dem eine Meldung kommt.
+# Klappt der Monitor nicht, wird bei jeder i3status-Zeile nachgefragt.
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+
+DIENST = "org.freedesktop.Notifications"
+OBJEKT = "/org/freedesktop/Notifications"
+SCHNITT = "org.dunstproject.cmd0"
+
+VERLAUF = os.path.expanduser("~/.local/bin/benachrichtigungen")
+OSD = os.path.expanduser("~/.local/bin/osd")
+
+GLOCKE = "\U000f009a"       # nf-md-bell        -- Verlauf hat Eintraege
+GLOCKE_AUS = "\U000f009b"   # nf-md-bell_off    -- Verlauf ist leer
+
+# Farben wie in ~/.config/i3status/config: Grau ist der Normalfall,
+# Gelb bedeutet "da liegt etwas".
+GRAU = "#9a9a9a"
+STUMPF = "#555555"
+GELB = "#fabd2f"
+
+# Icon und Farbe wie format_down in ~/.config/i3status/config, nur mit
+# anderem Text -- warum, steht bei wlan_block_ersetzen().
+WLAN_AUS = "\U000f05aa"     # nf-md-wifi_off
+WLAN_AUS_TEXT = "  <span foreground='{0}'>{1}</span> <span foreground='{0}'>WLAN aus</span>  ".format(
+    STUMPF, WLAN_AUS)
+
+RFKILL = "/sys/class/rfkill"
+
+anzahl = 0
+letzte_zeile = []
+schloss = threading.Lock()
+monitor_laeuft = False
+
+
+def verlauf_laenge():
+    """Laenge des dunst-Verlaufs ueber die D-Bus-Eigenschaft historyLength."""
+    try:
+        fertig = subprocess.run(
+            ["gdbus", "call", "--session", "--dest", DIENST,
+             "--object-path", OBJEKT, "--method",
+             "org.freedesktop.DBus.Properties.Get", SCHNITT, "historyLength"],
+            capture_output=True, text=True, timeout=3)
+        treffer = re.search(r"uint32 (\d+)", fertig.stdout)
+        return int(treffer.group(1)) if treffer else 0
+    except (OSError, subprocess.SubprocessError):
+        return 0
+
+
+def wlan_geblockt():
+    """True, wenn der WLAN-Funk per rfkill abgeschaltet ist.
+
+    Gelesen wird aus /sys statt ueber "rfkill list": das ist ein reiner
+    Dateizugriff ohne eigenen Prozess und laeuft bei jedem Neuzeichnen mit.
+    Ein Hard-Block (Schalter am Geraet) zaehlt als "aus" mit -- fuer die
+    Anzeige ist er dasselbe, nur aufheben laesst er sich per Software nicht.
+    """
+    try:
+        for eintrag in os.listdir(RFKILL):
+            ordner = os.path.join(RFKILL, eintrag)
+            with open(ordner + "/type", encoding="ascii") as d:
+                if d.read().strip() != "wlan":
+                    continue
+            for was in ("soft", "hard"):
+                with open(ordner + "/" + was, encoding="ascii") as d:
+                    if d.read().strip() == "1":
+                        return True
+    except OSError:
+        pass
+    return False
+
+
+def wlan_block_ersetzen(bloecke):
+    """i3status kennt nur "verbunden" und "nicht verbunden" -- abgeschaltetes
+    WLAN sieht dort aus wie ein Funkloch. Seit der Block anklickbar ist, muss
+    der Unterschied sichtbar sein: sonst weiss man nach einem Klick nicht, ob
+    man den Funk ausgeschaltet hat oder nur gerade keine Verbindung da ist.
+
+    Der Block wird kopiert, nicht geaendert: letzte_zeile haelt dieselben
+    Objekte fuer das Neuzeichnen fest.
+    """
+    if not wlan_geblockt():
+        return bloecke
+    return [dict(b, full_text=WLAN_AUS_TEXT) if b.get("name") == "wireless" else b
+            for b in bloecke]
+
+
+def i3status_wecken():
+    """i3status sofort eine neue Zeile schreiben lassen, statt bis zum
+    naechsten Takt (5 s) zu warten -- dasselbe Signal, das auch ~/.local/bin/osd
+    am Ende schickt."""
+    try:
+        subprocess.run(["pkill", "-SIGUSR1", "-x", "i3status"],
+                       capture_output=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def nachziehen():
+    """Nach dem Einschalten braucht wpa_supplicant ein paar Sekunden bis zur
+    Verbindung (gemessen rund drei). Ohne Nachtreten stuende die Leiste
+    solange auf "kein WLAN", obwohl der Funk laengst wieder laeuft."""
+    for _ in range(6):
+        time.sleep(2)
+        i3status_wecken()
+
+
+def wlan_umschalten():
+    """Funk an- oder ausschalten.
+
+    Ohne sudo moeglich, weil /dev/rfkill per udev-Regel der Gruppe wheel
+    gehoert (/etc/udev/rules.d/60-rfkill-unblock.rules). In derselben Datei
+    steht auch, warum dort ACTION=="add" stehen muss: ohne den Filter hebt
+    udev jeden Block im selben Moment wieder auf.
+    """
+    aus = wlan_geblockt()
+    try:
+        subprocess.run(["rfkill", "unblock" if aus else "block", "wlan"],
+                       capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return
+    neu_zeichnen()          # der ersetzte Block stimmt sofort
+    i3status_wecken()
+    if aus:
+        threading.Thread(target=nachziehen, daemon=True).start()
+
+
+def glocken_block():
+    if anzahl:
+        text = "  <span foreground='{}'>{}</span> <span foreground='{}'>{}</span>   ".format(
+            GELB, GLOCKE, GRAU, anzahl)
+    else:
+        text = "  <span foreground='{}'>{}</span>   ".format(STUMPF, GLOCKE_AUS)
+    return {
+        "name": "dunst",
+        "full_text": text,
+        "markup": "pango",
+        "separator": False,
+        "separator_block_width": 0,
+    }
+
+
+def ausgeben(bloecke):
+    """Eine Zeile des i3bar-Protokolls schreiben. Die Glocke kommt ans Ende,
+    denn i3bar zeichnet den ersten Block links und den letzten rechts.
+
+    ensure_ascii=False: die Icons sollen als echtes UTF-8 rausgehen wie bei
+    i3status auch, nicht als \\uXXXX-Ersatzpaare."""
+    bloecke = wlan_block_ersetzen(bloecke)
+    with schloss:
+        sys.stdout.write(json.dumps(bloecke + [glocken_block()], ensure_ascii=False) + ",\n")
+        sys.stdout.flush()
+
+
+def neu_zeichnen():
+    """Leiste sofort neu ausgeben, ohne auf die naechste i3status-Zeile zu warten."""
+    if letzte_zeile is not None:
+        ausgeben(letzte_zeile)
+
+
+def monitor():
+    """Auf Aenderungen von historyLength lauschen (siehe Kopf)."""
+    global anzahl, monitor_laeuft
+    muster = re.compile(r"'historyLength': <uint32 (\d+)>")
+    # stdbuf -oL ist hier keine Kosmetik: gdbus schreibt ueber die C-Bibliothek
+    # und puffert blockweise, sobald die Ausgabe kein Terminal ist. Ohne den
+    # Zeilenpuffer kaeme das erste Signal erst nach ein paar Kilobyte an --
+    # die Zahl an der Glocke haette tagelang stillgestanden.
+    if not shutil.which("stdbuf"):
+        return              # ohne Zeilenpuffer lieber gleich abfragen lassen
+    befehl = ["stdbuf", "-oL", "gdbus", "monitor", "--session", "--dest", DIENST]
+    while True:
+        try:
+            lauscher = subprocess.Popen(
+                befehl, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                encoding="utf-8", errors="replace")
+        except OSError:
+            return                      # kein gdbus -- dann eben abfragen
+        monitor_laeuft = True
+        for zeile in lauscher.stdout:
+            treffer = muster.search(zeile)
+            if treffer:
+                anzahl = int(treffer.group(1))
+                neu_zeichnen()
+        monitor_laeuft = False
+        # dunst neu gestartet oder D-Bus weg: kurz warten, dann neu verbinden
+        time.sleep(5)
+        anzahl = verlauf_laenge()
+        neu_zeichnen()
+
+
+def klicks():
+    """Klick-Ereignisse von i3bar lesen. Sie kommen als JSON-Strom:
+    erst "[", dann je Klick ein Objekt, ab dem zweiten mit fuehrendem Komma."""
+    global anzahl
+    for zeile in sys.stdin:
+        zeile = zeile.strip().lstrip(",")
+        if not zeile or zeile == "[":
+            continue
+        try:
+            ereignis = json.loads(zeile)
+        except ValueError:
+            continue
+        name = ereignis.get("name")
+        taste = ereignis.get("button")
+
+        # Ton und WLAN kehren gleich zurueck: die Glocke geht sie nichts an,
+        # und verlauf_laenge() unten waere eine D-Bus-Abfrage fuer nichts.
+        if name == "volume":
+            if taste == 1:
+                subprocess.Popen([OSD, "stumm"])
+            elif taste == 4:
+                subprocess.Popen([OSD, "lauter"])
+            elif taste == 5:
+                subprocess.Popen([OSD, "leiser"])
+            continue
+
+        if name == "wireless":
+            if taste == 1:
+                wlan_umschalten()
+            continue
+
+        if name != "dunst":
+            continue
+        if taste == 1:
+            subprocess.Popen([VERLAUF])
+        elif taste == 3:
+            subprocess.run(
+                ["gdbus", "call", "--session", "--dest", DIENST,
+                 "--object-path", OBJEKT, "--method",
+                 SCHNITT + ".NotificationClearHistory"],
+                capture_output=True)
+        anzahl = verlauf_laenge()
+        neu_zeichnen()
+
+
+def main():
+    global anzahl, letzte_zeile
+    # Ein- und Ausgabe fest auf UTF-8: die Icons sind Nerd-Font-Zeichen, und
+    # welche Locale i3bar dem Skript vererbt, ist nicht garantiert.
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stdin.reconfigure(encoding="utf-8", errors="replace")
+    i3status = subprocess.Popen(["i3status"], stdout=subprocess.PIPE,
+                                encoding="utf-8", errors="replace")
+    anzahl = verlauf_laenge()
+
+    # Kopfzeile von i3status uebernehmen und um click_events ergaenzen
+    kopf = json.loads(i3status.stdout.readline())
+    kopf["click_events"] = True
+    print(json.dumps(kopf), flush=True)
+    print(i3status.stdout.readline().strip(), flush=True)     # die oeffnende "["
+
+    threading.Thread(target=klicks, daemon=True).start()
+    threading.Thread(target=monitor, daemon=True).start()
+
+    for zeile in i3status.stdout:
+        zeile = zeile.strip().lstrip(",")
+        if not zeile:
+            continue
+        try:
+            bloecke = json.loads(zeile)
+        except ValueError:
+            continue
+        letzte_zeile = bloecke
+        if not monitor_laeuft:          # Notnagel, falls der Monitor fehlt
+            anzahl = verlauf_laenge()
+        ausgeben(bloecke)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

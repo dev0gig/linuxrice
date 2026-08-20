@@ -5,11 +5,15 @@
 # acpid ist hier gar nicht eingeschaltet (installiert ja, /var/service/acpid
 # nein) und wuesste ohnehin nichts von Schwellwerten -- er meldet nur Ein- und
 # Ausstecken, nicht "noch 15 Prozent". Genau das Ein- und Ausstecken vertont
-# uebrigens ~/.local/bin/netz-ton, das ist absichtlich getrennt.
+# ~/.local/bin/netz-ton, das bleibt getrennt: dort quittiert der Ton eine
+# Handlung, hier warnt er. Eigene Toene braucht es hier trotzdem, weil eine
+# stumme Meldung genau dann untergeht, wenn es darauf ankommt -- im
+# Vollbild-Video, auf der zweiten Arbeitsflaeche, beim Blick aufs Handy.
 #
-# Hysterese ueber Zustandsmerker: jede Stufe meldet sich genau EINMAL und
-# erst wieder, nachdem der Wert die Stufe verlassen hat. Ohne das kaeme alle
-# 60 Sekunden dieselbe Warnung.
+# Hysterese ueber Zustandsmerker: eine Stufe meldet sich beim Eintreten und
+# danach nur noch im eigenen Wiederholtakt -- nicht bei jedem Schleifen-
+# durchlauf. Ohne das kaeme alle 60 Sekunden dieselbe Warnung; ganz ohne
+# Wiederholung dagegen verpasst man sie einmal und nie wieder.
 #
 # Kritische Meldungen haben in der dunstrc timeout 0, bleiben also stehen,
 # bis sie jemand wegklickt ODER dieses Skript sie schliesst. Genau darum
@@ -32,7 +36,19 @@ INTERVALL_WARN=10  # Sekunden, solange eine Warnung offen steht: dann soll das
                    # vollen Minute mit falschem Wert auf dem Schirm.
 WARN=20            # Prozent: erste Warnung
 KRITISCH=10        # Prozent: dringende Warnung
+
+# Beide Stufen melden sich erneut, solange der Zustand anhaelt. Ohne das
+# verschwindet die 20-Prozent-Meldung nach dem dunst-Timeout und kommt durch
+# die Hysterese nie wieder -- einmal weggeschaut und die Warnung ist weg.
+WARN_WIEDERHOLUNG=600       # Sekunden: 20-Prozent-Meldung, ruhig alle 10 Minuten
+KRITISCH_WIEDERHOLUNG=120   # Sekunden: 10-Prozent-Meldung, deutlich draengender
 TEMP_WARN=90       # Grad Celsius
+
+LAUTSTAERKE=1.0    # Faktor auf die eingestellte Lautstaerke
+
+TONDIR="${XDG_DATA_HOME:-$HOME/.local/share}/akku-wache"
+TON_WARNUNG="$TONDIR/warnung.wav"
+TON_ALARM="$TONDIR/alarm.wav"
 
 LAUFDIR="${XDG_RUNTIME_DIR:-/tmp}"
 PIDDATEI="$LAUFDIR/akku-wache.pid"
@@ -64,6 +80,60 @@ ids_sichern() {
 }
 ids_sichern
 
+# ---- Toene ----------------------------------------------------------------
+# Gleiches Verfahren wie in netz-ton, inklusive der halben Sekunde Stille am
+# Anfang: der Lautsprecher-Sink steht im Leerlauf auf SUSPENDED, und PipeWire
+# weckt das ALSA-Geraet erst auf -- ein kurzer Klang waere vorbei, bevor der
+# Codec ueberhaupt Ton macht.
+#
+# Die beiden Toene sind absichtlich weit auseinander: die Warnung ist ein
+# freundliches Doppel-Blip in mittlerer Lage, der Alarm sind drei harte hohe
+# Stoesse mit tiefem Abschluss. Man soll im Nebenzimmer hoeren, welche der
+# beiden Stufen gerade dran ist, ohne hinzusehen.
+toene_erzeugen() {
+    mkdir -p "$TONDIR" || return 1
+    python3 - "$TONDIR" <<'PYTHON_ENDE'
+import math, struct, sys, wave
+
+RATE = 24000
+
+def ton(pfad, noten):
+    daten = bytearray()
+    daten += b'\x00\x00' * int(RATE * 0.45)         # Vorlauf gegen den Suspend
+    for frequenz, dauer in noten:
+        n = int(RATE * dauer)
+        for i in range(n):
+            # Kurze Rampen an beiden Enden, sonst knackt es am Sprung.
+            rampe = min(1.0, i / (RATE * 0.008), (n - i) / (RATE * 0.008))
+            wert = 0.5 * rampe * math.sin(2 * math.pi * frequenz * i / RATE)
+            daten += struct.pack('<h', int(wert * 32767))
+    daten += b'\x00\x00' * int(RATE * 0.05)
+    with wave.open(pfad, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        w.writeframes(bytes(daten))
+
+ziel = sys.argv[1]
+# Frequenz 0 ergibt sin(0) = 0, also Stille -- so entstehen die Pausen.
+ton(ziel + '/warnung.wav', [(698.5, 0.12), (0.0, 0.06), (698.5, 0.12)])
+ton(ziel + '/alarm.wav',   [(1046.5, 0.09), (0.0, 0.05),
+                            (1046.5, 0.09), (0.0, 0.05),
+                            (1046.5, 0.09), (0.0, 0.05),
+                            (523.25, 0.40)])
+PYTHON_ENDE
+}
+
+if [ ! -r "$TON_WARNUNG" ] || [ ! -r "$TON_ALARM" ]; then
+    toene_erzeugen || echo "akku-wache: Toene liessen sich nicht erzeugen" >&2
+fi
+
+spiele() {  # spiele <datei>
+    # Im Hintergrund, damit der naechste Takt nicht auf das Ende des Tons
+    # wartet. Ist der Ausgang stummgeschaltet, spielt es lautlos ins Leere.
+    [ -r "$1" ] && pw-play --volume "$LAUTSTAERKE" "$1" >/dev/null 2>&1 &
+}
+
 melde() {   # melde <tag> <dringlichkeit> <icon> <titel> <text> <alte-id>
     dunstify -a akku-wache -u "$2" -p -r "${6:-0}" \
              -h "string:x-dunst-stack-tag:$1" \
@@ -91,6 +161,7 @@ trap aufraeumen INT TERM
 [ -r "$AKKU/capacity" ] || { echo "akku-wache: $AKKU nicht lesbar" >&2; exit 1; }
 
 stufe_akku=voll        # voll | warn | kritisch
+seit_meldung=0         # Sekunden seit der letzten Akkumeldung
 temp_heiss=nein
 
 while :; do
@@ -107,19 +178,38 @@ while :; do
             schliesse "$id_akku"
             id_akku=0
             stufe_akku=voll
+            seit_meldung=0
             ids_sichern
         fi
     else
-        if [ "$ladung" -le "$KRITISCH" ] && [ "$stufe_akku" != kritisch ]; then
-            id_akku=$(melde akku critical "󰂃" "Akku fast leer" \
-                            "Noch ${ladung}%. Jetzt anstecken." "$id_akku")
-            stufe_akku=kritisch
-            ids_sichern
-        elif [ "$ladung" -le "$WARN" ] && [ "$stufe_akku" = voll ]; then
-            id_akku=$(melde akku normal "󰁺" "Akku wird knapp" \
-                            "Noch ${ladung}%." "$id_akku")
-            stufe_akku=warn
-            ids_sichern
+        if [ "$ladung" -le "$KRITISCH" ]; then
+            # Meldet beim Eintreten und danach alle KRITISCH_WIEDERHOLUNG
+            # Sekunden erneut -- mit dem dann aktuellen Prozentwert und jedes
+            # Mal mit Ton. Wegklicken beendet also nur den Anblick, nicht die
+            # Warnung; das ist bei zehn Prozent genau richtig.
+            if [ "$stufe_akku" != kritisch ] || \
+               [ "$seit_meldung" -ge "$KRITISCH_WIEDERHOLUNG" ]; then
+                id_akku=$(melde akku critical "󰂃" "Akku kritisch -- noch ${ladung}%" \
+                                "Jetzt anstecken. Sonst schaltet das Geraet in Kuerze ab." "$id_akku")
+                spiele "$TON_ALARM"
+                stufe_akku=kritisch
+                seit_meldung=0
+                ids_sichern
+            fi
+        elif [ "$ladung" -le "$WARN" ]; then
+            # Kein Sonderfall fuer den Weg von kritisch zurueck nach warn:
+            # im Akkubetrieb geht der Wert nur nach unten, und wackelt er doch
+            # einmal ein Prozent nach oben, bleibt lieber die kritische
+            # Meldung stehen, als dass sie zur milden herabgestuft wird.
+            if [ "$stufe_akku" = voll ] || \
+               { [ "$stufe_akku" = warn ] && [ "$seit_meldung" -ge "$WARN_WIEDERHOLUNG" ]; }; then
+                id_akku=$(melde akku normal "󰁺" "Akku wird knapp" \
+                                "Noch ${ladung}%." "$id_akku")
+                spiele "$TON_WARNUNG"
+                stufe_akku=warn
+                seit_meldung=0
+                ids_sichern
+            fi
         elif [ "$ladung" -gt "$WARN" ] && [ "$stufe_akku" != voll ]; then
             schliesse "$id_akku"
             id_akku=0
@@ -145,8 +235,12 @@ while :; do
     fi
 
     if [ "$stufe_akku" != voll ] || [ "$temp_heiss" = ja ]; then
-        sleep "$INTERVALL_WARN"
+        schlaf=$INTERVALL_WARN
     else
-        sleep "$INTERVALL"
+        schlaf=$INTERVALL
     fi
+    # Der Zaehler laeuft ueber die Schlafdauer, nicht ueber die Zahl der
+    # Durchlaeufe: der Takt wechselt ja zwischen 10 und 60 Sekunden.
+    seit_meldung=$(( seit_meldung + schlaf ))
+    sleep "$schlaf"
 done

@@ -32,7 +32,7 @@ SUCHE = "\U000f0349"     # nf-md-magnify
 # bluetoothctl faerbt seine Ausgabe auch dann, wenn sie in eine Pipe geht.
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
-# "Device F4:B3:01:8D:07:DD Kopfhoerer"
+# "Device AA:BB:CC:11:22:33 Kopfhoerer"
 GERAET = re.compile(r"^Device ([0-9A-F:]{17}) (.*)$", re.M)
 
 SCAN_SEKUNDEN = 8

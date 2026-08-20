@@ -126,6 +126,11 @@ exec_always --no-startup-id libinput-gestures-setup restart
 # (PID-Datei) -- ein "pkill -f" hier wuerde die eigene exec-Shell mit killen.
 exec_always --no-startup-id ~/.local/bin/i3-workspace-names
 
+# Verlauf der Zwischenablage mitschreiben (Mod+v zeigt ihn an).
+# clipmenud haelt sich an $XDG_RUNTIME_DIR, das ist tmpfs -- der Verlauf ist
+# beim Neustart weg und liegt nie dauerhaft auf der Platte.
+exec_always --no-startup-id "pgrep -x clipmenud > /dev/null || clipmenud"
+
 # Verlauf der Benachrichtigungen (dasselbe wie ein Klick auf die Glocke
 # ganz rechts in der Leiste).
 bindsym $mod+n exec --no-startup-id ~/.local/bin/benachrichtigungen
@@ -258,8 +263,13 @@ bindsym $mod+Shift+Right move right
 # split in horizontal orientation
 bindsym $mod+h split h
 
-# split in vertical orientation
-bindsym $mod+v split v
+# split in vertical orientation (war vorher $mod+v, dort liegt jetzt der
+# Verlauf der Zwischenablage)
+bindsym $mod+Shift+v split v
+
+# Verlauf der Zwischenablage, wie Super+V unter Windows. Gefuellt wird er vom
+# Dienst clipmenud (exec_always weiter oben).
+bindsym $mod+v exec --no-startup-id ~/.local/bin/zwischenablage
 
 # Die Browser haben bewusst keine eigene Taste: Chrome startet ohnehin per
 # Autostart auf Arbeitsflaeche 1, alles Weitere geht ueber rofi.

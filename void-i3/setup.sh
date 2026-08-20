@@ -440,7 +440,9 @@ ${FETT}Fertig.${AUS} Was jetzt noch von Hand kommt:
      laufen die Touchpad-Gesten nicht.
   2. Auf tty1 anmelden: .bash_profile startet X und i3 von selbst.
      Auf anderen Konsolen passiert bewusst nichts.
-  3. WLAN: sudo wpa_passphrase 'NETZ' 'PASSWORT' >> /etc/wpa_supplicant/wpa_supplicant.conf
+  3. WLAN: wpa_passphrase 'NETZ' | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf >/dev/null
+     (fragt das Passwort ab; ein ">>" hinter sudo scheitert, weil die Datei
+     root gehoert und die Umleitung als Benutzer laeuft)
      danach sudo sv restart wpa_supplicant
   4. Tailscale anmelden: sudo tailscale up
   5. Sensoren einlesen: sudo sensors-detect   -- danach im Dashboard pruefen,

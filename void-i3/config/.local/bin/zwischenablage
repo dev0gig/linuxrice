@@ -1,0 +1,25 @@
+#!/bin/sh
+# zwischenablage -- Verlauf der Zwischenablage als rofi-Liste (Mod+v)
+#
+# Gegenstueck zu Super+V unter Windows. Den Verlauf fuellt der Dienst
+# clipmenud, den die i3-Config per exec_always startet; dieses Skript ist
+# nur die Auswahl. Ein gewaehlter Eintrag landet wieder in der Zwischen-
+# ablage (CLIPBOARD und PRIMARY), danach ganz normal mit Strg+v einfuegen.
+#
+# Der Verlauf liegt unter $XDG_RUNTIME_DIR/clipmenu.6.$USER -- das ist ein
+# tmpfs, der Verlauf ist beim Neustart also weg. Das ist Absicht: so bleibt
+# nichts Kopiertes dauerhaft im Klartext auf der Platte liegen.
+#
+# WARUM der Umweg ueber dieses Skript und nicht clipmenu direkt in der
+# i3-Config: CM_LAUNCHER muss gesetzt sein, sonst nimmt clipmenu dmenu
+# statt rofi. Zusammen mit den rofi-Flags waere das eine unleserlich
+# lange Zeile in der Config.
+#
+# -no-show-icons, weil ~/.config/rofi/config.rasi global show-icons setzt.
+# Fuer Textschnipsel gibt es keine Icons, ohne das Flag bliebe links in
+# jeder Zeile eine leere Spalte stehen.
+
+export CM_LAUNCHER=rofi
+export CM_HISTLENGTH="${CM_HISTLENGTH:-15}"
+
+exec clipmenu -i -no-show-icons -p "Zwischenablage"

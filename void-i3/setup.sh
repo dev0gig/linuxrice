@@ -16,7 +16,7 @@
 #
 # Was das Skript NICHT tut, weil es ohne dich nicht geht:
 #   * WLAN verbinden (wpa_supplicant), Tailscale anmelden
-#   * Firefox einrichten (Profil, Anmeldungen, Erweiterungen)
+#   * Chrome einrichten (Google-Konto anmelden, Erweiterungen)
 #   * eigene Hintergrundbilder nach ~/Bilder/Wallpapers legen
 # Am Ende steht eine Liste davon.
 
@@ -105,13 +105,13 @@ schritt "Pakete"
 PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils
         mesa-dri xf86-video-intel
         i3 i3status i3lock rofi dmenu picom feh
-        alacritty xterm firefox pcmanfm
+        alacritty xterm pcmanfm flatpak
         libinput-gestures python3-i3ipc
         nerd-fonts-symbols-ttf noto-fonts-cjk-sans papirus-icon-theme"
 
 # Benachrichtigungen: dunst ist der D-Bus-Dienst auf
 # org.freedesktop.Notifications. Fehlt er, verschwinden Meldungen von
-# Firefox & Co. spurlos -- es gibt dann schlicht niemanden, der sie anzeigt.
+# Chrome & Co. spurlos -- es gibt dann schlicht niemanden, der sie anzeigt.
 # libnotify liefert notify-send, brightnessctl und playerctl bedienen die
 # F-Tasten, acpi liest Akku und Temperatur.
 PAKETE="$PAKETE dunst libnotify brightnessctl playerctl acpi"
@@ -160,6 +160,28 @@ sudo xbps-install -Syu || true          # erster Lauf aktualisiert ggf. nur xbps
 # shellcheck disable=SC2086
 sudo xbps-install -Sy $PAKETE
 gut "Pakete installiert"
+
+# ------------------------------------------------------------------ Browser
+
+schritt "Browser"
+
+# Chrome und Brave liegen nicht in den Void-Repos. Der Weg ueber xbps-src
+# (restricted-Template) baut zwar ein echtes Paket, aber jedes
+# Sicherheitsupdate muesste man von Hand nachbauen -- bei einem Browser alle
+# paar Wochen. Flatpak aktualisiert stattdessen mit "flatpak update" mit.
+#
+# Chrome ist der Standardbrowser (Sync mit dem Google-Konto), Brave steht als
+# Zweitbrowser mit eingebautem Werbeblocker daneben.
+#
+# Hardware-Videodekodierung: Flatpak zieht org.freedesktop.Platform.VAAPI.Intel
+# automatisch mit (die Runtime markiert sie mit "download-if = have-intel-gpu").
+# Der iHD-Treiber liegt dann IM Sandkasten -- intel-media-driver muss dafuer
+# NICHT auf dem Host installiert sein. Kontrolle spaeter in chrome://gpu unter
+# "Video Decode".
+sudo flatpak remote-add --if-not-exists flathub \
+     https://dl.flathub.org/repo/flathub.flatpakrepo
+sudo flatpak install -y flathub com.google.Chrome com.brave.Browser
+gut "Chrome und Brave installiert"
 
 # ---------------------------------------------------------------- Bluetooth
 
@@ -337,16 +359,6 @@ fi
 
 gut "abgelegt, Schriftcache erneuert"
 
-# Firefox: Mittelklick soll nicht einfuegen. Die Datei liegt im Programm-
-# verzeichnis, weil beim ersten Lauf noch kein Profil existiert -- ein
-# Firefox-Update ueberschreibt sie wieder.
-if [ -d /usr/lib/firefox/browser/defaults/preferences ]; then
-    sudo cp "$QUELLE/system/firefox/no-middleclick-paste.js" \
-            /usr/lib/firefox/browser/defaults/preferences/
-    info "Firefox: Mittelklick-Einfuegen abgeschaltet"
-    warn "Diese Datei verschwindet bei jedem Firefox-Update wieder."
-fi
-
 # Die LEDs in F8 (Mikrofon stumm) und F5 (Ton stumm). Beide haengen am Codec
 # ALC245, fuer den der Kernel keinen Mute-LED-Quirk kennt -- ohne dieses
 # Programm bleiben sie immer dunkel. Es muss ein Binaerprogramm sein: das
@@ -474,7 +486,9 @@ cat <<ENDE
 ${FETT}Fertig.${AUS} Was jetzt noch von Hand kommt:
 
   1. Abmelden und neu anmelden -- die Gruppe input greift erst dann, sonst
-     laufen die Touchpad-Gesten nicht.
+     laufen die Touchpad-Gesten nicht. Ausserdem setzt /etc/profile.d
+     erst bei der Anmeldung XDG_DATA_DIRS auf die Flatpak-Pfade; ohne das
+     findet rofi Chrome und Brave nicht.
   2. Auf tty1 anmelden: .bash_profile startet X und i3 von selbst.
      Auf anderen Konsolen passiert bewusst nichts.
   3. WLAN: wpa_passphrase 'NETZ' | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf >/dev/null
@@ -485,10 +499,11 @@ ${FETT}Fertig.${AUS} Was jetzt noch von Hand kommt:
   5. Sensoren einlesen: sudo sensors-detect   -- danach im Dashboard pruefen,
      ob die Temperaturen erscheinen.
   6. Eigene Hintergrundbilder nach ~/Bilder/Wallpapers, dann \$mod+Shift+w.
-  7. Firefox einrichten (Profil, Erweiterungen) -- das kann kein Skript.
+  7. In Chrome mit dem Google-Konto anmelden -- das kann kein Skript.
+     Lesezeichen, Passwoerter und Tabs kommen dann vom Handy mit.
 
 Tastenbelegung in Kuerze:  Strg+Alt+T Terminal, \$mod+space rofi,
-\$mod+f Firefox, \$mod+e Dateien, Strg+q Fenster schliessen,
+\$mod+f Chrome, \$mod+b Brave, \$mod+e Dateien, Strg+q Fenster schliessen,
 \$mod+1..4 Arbeitsflaechen.  Alles Weitere in ~/.config/i3/config.
 
 Ueberschriebene Dateien liegen als <datei>.vor-void-i3 daneben.

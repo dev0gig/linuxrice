@@ -5,14 +5,17 @@
 
 alias ls='ls --color=auto'
 PS1='[\u@\h \W]\$ '
-alias odin='ssh patrick@odin'
+@@REMOTE_ALIAS@@
 
 # Claude Code aktualisiert sich nicht selbst (siehe /etc/profile.d/claude-code.sh)
 export DISABLE_AUTOUPDATER=1
 
 # Editor und Pager.
-# EDITOR wirkt auch in yazi: dort oeffnet Enter auf einer Textdatei Helix
-# direkt im selben Terminalfenster, ohne ein zweites Alacritty aufzumachen.
+# EDITOR/VISUAL gelten fuer alles, was sich einen Editor holt: git commit,
+# crontab, visudo. Yazi geht seit dem [opener] in ~/.config/yazi/yazi.toml
+# absichtlich NICHT diesen Weg -- Enter auf einer Textdatei startet Helix dort
+# in einem eigenen Alacritty, damit der Dateimanager daneben stehen bleibt
+# statt dahinter zu verschwinden.
 export EDITOR=hx
 export VISUAL=hx
 # bat als Pager: wie less, aber mit Syntaxhervorhebung. -F beendet sich bei

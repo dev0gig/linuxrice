@@ -47,6 +47,22 @@ Platzhalter, keine echten Rechnernamen. Danach läuft es ohne Rückfragen
 durch und ist **mehrfach ausführbar**: was es überschreibt, legt es vorher
 als `<datei>.vor-void-i3` daneben.
 
+> **Diese Dateien sind Vorlagen, keine Kopien eines laufenden Systems.**
+> Sie lassen sich nicht mit `cp ~/.config/… hierher` pflegen — dabei gehen
+> die Platzhalter verloren, und echte Rechnernamen landen im öffentlichen
+> Repo. Genau das war schon zweimal passiert. Betroffen sind:
+>
+> | Datei | steht hier absichtlich anders |
+> | --- | --- |
+> | `config/.config/i3/config` | `remote-term` / `remote-shell` statt echter Namen, `~/…` statt `/home/<name>/…` |
+> | `config/.bashrc` | `@@REMOTE_ALIAS@@` statt eines fertigen `alias` |
+> | `config/.local/bin/i3-workspace-names` | `@@WS2_NAME@@`, `@@WS3_NAME@@` |
+> | `config/.local/bin/remote-shell` | `@@SSH_TARGET@@`, `@@REMOTE_ALIAS_NAME@@`; heißt lokal anders |
+> | `workspaces-vitals/home/…` | `/home/user` als Platzhalter, den `setup.sh` auf `$HOME` setzt |
+>
+> Änderungen an diesen fünf also von Hand nachziehen. Alles Übrige darf
+> direkt kopiert werden.
+
 Es richtet ein:
 
 | | |

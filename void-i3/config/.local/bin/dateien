@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+"""Mod+e: immer auf Arbeitsflaeche 5, wo Yazi die ganze Flaeche hat.
+
+Ein schlichtes "exec alacritty -e yazi" in der i3-Config wuerde den gerade
+benutzten Bildschirm kacheln -- der Dateimanager landet auf der Haelfte und
+schiebt die eigentliche Arbeit zur Seite. Darum dieser Umweg:
+
+  * Es wird immer erst auf Flaeche 5 geschaltet.
+  * Liegt dort schon ein Yazi-Fenster, passiert sonst nichts -- kein zweites
+    Fenster, keine Teilung. Yazi bleibt voll.
+  * Nur wenn keins da ist (z. B. nach "q" in Yazi), wird eins gestartet. Wo
+    es landet, entscheidet die assign-Regel auf die Fensterklasse, nicht
+    dieses Skript.
+
+Die Fensterklasse muss dieselbe sein wie in "assign [class=...] number 5"
+und in "for_window [class=...] border none" der i3-Config.
+"""
+import subprocess
+
+import i3ipc
+
+KLASSE = "yazi-term"
+FLAECHE = 5
+
+
+def main():
+    i3 = i3ipc.Connection()
+    i3.command(f"workspace number {FLAECHE}")
+
+    # find_classed nimmt einen regulaeren Ausdruck; der Klassenname enthaelt
+    # nur Buchstaben und einen Bindestrich, da ist nichts zu maskieren.
+    if not i3.get_tree().find_classed(KLASSE):
+        subprocess.Popen(["alacritty", "--class", KLASSE, "-e", "yazi"])
+
+
+if __name__ == "__main__":
+    main()

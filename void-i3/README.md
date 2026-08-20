@@ -88,6 +88,7 @@ von beiden Stellen. So gibt es von jeder Datei genau eine Fassung.
 | 2 | lokales Terminal | `autostart-term` |
 | 3 | SSH-Sitzung, hält nach dem Ende eine lokale Shell offen | `remote-term` |
 | 4 | Vitals-Dashboard | `vitals-dashboard` |
+| 5 | Dateimanager Yazi, volle Fläche ohne Rahmen | `yazi-term` |
 
 Jedes Autostart-Fenster hat eine eigene Fensterklasse — damit landet genau
 *dieses* Fenster auf seiner Fläche, während normal gestartete Terminals sich
@@ -102,7 +103,7 @@ funktionieren `workspace number N` und die `assign`-Regeln weiter.
 | `Strg+Alt+T` | Terminal |
 | `$mod+space` / `$mod+d` | rofi |
 | `$mod+Shift+d` | dmenu (Rückfallebene) |
-| `$mod+e` | Dateimanager Yazi (Terminal) |
+| `$mod+e` | Dateimanager Yazi — springt auf Fläche 5 |
 | `Strg+$mod+e` | Dateimanager PCManFM (Fenster) |
 | `$mod+Shift+f` | Vollbild |
 | `$mod+t` | Aufteilung umschalten |
@@ -136,6 +137,14 @@ Zwei Dateimanager nebeneinander, mit klarer Aufgabenteilung:
   in den Ordner hinein, links wieder heraus. `hjkl` liegt parallel darauf,
   man muss es aber nicht benutzen. Maus ist über `mouse_events` in
   `~/.config/yazi/yazi.toml` eingeschaltet.
+
+  Yazi hat eine feste Arbeitsfläche (5) und liegt dort allein und ohne
+  Rahmen. `$mod+e` startet deshalb kein Fenster in der gerade benutzten
+  Fläche — das würde sie kacheln und den Dateimanager auf die Hälfte
+  drücken. Stattdessen schaltet `~/.local/bin/dateien` auf 5 und startet
+  Yazi nur dann, wenn dort gerade keins läuft. Zwei Ordner nebeneinander
+  braucht kein zweites Fenster: `t` macht in Yazi einen Tab auf, `y`/`x`
+  kopiert bzw. schneidet aus, `p` fügt im anderen Tab ein.
 * **PCManFM** auf `Strg+$mod+e` bleibt für die zwei Dinge, die ein
   TUI-Dateimanager nicht kann: Dateien per Drag-and-Drop in andere Fenster
   ziehen und Bilder als Vorschaubilder durchblättern. Es kostet 1,4 MB, und

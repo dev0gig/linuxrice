@@ -123,3 +123,25 @@
 [verlauf-nicht-merken]
     appname = "benachrichtigungen"
     history_ignore = yes
+
+# ---- Signalton ------------------------------------------------------------
+# Ein kurzer angeschlagener Zweiklang (~/.local/bin/melde-ton) zu jeder
+# echten Meldung, damit eine Benachrichtigung im Vollbild oder auf einer
+# anderen Arbeitsflaeche nicht nur stumm vorbeizieht.
+#
+# "low" bekommt bewusst keinen Ton: das sind die OSD-Balken, und jede
+# Lautstaerkestufe zu vertonen waere absurd -- der Tastendruck ist ja die
+# Handlung, der Balken nur die Antwort darauf.
+#
+# Welche Absender ihren eigenen Ton mitbringen (akku-wache), entscheidet
+# das Skript selbst: dunst-Regeln koennen appnames nur treffen, nicht
+# ausschliessen. Der nackte Name genuegt als Pfad, dunst sucht das Skript
+# im PATH -- ~/.local/bin steht dort seit der .bash_profile.
+
+[ton-bei-meldung]
+    msg_urgency = normal
+    script = melde-ton
+
+[ton-bei-warnung]
+    msg_urgency = critical
+    script = melde-ton

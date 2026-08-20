@@ -1,0 +1,121 @@
+#!/bin/sh
+# melde-ton -- kurzer Signalton zu einer gewoehnlichen Benachrichtigung
+#
+# Wird nicht von Hand aufgerufen, sondern von dunst selbst: die dunstrc
+# haengt es ueber die Regeln "ton-bei-meldung" und "ton-bei-warnung" an die
+# Dringlichkeiten normal und critical. dunst uebergibt dabei fuenf
+# Argumente -- appname, Titel, Text, Symbol, Dringlichkeit; gebraucht wird
+# hier nur das erste.
+#
+# Warum ein eigenes Skript und nicht einfach der Ton der akku-wache:
+# der hier laeuft potenziell dutzende Male am Tag. Er muss darum kuerzer,
+# weicher und weniger draengend sein als eine Warnung -- man soll ihn
+# bemerken, aber nicht auf ihn reagieren muessen.
+#
+# Der Ton ist derselbe Aufbau wie in netz-ton und akku-wache (selbst
+# erzeugtes WAV mit Vorlauf gegen den Suspend), aber mit einer anderen
+# Huellkurve: dort stehen Sinustoene gleichmaessig an, hier werden sie
+# angeschlagen und klingen aus. Das klingt nach Glocke statt nach Piepser
+# und ist gerade deshalb vom Netzteil-Zweiklang zu unterscheiden, obwohl
+# beide aufsteigend sind.
+
+LAUTSTAERKE=1.0        # Faktor auf die eingestellte Lautstaerke
+ABSTAND_MS=400         # Mindestabstand zwischen zwei Toenen, siehe unten
+
+TONDIR="${XDG_DATA_HOME:-$HOME/.local/share}/melde-ton"
+TON="$TONDIR/meldung.wav"
+
+LAUFDIR="${XDG_RUNTIME_DIR:-/tmp}"
+ZULETZT="$LAUFDIR/melde-ton.zuletzt"
+
+# ---- Wer bringt seinen eigenen Ton mit ------------------------------------
+# akku-wache vertont ihre Warnungen selbst und braucht dafuer die deutlich
+# draengenderen Klaenge -- ein zweiter Ton obendrauf waere nur Krach. osd
+# und netz-ton quittieren einen Tastendruck bzw. das Stecken und sind
+# ohnehin "low", stehen hier aber der Vollstaendigkeit halber mit drin.
+# benachrichtigungen meldet nur "Verlauf ist leer" an sich selbst.
+case "$1" in
+    akku-wache|netz-ton|osd|benachrichtigungen) exit 0 ;;
+esac
+
+# ---- Salven abfangen ------------------------------------------------------
+# Kommen mehrere Meldungen im selben Moment -- ein Mailprogramm, das vier
+# neue Nachrichten einzeln meldet --, wuerde sich der Ton mit sich selbst
+# ueberlagern. Der erste gewinnt, der Rest der Salve bleibt still.
+jetzt=$(date +%s%N)
+jetzt=$((jetzt / 1000000))
+if [ -r "$ZULETZT" ]; then
+    read -r vorher < "$ZULETZT" 2>/dev/null || vorher=0
+    [ "$((jetzt - vorher))" -lt "$ABSTAND_MS" ] && exit 0
+fi
+echo "$jetzt" > "$ZULETZT"
+
+# ---- Ton ------------------------------------------------------------------
+# Selbst erzeugt statt aus einem Sound-Theme: so haengt nichts an einem
+# weiteren Paket, die Lautstaerke ist bekannt, und vor allem steht eine
+# halbe Sekunde Stille am Anfang. Die braucht es, weil der
+# Lautsprecher-Sink im Leerlauf auf SUSPENDED steht -- PipeWire weckt das
+# ALSA-Geraet erst auf, und ein kurzer Klang aus einem Theme ist vorbei,
+# bevor der Codec ueberhaupt Ton macht.
+toene_erzeugen() {
+    mkdir -p "$TONDIR" || return 1
+    python3 - "$TON" <<'PYTHON_ENDE'
+import math, struct, sys, wave
+
+RATE = 24000
+VORLAUF = 0.45      # Sekunden Stille gegen den Suspend des Sinks
+LAENGE  = 0.60      # Sekunden Klang; der Ausklang laeuft darin aus
+SPITZE  = 0.85      # Aussteuerung, 1.0 waere Vollausschlag
+
+# Zwei Anschlaege, aufsteigend: G5, kurz darauf C6 -- eine Quarte. Der
+# zweite setzt ein, waehrend der erste noch klingt, darum wirkt es wie
+# eine Geste und nicht wie zwei Piepser.
+NOTEN = [
+    (784.0,   0.000, 0.85),   # Frequenz, Einsatz in Sekunden, Gewicht
+    (1046.5,  0.085, 1.00),
+]
+
+n = int(RATE * LAENGE)
+spur = [0.0] * n
+
+for frequenz, einsatz, gewicht in NOTEN:
+    ab = int(RATE * einsatz)
+    for i in range(ab, n):
+        t = (i - ab) / RATE
+        # Anschlag in 3 ms auf, danach exponentiell aus. Ohne die 3 ms
+        # Anstieg knackt der Sprung von der Stille in die volle Amplitude.
+        huelle = math.exp(-t * 6.0) * min(1.0, t / 0.003)
+        # Grundton plus zwei Obertoene, die schneller weg sind als er --
+        # das gibt den glockigen Anschlag, ein reiner Sinus klaenge hohl.
+        wert  = math.sin(2 * math.pi * frequenz * t)
+        wert += 0.30 * math.sin(2 * math.pi * frequenz * 2 * t) * math.exp(-t * 14.0)
+        wert += 0.12 * math.sin(2 * math.pi * frequenz * 3 * t) * math.exp(-t * 20.0)
+        spur[i] += gewicht * SPITZE * huelle * wert
+
+# Die letzten 10 ms ausblenden: der Ausklang ist am Ende zwar leise, aber
+# nicht bei null -- abgeschnitten gaebe das wieder ein Knacken.
+for i in range(n):
+    rest = (n - i) / RATE
+    if rest < 0.01:
+        spur[i] *= rest / 0.01
+
+daten = bytearray(b'\x00\x00' * int(RATE * VORLAUF))
+for wert in spur:
+    daten += struct.pack('<h', max(-32767, min(32767, int(wert * 32767))))
+daten += b'\x00\x00' * int(RATE * 0.05)
+
+with wave.open(sys.argv[1], 'wb') as w:
+    w.setnchannels(1)
+    w.setsampwidth(2)
+    w.setframerate(RATE)
+    w.writeframes(bytes(daten))
+PYTHON_ENDE
+}
+
+if [ ! -r "$TON" ]; then
+    toene_erzeugen || { echo "melde-ton: Ton liess sich nicht erzeugen" >&2; exit 1; }
+fi
+
+# Ist der Ausgang stummgeschaltet, spielt es lautlos ins Leere -- was genau
+# richtig ist: wer stumm stellt, will auch keine Meldungen hoeren.
+exec pw-play --volume "$LAUTSTAERKE" "$TON" >/dev/null 2>&1

@@ -62,15 +62,30 @@ VITALS="$QUELLE/workspaces-vitals/home"
 # ------------------------------------------------------------------- Fragen
 
 schritt "Ein paar Angaben"
+
+# Die Antworten landen spaeter per sed in anderen Dateien: die Namen in der
+# Python-Datei i3-workspace-names (zwischen Anfuehrungszeichen), das SSH-Ziel
+# in einem alias in .bashrc (zwischen Hochkommata). Ein | & \ " oder ' darin
+# zerlegt den sed-Ausdruck oder die Zieldatei -- und das Fehlerbild haette
+# mit der Ursache nichts mehr zu tun (alle Arbeitsflaechen hiessen dann nur
+# noch "1" bis "4"). Darum werden genau diese Zeichen entfernt; Umlaute und
+# alles andere bleiben.
+name_saeubern() { printf '%s' "$1" | tr -d '|&\\"'"'"; }
+# Ein SSH-Ziel besteht aus benutzer@rechner, Rechner auch als IP oder mit
+# Port-Doppelpunkt -- mehr Zeichen braucht es nicht.
+ziel_saeubern() { printf '%s' "$1" | tr -cd 'A-Za-z0-9@._:-'; }
+
 info "Arbeitsflaeche 2 traegt ein lokales Terminal, Arbeitsflaeche 3 eine"
 info "SSH-Sitzung. Die Namen stehen spaeter in der Leiste."
 printf '    Name fuer Arbeitsflaeche 2 [lokal]: '
 read -r WS2_NAME || WS2_NAME=""
+WS2_NAME=$(name_saeubern "$WS2_NAME")
 [ -n "$WS2_NAME" ] || WS2_NAME="lokal"
 
 printf '    SSH-Ziel fuer Arbeitsflaeche 3, z.B. benutzer@rechner\n'
 printf '    (leer lassen, dann bleibt Arbeitsflaeche 3 frei): '
 read -r SSH_TARGET || SSH_TARGET=""
+SSH_TARGET=$(ziel_saeubern "$SSH_TARGET")
 
 WS3_NAME=""
 if [ -n "$SSH_TARGET" ]; then
@@ -78,6 +93,7 @@ if [ -n "$SSH_TARGET" ]; then
     VORGABE=${SSH_TARGET#*@}
     printf '    Name fuer Arbeitsflaeche 3 [%s]: ' "$VORGABE"
     read -r WS3_NAME || WS3_NAME=""
+    WS3_NAME=$(name_saeubern "$WS3_NAME")
     [ -n "$WS3_NAME" ] || WS3_NAME="$VORGABE"
 fi
 
@@ -386,6 +402,10 @@ sed -i "s|@@WS2_NAME@@|$WS2_NAME|" "$HOME/.local/bin/i3-workspace-names"
 
 if [ -n "$SSH_TARGET" ]; then
     ALIAS_NAME=$(printf '%s' "${SSH_TARGET#*@}" | tr -cd 'a-zA-Z0-9_')
+    # Bleibt nichts uebrig (Ziel war z.B. nur eine IP mit Punkten), braucht
+    # der alias trotzdem einen Namen -- "alias ='ssh ...'" waere ein Fehler
+    # bei jedem Shell-Start.
+    [ -n "$ALIAS_NAME" ] || ALIAS_NAME=remote
     sed -i "s|@@SSH_TARGET@@|$SSH_TARGET|g; s|@@REMOTE_ALIAS_NAME@@|$ALIAS_NAME|g" \
         "$HOME/.local/bin/remote-shell"
     sed -i "s|@@REMOTE_ALIAS@@|alias $ALIAS_NAME='ssh $SSH_TARGET'|" "$HOME/.bashrc"

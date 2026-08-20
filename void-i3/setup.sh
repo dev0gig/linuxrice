@@ -239,7 +239,8 @@ for rel in etc/X11/xorg.conf.d/00-keyboard.conf \
            etc/X11/xorg.conf.d/30-touchpad.conf \
            etc/fonts/conf.d/56-redhat-mono.conf \
            etc/udev/rules.d/60-rfkill-unblock.rules \
-           etc/udev/hwdb.d/61-hp-envy-fkeys.hwdb; do
+           etc/udev/hwdb.d/61-hp-envy-fkeys.hwdb \
+           etc/profile.d/claude-code.sh; do
     sudo mkdir -p "/$(dirname "$rel")"
     sichern_system "/$rel"
     sudo cp "$QUELLE/system/$rel" "/$rel"

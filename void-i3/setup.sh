@@ -504,6 +504,7 @@ ${FETT}Fertig.${AUS} Was jetzt noch von Hand kommt:
 
 Tastenbelegung in Kuerze:  Strg+Alt+T Terminal, \$mod+space rofi,
 \$mod+e Dateien, Strg+q Fenster schliessen,
+\$mod+v Verlauf der Zwischenablage,
 \$mod+1..4 Arbeitsflaechen.  Alles Weitere in ~/.config/i3/config.
 
 Ueberschriebene Dateien liegen als <datei>.vor-void-i3 daneben.

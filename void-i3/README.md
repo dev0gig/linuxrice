@@ -107,10 +107,24 @@ funktionieren `workspace number N` und die `assign`-Regeln weiter.
 | `$mod+t` | Aufteilung umschalten |
 | `Strg+q` | Fenster schließen |
 | `$mod+Shift+w` | Hintergrundbild wählen |
+| `$mod+v` | Verlauf der Zwischenablage |
+| `$mod+Shift+v` | senkrecht teilen |
 | `$mod+1` … `$mod+4` | Arbeitsflächen |
 
 Deutsches Tastaturlayout — deshalb steht in den Bindings `$mod+odiaeresis`
 statt `$mod+semicolon`.
+
+`$mod+v` ist die Entsprechung zu Super+V unter Windows: `clipmenud` schreibt
+jeden Kopiervorgang mit, `~/.local/bin/zwischenablage` zeigt den Verlauf als
+rofi-Liste, und ein gewählter Eintrag landet wieder in der Zwischenablage.
+Deshalb ist `split v` auf `$mod+Shift+v` umgezogen.
+
+Der Verlauf liegt unter `$XDG_RUNTIME_DIR/clipmenu.6.$USER`, also im tmpfs —
+beim Neustart ist er weg und landet nie auf der Platte. Nur Text; Bilder kann
+clipmenu nicht. Solange er lebt, steht darin allerdings alles im Klartext,
+auch kopierte Passwörter. Eine Ausnahmeliste über `CM_IGNORE_WINDOW` geht nur
+nach Fensterklasse und hilft deshalb nicht gegen ein Passwort-Plugin im
+Browser — das wäre dieselbe Klasse wie der Browser selbst.
 
 ## Klicks in der Statusleiste
 

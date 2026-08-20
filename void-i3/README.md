@@ -8,6 +8,26 @@ startet X beim Login auf tty1, `.xinitrc` startet i3, fertig. Vier feste
 Arbeitsflächen: Browser, lokales Terminal, SSH-Sitzung und ein
 Systemmonitor-Dashboard.
 
+## Für welches Gerät
+
+Das Setup ist auf **ein** Notebook zugeschnitten: **HP ENVY x360 Convertible
+13-bd0xxx** (Intel Core i7-1165G7 „Tiger Lake", Audio-Codec Realtek ALC245
+mit HP-Subsystem `0x103c8824`, 1920×1080). Das meiste läuft auf jedem
+Rechner, aber ein paar Teile sind an genau diese Hardware gebunden — vor
+allem die LED-Ansteuerung, die direkt in Register des Codecs schreibt:
+
+| Teil | Gebunden an | Auf anderem Gerät |
+| --- | --- | --- |
+| `system/bin/tasten-led.c` (LEDs in F5/F8) | GPIO-Pin 2 und COEF-Register `0x0b` des ALC245, durch Ausprobieren auf diesem Gerät ermittelt | **Nicht installieren.** Das Programm prüft nur die Codec-ID (ALC245), nicht das HP-Subsystem — auf einem anderen ALC245-Gerät schreibt es dieselben Register, und dort kann die Belegung eine ganz andere sein. Den Block „LEDs in F5 und F8" in `setup.sh` überspringen, `mikro-led`/`ton-led` laufen dann ohne LED weiter. |
+| `etc/udev/hwdb.d/61-hp-envy-fkeys.hwdb` | DMI-Match auf genau dieses Modell | greift schlicht nicht, harmlos |
+| `bindcode 248` (F12-Zahnrad) in der i3-Config | `KEY_UNKNOWN` des `hp-wmi`-Treibers | ohne Wirkung; Sitzungsmenü bleibt über `$mod+Shift+e` erreichbar |
+| `etc/udev/rules.d/60-rfkill-unblock.rules` | WLAN-Softblock durch `hp_wmi` beim Booten | harmlos |
+| `akku-wache`, `netz-ton`, `i3status/config` | `BAT1`, `ACAD`, `/sys/class/hwmon/hwmon4` (coretemp) | anpassen: meist `BAT0`/`AC`, und die hwmon-Nummer nachsehen (`cat /sys/class/hwmon/*/name`) |
+| `xf86-video-intel` in der Paketliste | Intel-Grafik | bei AMD/NVIDIA aus der Liste nehmen, der `modesetting`-Treiber aus `xorg-server` reicht |
+
+Tastatur- und Touchpad-Konfiguration, Schriften, Ton, Bluetooth, das
+Dashboard und die i3-Config selbst sind nicht gerätespezifisch.
+
 ## Einrichten
 
 Nach einer frischen Void-Installation (Basissystem, noch kein Xorg):

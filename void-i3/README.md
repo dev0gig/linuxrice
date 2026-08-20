@@ -51,7 +51,7 @@ Es richtet ein:
 
 | | |
 | --- | --- |
-| Pakete | Xorg ohne Display-Manager, i3, rofi, picom, Alacritty, Firefox, PCManFM und die Werkzeuge des Dashboards |
+| Pakete | Xorg ohne Display-Manager, i3, rofi, picom, Alacritty, PCManFM, Flatpak und die Werkzeuge des Dashboards |
 | Dienste | `dbus`, `dhcpcd`, `wpa_supplicant`, `tailscaled`, `bluetoothd`, `alsa`, `rtkit` |
 | Locale | `de_DE.UTF-8` erzeugen (Systemsprache bleibt `C.UTF-8`), Konsolentastatur auf `de` |
 | Schriften | Red Hat Mono nach `/usr/share/fonts`, dazu die fontconfig-Regel, die `monospace` darauf umbiegt |
@@ -60,12 +60,12 @@ Es richtet ein:
 | Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten |
 | Ton | PipeWire mit WirePlumber und PulseAudio-Schnittstelle, dazu `dumb_runtime_dir` (nicht in `base-system`) und `/run/user` aus `rc.local` — ohne `XDG_RUNTIME_DIR` startet PipeWire nicht |
 | Bluetooth | `bluez`; der Adapter bleibt nach dem Booten aus und geht erst auf Klick an |
-| Firefox | Mittelklick fügt nicht mehr ein |
+| Browser | Chrome (Standard) und Brave als Flatpak von Flathub |
 | Dashboard | das komplette [`workspaces-vitals`](workspaces-vitals/) auf Arbeitsfläche 4 |
 
 Was danach von Hand kommt — WLAN, Tailscale-Anmeldung, `sensors-detect`,
-eigene Hintergrundbilder, Firefox-Profil — listet das Skript am Ende noch
-einmal auf.
+eigene Hintergrundbilder, Anmeldung in Chrome — listet das Skript am Ende
+noch einmal auf.
 
 ## Aufbau des Ordners
 
@@ -84,7 +84,7 @@ von beiden Stellen. So gibt es von jeder Datei genau eine Fassung.
 
 | | Inhalt | Fensterklasse |
 | --- | --- | --- |
-| 1 | Firefox | `firefox` |
+| 1 | Chrome | `Google-chrome` |
 | 2 | lokales Terminal | `autostart-term` |
 | 3 | SSH-Sitzung, hält nach dem Ende eine lokale Shell offen | `remote-term` |
 | 4 | Vitals-Dashboard | `vitals-dashboard` |
@@ -102,7 +102,8 @@ funktionieren `workspace number N` und die `assign`-Regeln weiter.
 | `Strg+Alt+T` | Terminal |
 | `$mod+space` / `$mod+d` | rofi |
 | `$mod+Shift+d` | dmenu (Rückfallebene) |
-| `$mod+f` | Firefox |
+| `$mod+f` | Chrome |
+| `$mod+b` | Brave |
 | `$mod+e` | Dateimanager |
 | `$mod+Shift+f` | Vollbild |
 | `$mod+t` | Aufteilung umschalten |
@@ -162,7 +163,24 @@ gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
   Bei `0.92` war der Stich deutlich, `0.95` ist der Kompromiss aus etwas
   Transparenz und neutralem Hintergrund.
 * **Mittelklick-Einfügen** hat unter X11 keinen globalen Schalter, es ist pro
-  Toolkit zu setzen: GTK 3 und 4, Alacritty, Firefox — alle vier Stellen
-  richtet `setup.sh` ein.
+  Toolkit zu setzen: GTK 3 und 4 (`gtk-enable-primary-paste=false`) und
+  Alacritty. Chrome und Brave bringen keinen solchen Schalter mit — dort
+  bleibt es an.
+* **Flatpak-Programme tauchen erst nach der Neuanmeldung im Starter auf.**
+  `XDG_DATA_DIRS` bekommt die Pfade `…/flatpak/exports/share` aus
+  `/etc/profile.d/flatpak.sh`, und das läuft nur bei der Anmeldung. In einer
+  Sitzung, die vor der Installation gestartet ist, findet rofi die Browser
+  nicht und `xdg-open` löst ihre `.desktop`-Dateien nicht auf.
+* **Hardware-Video in Chrome und Brave** braucht `intel-media-driver` *nicht*
+  auf dem Host: Flatpak zieht `org.freedesktop.Platform.VAAPI.Intel` von
+  selbst mit (`download-if = have-intel-gpu` in der Runtime), der iHD-Treiber
+  liegt dann im Sandkasten unter
+  `/usr/lib/x86_64-linux-gnu/dri/intel-vaapi-driver/`. Kontrolle in
+  `chrome://gpu` unter „Video Decode".
+* **Chrome kann sich selbst nicht zum Standardbrowser machen.** Im Sandkasten
+  fehlt `xdg-settings`, der Knopf läuft ins Leere (`failed to execvp`). Der
+  Eintrag steht deshalb direkt in `~/.config/mimeapps.list`.
+* **Die `assign`-Regel trifft `Google-chrome`, nicht `chrome`.** Die WM_CLASS
+  des Flatpak-Fensters vorher mit `i3-msg -t get_tree` nachsehen, nicht raten.
 * Die Fallstricke rund um zellij, glances und die Uhr stehen in der
   [README des Dashboards](workspaces-vitals/).

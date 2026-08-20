@@ -148,6 +148,14 @@ PAKETE="$PAKETE zellij btop glances bandwhich lm_sensors"
 # Begruendung im Kopf von system/bin/tasten-led.c.
 PAKETE="$PAKETE gcc libcap-progs"
 
+# Dateien und Text: Yazi als Dateimanager im Terminal, Helix als Editor,
+# nano als schneller Notausgang fuer "eine Zeile aendern". glow zeigt
+# Markdown gerendert, bat ist cat mit Syntaxhervorhebung, nsxiv oeffnet
+# Bilder in einem richtigen Fenster statt als ASCII im Terminal.
+# Kitty wurde bewusst nicht genommen: das einzige Argument waere die
+# Bildvorschau im Terminal gewesen, und dafuer ist nsxiv ohnehin besser.
+PAKETE="$PAKETE yazi helix nano glow bat nsxiv desktop-file-utils"
+
 # Werkzeuge, die im Alltag dazugehoeren.
 # duf und dust sind bewusst raus: die beiden hatten Panes im Dashboard, sind
 # dort aber gescheitert (sie messen die Breite einmal beim Start und
@@ -416,6 +424,12 @@ cp -r "$QUELLE/config/." "$HOME/"
 cp -r "$VITALS/." "$HOME/"
 chmod 755 "$HOME"/.local/bin/* "$HOME/.config/i3/wallpaper.sh"
 gut "Dateien abgelegt"
+
+# Die Zuordnungen in mimeapps.list zeigen auf eigene .desktop-Eintraege in
+# ~/.local/share/applications (Helix fuer Text und Code, glow fuer Markdown,
+# yazi fuer Ordner). Ohne diesen Aufruf findet der Dateimanager sie erst
+# nach dem naechsten Login.
+update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 
 # ------------------------------------------------------------- Platzhalter
 

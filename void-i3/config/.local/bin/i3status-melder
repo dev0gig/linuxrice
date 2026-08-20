@@ -24,6 +24,17 @@
 #   Linksklick  -> Funk an/aus, Rechtsklick -> Menue (Geraete verbinden).
 #   Beides ueber ~/.local/bin/bluetooth, das auch im Terminal bedienbar ist.
 #
+# Rechts neben dem WLAN steht der Tailscale-Block -- Funk, lokales Netz, Netz
+# darueber. Er beantwortet die einzige Frage, die im Alltag zaehlt: komme ich
+# an die Gegenstelle ran. Gruen heisst direkt verbunden, Gelb ueber einen
+# Relay-Server (langsamer), Grau erreichbar-aber-weg, Rot "Anmeldung noetig"
+# -- der Fall, der sonst monatelang unbemerkt bleibt, bis nichts mehr geht.
+#
+#   Linksklick -> Tailnet an/aus.
+#   Braucht keinen sudo, weil der Benutzer bei tailscaled als Operator
+#   eingetragen ist. Welcher Rechner beobachtet wird, steht in
+#   ~/.config/i3status-melder/tailscale-peer (siehe TS_PEER_DATEI).
+#
 # WARUM ein Wrapper: i3status kann selbst keine Mausklicks entgegennehmen.
 # Klickbare Bloecke gibt es nur ueber das i3bar-Protokoll, und dafuer muss
 # im Kopf "click_events": true stehen -- das setzt hier dieses Skript, und
@@ -95,6 +106,36 @@ bt_gelesen = 0.0
 bt_punkte = 0
 bt_puls_laeuft = False
 bt_uhr = None
+
+# Tailscale-Block: haengt der Rechner im Tailnet, und ist die Gegenstelle da.
+GRUEN = "#8ec07c"
+ROT = "#fb4934"          # wie urgent_workspace in ~/.config/i3/config
+
+TS_AN = "\U000f048d"     # nf-md-server_network     -- Tailnet laeuft
+TS_AUS = "\U000f048e"    # nf-md-server_network_off -- aus, oder Gegenstelle weg
+TS_LOGIN = "\U000f099d"  # nf-md-shield_lock        -- Anmeldung noetig
+
+# Anders als Glocke und Bluetooth haengt dieser Block an keinem Monitor: der
+# Zustand aendert sich alle paar Stunden, nicht mehrmals pro Minute. Ein
+# Push-Kanal (tailscaled kann das ueber /localapi/v0/watch-ipn-bus) waere hier
+# Aufwand ohne Gegenwert. Stattdessen jede TS_TAKT-te i3status-Zeile eine
+# Abfrage, bei 5 s Takt also rund alle 30 Sekunden.
+TS_TAKT = 6
+
+# Welche Gegenstelle beobachtet wird -- eine Zeile mit dem Rechnernamen.
+# Bewusst eine Datei und keine Konstante: im Repo stehen keine echten
+# Rechnernamen. Fehlt die Datei, sucht sich der Block den Peer selbst.
+TS_PEER_DATEI = os.path.expanduser("~/.config/i3status-melder/tailscale-peer")
+
+# Telefone zaehlen bei der Selbstsuche nicht: erreichbar sein *will* man
+# Rechner und Server, ein Handy im Tailnet ist kein Zustand, der die Leiste
+# rot faerben sollte.
+TS_MOBIL = ("android", "iOS", "ios")
+
+# None heisst "kein tailscale auf dem Rechner" -- dann faellt der Block weg,
+# genau wie der Bluetooth-Block ohne Adapter.
+ts = None
+ts_zaehler = 0
 
 anzahl = 0
 letzte_zeile = []
@@ -353,6 +394,160 @@ def bt_monitor():
         neu_zeichnen()
 
 
+def ts_wunschpeer():
+    """Der Rechnername aus TS_PEER_DATEI, oder None fuer die Selbstsuche."""
+    try:
+        with open(TS_PEER_DATEI, encoding="utf-8") as d:
+            return d.read().strip() or None
+    except OSError:
+        return None
+
+
+def ts_abfragen():
+    """Zustand von tailscale holen: laeuft das Tailnet, und wie steht es um
+    die Gegenstelle.
+
+    Ueber "tailscale status --json" und nicht ueber den Unix-Socket in
+    /var/run/tailscale: der Socket ginge auch (er ist fuer alle lesbar), die
+    Antwort kommt aber chunked und muesste hier von Hand ausgepackt werden --
+    fuer eine Abfrage je halbe Minute lohnt das nicht.
+    """
+    global ts
+    if not shutil.which("tailscale"):
+        ts = None
+        return
+    try:
+        fertig = subprocess.run(["tailscale", "status", "--json"],
+                                capture_output=True, text=True, timeout=8)
+        daten = json.loads(fertig.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        ts = {"zustand": "weg"}         # tailscaled laeuft nicht oder haengt
+        return
+
+    zustand = daten.get("BackendState", "")
+    if zustand == "Stopped":
+        ts = {"zustand": "aus"}
+        return
+    if daten.get("LoggedOut") or zustand in ("NeedsLogin", "NeedsMachineAuth",
+                                             "NoState"):
+        # Der wichtigste Zustand ueberhaupt: Schluessel abgelaufen. Das
+        # passiert still nach Monaten, und ohne Anzeige faellt es erst auf,
+        # wenn eine Verbindung unerklaerlich nicht mehr zustande kommt.
+        ts = {"zustand": "login"}
+        return
+    if zustand == "Starting":
+        ts = {"zustand": "startet"}
+        return
+
+    peers = list(daten.get("Peer", {}).values())
+    wunsch = ts_wunschpeer()
+    if wunsch:
+        peers = [p for p in peers if p.get("HostName") == wunsch]
+    else:
+        peers = [p for p in peers if p.get("OS") not in TS_MOBIL]
+
+    ts = {
+        "zustand": "an",
+        "peers": [{
+            "name": p.get("HostName") or "?",
+            "online": bool(p.get("Online")),
+            # "Relay" taugt nicht als Merkmal fuer eine Umleitung: dort steht
+            # immer der zugewiesene DERP-Heimatserver, auch bei einer direkten
+            # Verbindung. Direkt ist genau dann, wenn eine CurAddr steht.
+            "direkt": bool(p.get("CurAddr")),
+        } for p in peers],
+    }
+
+
+def ts_block():
+    """Der Tailscale-Block, oder None wenn es kein tailscale gibt."""
+    if ts is None:
+        return None
+    zustand = ts["zustand"]
+
+    if zustand == "aus":
+        icon, farbe, wort, wortfarbe = TS_AUS, STUMPF, "aus", STUMPF
+    elif zustand == "weg":
+        icon, farbe, wort, wortfarbe = TS_AUS, ROT, "weg", ROT
+    elif zustand == "login":
+        icon, farbe, wort, wortfarbe = TS_LOGIN, ROT, "Login", ROT
+    elif zustand == "startet":
+        icon, farbe, wort, wortfarbe = TS_AN, GELB, "startet", GRAU
+    else:
+        peers = ts["peers"]
+        drin = [p for p in peers if p["online"]]
+        if not peers:
+            # Im Tailnet, aber keine Gegenstelle im Blick: dann sagt der Block
+            # nur, dass die Verbindung selbst steht.
+            icon, farbe, wort, wortfarbe = TS_AN, GRUEN, "an", GRAU
+        elif len(peers) == 1:
+            peer = peers[0]
+            # Gekuerzt und escaped aus demselben Grund wie beim Bluetooth: der
+            # Name kommt von aussen und wird als Pango-Markup gelesen.
+            name = html.escape(peer["name"][:16])
+            if not peer["online"]:
+                icon, farbe, wort, wortfarbe = TS_AUS, GRAU, name + " weg", GRAU
+            elif peer["direkt"]:
+                icon, farbe, wort, wortfarbe = TS_AN, GRUEN, name, GRAU
+            else:
+                # Erreichbar, aber der Verkehr laeuft ueber einen Relay-Server
+                # statt direkt -- geht, ist aber spuerbar langsamer. Gelb ist
+                # in dieser Leiste die Farbe fuer "hier stimmt etwas nicht ganz".
+                icon, farbe, wort, wortfarbe = TS_AN, GELB, name, GRAU
+        else:
+            icon = TS_AN if drin else TS_AUS
+            farbe = GRUEN if len(drin) == len(peers) else (GELB if drin else GRAU)
+            wort, wortfarbe = "{}/{}".format(len(drin), len(peers)), GRAU
+
+    text = "  <span foreground='{}'>{}</span> <span foreground='{}'>{}</span>  ".format(
+        farbe, icon, wortfarbe, wort)
+    return {"name": "tailscale", "full_text": text, "markup": "pango"}
+
+
+def ts_einfuegen(bloecke):
+    """Rechts neben das WLAN haengen: erst der Funk, dann das lokale Netz,
+    dann das Netz darueber. Ohne WLAN-Block ans Ende der i3status-Bloecke,
+    also noch vor die Glocke."""
+    block = ts_block()
+    if block is None:
+        return bloecke
+    stelle = len(bloecke)
+    for i, b in enumerate(bloecke):
+        if b.get("name") == "wireless":
+            stelle = i + 1
+            break
+    return bloecke[:stelle] + [block] + bloecke[stelle:]
+
+
+def ts_nachziehen():
+    """Nach einem Klick nachlesen. "tailscale up" meldet sich sofort zurueck,
+    die Verbindung zur Gegenstelle steht aber erst ein paar Sekunden spaeter --
+    ohne Nachtreten stuende der Block solange auf "weg"."""
+    for _ in range(5):
+        time.sleep(2)
+        ts_abfragen()
+        neu_zeichnen()
+
+
+def ts_umschalten():
+    """Tailnet an- oder abschalten.
+
+    Ohne sudo moeglich, weil der eigene Benutzer bei tailscaled als Operator
+    eingetragen ist ("tailscale set --operator=..."). Steht dort ein anderer
+    Name -- etwa noch der alte Benutzername von vor einer Umbenennung --,
+    laeuft der Befehl ins Leere und der Klick bliebe wirkungslos.
+    """
+    if ts is None:
+        return
+    aus = ts["zustand"] in ("aus", "weg")
+    try:
+        subprocess.Popen(["tailscale", "up" if aus else "down"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        return
+    threading.Thread(target=ts_nachziehen, daemon=True).start()
+
+
 def glocken_block():
     if anzahl:
         text = "  <span foreground='{}'>{}</span> <span foreground='{}'>{}</span>   ".format(
@@ -374,7 +569,7 @@ def ausgeben(bloecke):
 
     ensure_ascii=False: die Icons sollen als echtes UTF-8 rausgehen wie bei
     i3status auch, nicht als \\uXXXX-Ersatzpaare."""
-    bloecke = bt_einfuegen(wlan_block_ersetzen(bloecke))
+    bloecke = ts_einfuegen(bt_einfuegen(wlan_block_ersetzen(bloecke)))
     with schloss:
         sys.stdout.write(json.dumps(bloecke + [glocken_block()], ensure_ascii=False) + ",\n")
         sys.stdout.flush()
@@ -448,6 +643,11 @@ def klicks():
                 wlan_umschalten()
             continue
 
+        if name == "tailscale":
+            if taste == 1:
+                ts_umschalten()
+            continue
+
         if name == "bluetooth":
             if taste == 1:
                 subprocess.Popen([BLUETOOTH, "um"])
@@ -471,7 +671,7 @@ def klicks():
 
 
 def main():
-    global anzahl, letzte_zeile
+    global anzahl, letzte_zeile, ts_zaehler
     # Ein- und Ausgabe fest auf UTF-8: die Icons sind Nerd-Font-Zeichen, und
     # welche Locale i3bar dem Skript vererbt, ist nicht garantiert.
     sys.stdout.reconfigure(encoding="utf-8")
@@ -480,6 +680,7 @@ def main():
                                 encoding="utf-8", errors="replace")
     anzahl = verlauf_laenge()
     bt_abfragen()
+    ts_abfragen()
 
     # Kopfzeile von i3status uebernehmen und um click_events ergaenzen
     kopf = json.loads(i3status.stdout.readline())
@@ -504,6 +705,9 @@ def main():
             anzahl = verlauf_laenge()
         if not bt_monitor_laeuft:       # dasselbe fuer den Bluetooth-Block
             bt_abfragen()
+        ts_zaehler += 1                 # gedrosselt, siehe TS_TAKT
+        if ts_zaehler % TS_TAKT == 0:
+            ts_abfragen()
         ausgeben(bloecke)
 
 

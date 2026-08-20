@@ -510,6 +510,10 @@ ${FETT}Fertig.${AUS} Was jetzt noch von Hand kommt:
      root gehoert und die Umleitung als Benutzer laeuft)
      danach sudo sv restart wpa_supplicant
   4. Tailscale anmelden: sudo tailscale up
+     danach sudo tailscale set --operator=\$USER  -- sonst bleibt der
+     Linksklick auf den Tailscale-Block in der Leiste wirkungslos, weil
+     tailscaled Befehle nur von root oder dem eingetragenen Operator annimmt.
+     Nach einer Umbenennung des Benutzers muss das erneut gesetzt werden.
   5. Sensoren einlesen: sudo sensors-detect   -- danach im Dashboard pruefen,
      ob die Temperaturen erscheinen.
   6. Eigene Hintergrundbilder nach ~/Bilder/Wallpapers, dann \$mod+Shift+w.

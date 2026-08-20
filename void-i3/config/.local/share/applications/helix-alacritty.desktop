@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Helix (Alacritty)
+GenericName=Texteditor
+Comment=Text- und Codedateien im Terminal bearbeiten
+Icon=helix
+# Kein Terminal=true: libfm sucht sich dann selbst ein Terminal und landet
+# bei xterm (falsche Schrift, falsche Farben). Alacritty wird hier explizit
+# aufgerufen, deshalb bleibt Terminal auf false.
+Exec=alacritty -e hx %F
+Terminal=false
+StartupNotify=false
+NoDisplay=false
+Categories=Utility;TextEditor;
+MimeType=text/markdown;text/plain;text/x-markdown;application/x-shellscript;text/x-shellscript;text/x-python;application/json;application/toml;text/x-toml;application/x-yaml;text/x-yaml;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/rust;text/x-lua;text/javascript;application/javascript;text/css;text/x-makefile;text/x-log;text/x-diff;text/x-patch;application/x-desktop;

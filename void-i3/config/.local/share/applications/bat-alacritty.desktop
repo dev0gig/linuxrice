@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Ansehen (bat)
+Comment=Datei mit Syntaxhervorhebung lesen, mit q schliessen
+Icon=text-x-generic
+Exec=alacritty -e bat --paging=always %F
+Terminal=false
+StartupNotify=false
+NoDisplay=false
+Categories=Utility;Viewer;
+MimeType=text/plain;text/markdown;

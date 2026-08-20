@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Markdown ansehen (glow)
+Comment=Markdown gerendert im Terminal lesen, mit q schliessen
+Icon=text-x-generic
+# -p schaltet den Pager an, sonst waere das Fenster sofort wieder zu.
+Exec=alacritty -e glow -p %f
+Terminal=false
+StartupNotify=false
+NoDisplay=false
+Categories=Utility;Viewer;
+MimeType=text/markdown;text/x-markdown;

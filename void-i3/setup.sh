@@ -93,8 +93,20 @@ PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils
         libinput-gestures python3-i3ipc
         nerd-fonts-symbols-ttf noto-fonts-cjk-sans papirus-icon-theme"
 
+# Benachrichtigungen: dunst ist der D-Bus-Dienst auf
+# org.freedesktop.Notifications. Fehlt er, verschwinden Meldungen von
+# Firefox & Co. spurlos -- es gibt dann schlicht niemanden, der sie anzeigt.
+# libnotify liefert notify-send, brightnessctl und playerctl bedienen die
+# F-Tasten, acpi liest Akku und Temperatur.
+PAKETE="$PAKETE dunst libnotify brightnessctl playerctl acpi"
+
 # Das Vitals-Dashboard auf Arbeitsflaeche 4.
 PAKETE="$PAKETE zellij btop glances bandwhich tty-clock lm_sensors"
+
+# Fuer die LEDs in F5 und F8: gcc uebersetzt das winzige Hilfsprogramm
+# tasten-led, setcap (aus libcap-progs) gibt ihm die noetige Capability.
+# Begruendung im Kopf von system/bin/tasten-led.c.
+PAKETE="$PAKETE gcc libcap-progs"
 
 # Werkzeuge, die im Alltag dazugehoeren.
 PAKETE="$PAKETE git github-cli rclone xclip ImageMagick nodejs tailscale
@@ -202,13 +214,34 @@ schritt "Systemdateien"
 for rel in etc/X11/xorg.conf.d/00-keyboard.conf \
            etc/X11/xorg.conf.d/30-touchpad.conf \
            etc/fonts/conf.d/56-redhat-mono.conf \
-           etc/udev/rules.d/60-rfkill-unblock.rules; do
+           etc/udev/rules.d/60-rfkill-unblock.rules \
+           etc/udev/hwdb.d/61-hp-envy-fkeys.hwdb; do
     sudo mkdir -p "/$(dirname "$rel")"
     sichern_system "/$rel"
     sudo cp "$QUELLE/system/$rel" "/$rel"
     info "/$rel"
 done
 sudo fc-cache -f >/dev/null 2>&1 || true
+
+# Die hwdb-Datei wirkt erst, wenn sie nach /etc/udev/hwdb.bin uebersetzt ist.
+# Der trigger zieht sie fuer die bereits angemeldeten Tastaturen nach, sodass
+# F8 und F12 ohne Neustart ankommen.
+sudo udevadm hwdb --update
+sudo udevadm trigger --sysname-match="event*"
+info "Tastatur-Remap F8/F12 uebersetzt und aktiv"
+
+# sudoers braucht Modus 440 und muss fehlerfrei sein -- eine kaputte Datei
+# dort sperrt sudo komplett aus. Also erst pruefen, dann mit install ablegen
+# (cp wuerde die Rechte des Repos mitnehmen).
+if sudo visudo -c -f "$QUELLE/system/etc/sudoers.d/10-sitzung" >/dev/null 2>&1; then
+    sudo install -m 440 -o root -g root \
+         "$QUELLE/system/etc/sudoers.d/10-sitzung" /etc/sudoers.d/10-sitzung
+    info "/etc/sudoers.d/10-sitzung"
+else
+    warn "sudoers-Schnipsel fehlerhaft -- uebersprungen."
+    warn "Das Sitzungsmenue kann dann nur sperren und abmelden."
+fi
+
 gut "abgelegt, Schriftcache erneuert"
 
 # Firefox: Mittelklick soll nicht einfuegen. Die Datei liegt im Programm-
@@ -219,6 +252,27 @@ if [ -d /usr/lib/firefox/browser/defaults/preferences ]; then
             /usr/lib/firefox/browser/defaults/preferences/
     info "Firefox: Mittelklick-Einfuegen abgeschaltet"
     warn "Diese Datei verschwindet bei jedem Firefox-Update wieder."
+fi
+
+# Die LEDs in F8 (Mikrofon stumm) und F5 (Ton stumm). Beide haengen am Codec
+# ALC245, fuer den der Kernel keinen Mute-LED-Quirk kennt -- ohne dieses
+# Programm bleiben sie immer dunkel. Es muss ein Binaerprogramm sein: das
+# Codec-Geraet zu oeffnen verlangt CAP_SYS_RAWIO, und eine Capability kann kein
+# Skript tragen. Rechte 750 root:audio, damit es nicht jeder Benutzer aufrufen
+# kann.
+schritt "LEDs in F5 und F8"
+if command -v gcc >/dev/null 2>&1 && command -v setcap >/dev/null 2>&1; then
+    if gcc -O2 -o "/tmp/tasten-led.$$" "$QUELLE/system/bin/tasten-led.c" 2>/dev/null; then
+        sudo install -m 750 -o root -g audio "/tmp/tasten-led.$$" /usr/local/bin/tasten-led
+        rm -f "/tmp/tasten-led.$$"
+        sudo setcap cap_sys_rawio+ep /usr/local/bin/tasten-led
+        gut "/usr/local/bin/tasten-led gebaut und eingerichtet"
+    else
+        rm -f "/tmp/tasten-led.$$"
+        warn "tasten-led liess sich nicht uebersetzen -- die LEDs in F5/F8 bleiben dunkel."
+    fi
+else
+    warn "gcc oder setcap fehlt -- die LEDs in F5/F8 bleiben dunkel."
 fi
 
 # --------------------------------------------------------- Benutzerdateien

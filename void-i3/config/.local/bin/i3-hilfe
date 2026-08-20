@@ -1,0 +1,199 @@
+#!/bin/sh
+# i3-hilfe  -- zeigt die Tastenbelegung dieser i3-Sitzung an (F1)
+#
+# Liest ~/.config/i3/config, loest die "set $var"-Variablen auf und formatiert
+# jede bindsym-Zeile zu "Taste -> Aktion". Die Liste ist damit immer aktuell,
+# ohne dass sie irgendwo doppelt gepflegt werden muss.
+#
+# Der Beschreibungstext kommt in dieser Reihenfolge:
+#   1. aus einer Markerzeile "#: Text" unmittelbar ueber dem bindsym
+#   2. aus der Uebersetzungstabelle weiter unten (i3-Befehle und Programme)
+#   3. sonst aus dem Kommando selbst
+# Gewoehnliche "#"-Kommentare werden bewusst NICHT als Beschreibung genommen:
+# sie stehen oft ueber ganzen Gruppen und passen dann nur zur ersten Zeile.
+#
+# Ohne rofi oder ohne DISPLAY (z. B. im Terminal) geht die Liste nach stdout.
+CONFIG="${I3_CONFIG:-$HOME/.config/i3/config}"
+
+[ -r "$CONFIG" ] || { echo "i3-hilfe: $CONFIG nicht lesbar" >&2; exit 1; }
+
+liste() {
+awk '
+function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+
+# --- Tastennamen lesbar machen -------------------------------------------
+function taste(k,   i, n, teil, t, out) {
+    for (v in VAR) gsub(v, VAR[v], k)
+    n = split(k, teil, "+")
+    out = ""
+    for (i = 1; i <= n; i++) {
+        t = teil[i]
+        t = (t in MOD) ? MOD[t] : ((t in KEY) ? KEY[t] : t)
+        out = (i == 1) ? t : out "+" t
+    }
+    return out
+}
+
+# --- Kommando in Klartext uebersetzen ------------------------------------
+function aktion(c) {
+    for (v in VAR) gsub(v, VAR[v], c)
+    if (c in CMD) return CMD[c]
+
+    if (c ~ /^workspace number /)                   { sub(/^workspace number /, "", c);                   return "Arbeitsflaeche " c }
+    if (c ~ /^move container to workspace number /) { sub(/^move container to workspace number /, "", c); return "Fenster auf Arbeitsflaeche " c }
+    if (c ~ /^mode "/)                              { gsub(/^mode "|"$/, "", c); return (c == "default") ? "zurueck zum Normalmodus" : ((c == "resize") ? "Fenstergroesse aendern" : "Modus: " c) }
+    if (c ~ /^resize shrink width/)  return "schmaler"
+    if (c ~ /^resize grow width/)    return "breiter"
+    if (c ~ /^resize shrink height/) return "niedriger"
+    if (c ~ /^resize grow height/)   return "hoeher"
+
+    # ab hier: exec-Zeilen
+    if (c !~ /^exec /) return c
+    sub(/^exec ([-]-no-startup-id )?/, "", c)
+    gsub(/^"|"$/, "", c)
+
+    if (c ~ /i3-hilfe/)                    return "Diese Uebersicht"
+    if (c ~ /i3-sitzung/)                  return "Sperren / Bereitschaft / Ausschalten"
+    if (c ~ /osd lauter/)                  return "Lauter"
+    if (c ~ /osd leiser/)                  return "Leiser"
+    if (c ~ /osd stumm/)                   return "Ton stumm an/aus"
+    if (c ~ /osd mikro/)                   return "Mikrofon stumm an/aus"
+    if (c ~ /osd heller/)                  return "Bildschirm heller"
+    if (c ~ /osd dunkler/)                 return "Bildschirm dunkler"
+    if (c ~ /^brightnessctl.*%-/)          return "Bildschirm dunkler"
+    if (c ~ /^brightnessctl.*%\+/)         return "Bildschirm heller"
+    if (c ~ /^playerctl previous/)         return "Titel zurueck"
+    if (c ~ /^playerctl play-pause/)       return "Wiedergabe / Pause"
+    if (c ~ /^playerctl next/)             return "Titel vor"
+    if (c ~ /set-sink-volume.*\+/)         return "Lauter"
+    if (c ~ /set-sink-volume.*-/)          return "Leiser"
+    if (c ~ /set-sink-mute/)               return "Ton stumm an/aus"
+    if (c ~ /set-source-mute/)             return "Mikrofon stumm an/aus"
+    if (c ~ /wallpaper/)                   return "Hintergrundbild wechseln"
+    if (c ~ /^firefox/)                    return "Firefox"
+    if (c ~ /^pcmanfm/)                    return "Dateimanager (PCManFM)"
+    if (c ~ /^alacritty/)                  return "Terminal (Alacritty)"
+    if (c ~ /^rofi/)                       return "Programmstarter (rofi)"
+    if (c ~ /^dmenu_run/)                  return "Programmstarter (dmenu)"
+    if (c ~ /^i3-nagbar/)                  return "i3 beenden (mit Rueckfrage)"
+    return c
+}
+
+BEGIN {
+    MOD["Mod4"] = "Super"; MOD["Mod1"] = "Alt"
+    MOD["Control"] = "Strg"; MOD["Shift"] = "Umschalt"
+
+    KEY["odiaeresis"] = "Oe"; KEY["space"] = "Leertaste"
+    KEY["Return"] = "Enter";  KEY["Escape"] = "Esc"
+    KEY["Left"] = "Links"; KEY["Right"] = "Rechts"
+    KEY["Up"] = "Hoch";    KEY["Down"] = "Runter"
+    # Sondertasten der F-Reihe: Keysym -> Tastenaufdruck
+    # F1 braucht hier keinen Eintrag mehr: die Taste sendet Super+F1
+    # (siehe Kommentar in der i3-Config), das steht schon von selbst da.
+
+    # bindcode: Tasten ohne Keysym, nur ueber den Keycode ansprechbar.
+    # 248 ist KEY_UNKNOWN -- so meldet der hp-wmi-Treiber die Zahnrad-
+    # taste F12, weil er ihren Scancode nicht in der Tabelle hat.
+    CODE[248] = "F12"
+    KEY["XF86MonBrightnessDown"] = "F2"
+    KEY["XF86MonBrightnessUp"]   = "F3"
+    KEY["XF86AudioMute"]         = "F5"
+    KEY["XF86AudioLowerVolume"]  = "F6"
+    KEY["XF86AudioRaiseVolume"]  = "F7"
+    KEY["XF86AudioMicMute"]      = "F8"
+    KEY["XF86AudioPrev"]         = "F9"
+    KEY["XF86AudioPlay"]         = "F10"
+    KEY["XF86AudioNext"]         = "F11"
+
+    CMD["kill"]                = "Fenster schliessen"
+    CMD["focus left"]          = "Fokus nach links"
+    CMD["focus right"]         = "Fokus nach rechts"
+    CMD["focus up"]            = "Fokus nach oben"
+    CMD["focus down"]          = "Fokus nach unten"
+    CMD["move left"]           = "Fenster nach links"
+    CMD["move right"]          = "Fenster nach rechts"
+    CMD["move up"]             = "Fenster nach oben"
+    CMD["move down"]           = "Fenster nach unten"
+    CMD["split h"]             = "horizontal teilen"
+    CMD["split v"]             = "vertikal teilen"
+    CMD["layout stacking"]     = "Layout: gestapelt"
+    CMD["layout tabbed"]       = "Layout: Reiter"
+    CMD["layout toggle split"] = "Layout: Teilung umschalten"
+    CMD["fullscreen toggle"]   = "Vollbild an/aus"
+    CMD["floating toggle"]     = "Schwebend an/aus"
+    CMD["focus mode_toggle"]   = "Fokus: gekachelt / schwebend"
+    CMD["focus parent"]        = "Fokus auf Elternebene"
+    CMD["reload"]              = "Konfiguration neu laden"
+    CMD["restart"]             = "i3 neu starten"
+}
+
+# --- Variablen einsammeln (set $mod Mod4) --------------------------------
+/^[ \t]*set[ \t]+\$/ {
+    wert = $0
+    sub(/^[ \t]*set[ \t]+\$[^ \t]+[ \t]+/, "", wert)
+    gsub(/^"|"$/, "", wert)
+    VAR["\\" $2] = wert
+    marker = ""
+    next
+}
+
+# --- Modus-Bloecke merken ------------------------------------------------
+/^[ \t]*mode[ \t]+"/ && /\{[ \t]*$/ {
+    modus = $0
+    sub(/^[ \t]*mode[ \t]+"/, "", modus)
+    sub(/".*$/, "", modus)
+    marker = ""
+    next
+}
+/^[ \t]*\}[ \t]*$/ { modus = ""; marker = ""; next }
+
+# --- Markerzeile "#: Text" -----------------------------------------------
+/^[ \t]*#:/ {
+    marker = $0
+    sub(/^[ \t]*#:[ \t]*/, "", marker)
+    next
+}
+/^[ \t]*#/ { next }   # normale Kommentare: Marker bleibt erhalten
+
+# --- bindsym auswerten ---------------------------------------------------
+/^[ \t]*bindsym[ \t]/ {
+    zeile = $0
+    sub(/^[ \t]*bindsym[ \t]+/, "", zeile)
+    while (zeile ~ /^--[a-z-]+[ \t]/) sub(/^--[a-z-]+[ \t]+/, "", zeile)   # --release usw.
+    p = index(zeile, " ")
+    if (p == 0) { marker = ""; next }
+
+    tk = taste(substr(zeile, 1, p - 1))
+    if (modus != "") tk = "[" modus "] " tk
+    printf "%-26s %s\n", tk, (marker != "") ? marker : aktion(trim(substr(zeile, p + 1)))
+
+    marker = ""
+    next
+}
+
+# --- bindcode auswerten (Tasten ohne Keysym) -----------------------------
+/^[ \t]*bindcode[ \t]/ {
+    zeile = $0
+    sub(/^[ \t]*bindcode[ \t]+/, "", zeile)
+    while (zeile ~ /^--[a-z-]+[ \t]/) sub(/^--[a-z-]+[ \t]+/, "", zeile)
+    p = index(zeile, " ")
+    if (p == 0) { marker = ""; next }
+
+    kc = substr(zeile, 1, p - 1)
+    tk = (kc in CODE) ? CODE[kc] : ("Keycode " kc)
+    if (modus != "") tk = "[" modus "] " tk
+    printf "%-26s %s\n", tk, (marker != "") ? marker : aktion(trim(substr(zeile, p + 1)))
+
+    marker = ""
+    next
+}
+
+{ marker = "" }
+' "$CONFIG"
+}
+
+if [ -n "$DISPLAY" ] && command -v rofi >/dev/null 2>&1; then
+    liste | rofi -dmenu -i -p "Tastenbelegung" -l 20 -no-custom >/dev/null
+else
+    liste
+fi

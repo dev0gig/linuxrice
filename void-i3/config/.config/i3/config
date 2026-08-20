@@ -67,6 +67,43 @@ for_window [class="vitals-dashboard"] border none
 
 exec --no-startup-id i3-msg workspace number 1
 
+# ---- Ton ----
+# PipeWire starten; ueber die Drop-ins in /etc/pipewire/pipewire.conf.d/
+# zieht es WirePlumber (Geraeteverwaltung) und pipewire-pulse (PulseAudio-
+# Schnittstelle, die auch i3status und die XF86Audio-Tasten nutzen) mit hoch.
+# exec_always, damit der Ton nach "i3 restart" wieder steht -- die pgrep-Wache
+# verhindert, dass ein zweiter Server auf denselben Socket rennt.
+exec_always --no-startup-id "pgrep -x pipewire > /dev/null || pipewire"
+
+# ---- Benachrichtigungen ----
+# dunst ist der D-Bus-Dienst auf org.freedesktop.Notifications. Ohne ihn
+# verschwinden Meldungen von Firefox & Co. spurlos -- genau das war hier
+# lange der Fall, weil gar kein Dienst lief.
+#
+# Streng genommen startet ihn der D-Bus beim ersten Aufruf selbst
+# (/usr/share/dbus-1/services/org.knopwob.dunst.service). Hier steht er
+# trotzdem, damit er von Sitzungsbeginn an bereit ist statt erst bei der
+# ersten Meldung. Die pgrep-Wache verhindert einen zweiten Daemon nach
+# "i3 restart".
+exec_always --no-startup-id "pgrep -x dunst > /dev/null || dunst"
+
+# Warnt bei knappem Akku und heisser CPU. Beendet einen etwaigen Vorgaenger
+# selbst ueber eine PID-Datei -- ein "pkill -f" hier wuerde die eigene
+# exec-Shell mit killen.
+exec_always --no-startup-id ~/.local/bin/akku-wache
+
+# Kurzer Ton beim Ein- und Ausstecken des Netzteils. Eigenes Skript, weil es
+# im Zwei-Sekunden-Takt schaut -- die Akkuwache darf dafuer ruhig weiter
+# gemaechlich pollen.
+exec_always --no-startup-id ~/.local/bin/netz-ton
+
+# Die beiden LEDs in F8 (Mikrofon) und F5 (Ton) einmal an den tatsaechlichen
+# Mute-Zustand angleichen. Noetig, weil der Codec sie beim Booten in seinem
+# Ruhezustand laesst -- sie blieben sonst dunkel, obwohl vielleicht stumm
+# geschaltet ist.
+exec_always --no-startup-id ~/.local/bin/mikro-led auto
+exec_always --no-startup-id ~/.local/bin/ton-led auto
+
 # ---- Hintergrundbild ----
 # exec_always: laeuft auch bei "i3 reload/restart" wieder, damit das Bild
 # nach einem Neustart des WM sofort wieder steht.
@@ -85,12 +122,61 @@ exec_always --no-startup-id ~/.local/bin/i3-workspace-names
 # Wallpaper wechseln: Auswahl per rofi aus ~/Bilder/Wallpapers
 bindsym $mod+Shift+w exec --no-startup-id ~/.local/bin/wallpaper
 
-# Use pactl to adjust volume in PulseAudio.
-set $refresh_i3status killall -SIGUSR1 i3status
-bindsym XF86AudioRaiseVolume exec --no-startup-id pactl set-sink-volume @DEFAULT_SINK@ +10% && $refresh_i3status
-bindsym XF86AudioLowerVolume exec --no-startup-id pactl set-sink-volume @DEFAULT_SINK@ -10% && $refresh_i3status
-bindsym XF86AudioMute exec --no-startup-id pactl set-sink-mute @DEFAULT_SINK@ toggle && $refresh_i3status
-bindsym XF86AudioMicMute exec --no-startup-id pactl set-source-mute @DEFAULT_SOURCE@ toggle && $refresh_i3status
+# ---- Ton (F5 / F6 / F7) ----
+# Die Tasten rufen nicht mehr direkt pactl auf, sondern ~/.local/bin/osd.
+# Das Skript aendert den Wert, blendet einen Balken ein (dunst zeichnet ihn
+# aus dem Hinweis "int:value") und stoesst i3status selbst an -- das frueher
+# hier stehende $refresh_i3status steckt jetzt am Ende des Skripts.
+bindsym XF86AudioRaiseVolume exec --no-startup-id ~/.local/bin/osd lauter
+bindsym XF86AudioLowerVolume exec --no-startup-id ~/.local/bin/osd leiser
+bindsym XF86AudioMute exec --no-startup-id ~/.local/bin/osd stumm
+# F8 (Mikrofon): die Taste meldet von Haus aus KEY_MICMUTE (evdev 248), das
+# waere X-Keycode 256 -- X11 kann aber nur bis 255, sie kam hier also nie an.
+# /etc/udev/hwdb.d/61-hp-envy-fkeys.hwdb biegt sie auf KEY_F20 um, und <FK20>
+# traegt im Layout ohnehin das Keysym XF86AudioMicMute. Darum funktioniert
+# genau dieses Binding jetzt unveraendert.
+bindsym XF86AudioMicMute exec --no-startup-id ~/.local/bin/osd mikro
+
+# ---- Bildschirmhelligkeit (F2 / F3) ----
+# Die Tasten melden KEY_BRIGHTNESSDOWN/UP, in X heissen sie XF86MonBrightness*.
+# brightnessctl schreibt nach /sys/class/backlight/intel_backlight; die
+# udev-Regel des Pakets (90-brightnessctl.rules) legt diese Datei auf die
+# Gruppe "video", in der "user" ist -- darum braucht es hier kein sudo.
+# "-n5" haelt einen Mindestwert: F2 kann den Schirm nicht auf schwarz drehen.
+# Die Schrittweite (20%) und der Mindestwert stehen jetzt im Skript.
+bindsym XF86MonBrightnessDown exec --no-startup-id ~/.local/bin/osd dunkler
+bindsym XF86MonBrightnessUp exec --no-startup-id ~/.local/bin/osd heller
+
+# ---- Medienwiedergabe (F9 / F10 / F11) ----
+# Trotz der Symbole << und >> senden die Tasten Titel zurueck/vor
+# (KEY_PREVIOUSSONG / KEY_NEXTSONG), nicht Spulen -- entsprechend die Befehle.
+# playerctl spricht MPRIS ueber den Sitzungs-D-Bus; ~/.xinitrc startet i3 mit
+# "dbus-run-session", darum erben diese Bindings den richtigen Bus.
+# Firefox meldet sich dort von selbst an, sobald Ton oder Video laeuft.
+bindsym XF86AudioPrev exec --no-startup-id playerctl previous
+bindsym XF86AudioPlay exec --no-startup-id playerctl play-pause
+bindsym XF86AudioNext exec --no-startup-id playerctl next
+
+# ---- Hilfe (F1) ----
+# Die Taste sendet NICHT KEY_HELP, wie das Symbol vermuten laesst, sondern
+# Super+F1 -- HP bildet damit die Windows-Tastenkombination fuer die Hilfe
+# nach. Nachgemessen an den Rohdaten von /dev/input/event0: erst KEY_LEFTMETA,
+# dann KEY_F1. Ein frueheres "bindsym Help" konnte deshalb nie greifen.
+# Das Skript liest die Tastenbelegung aus dieser Datei und zeigt sie in rofi.
+bindsym $mod+F1 exec --no-startup-id ~/.local/bin/i3-hilfe
+
+# ---- Sitzungsmenue (F12) ----
+# Sperren, Bereitschaft, Abmelden, Neustart, Herunterfahren.
+#
+# Warum bindcode statt bindsym: die Zahnradtaste sendet den Scancode 0x21a6,
+# den der hp-wmi-Treiber nicht in seiner Tabelle hat -- er meldet sie deshalb
+# als KEY_UNKNOWN (evdev 240), in X also Keycode 248. Ein hwdb-Remap scheitert
+# hier, weil sparse_keymap nur *vorhandene* Scancodes umschreiben laesst und
+# neue mit EINVAL ablehnt. Keycode 248 wiederum traegt in symbols/inet
+# ausdruecklich NoSymbol, es gibt also keinen Namen, den bindsym nutzen
+# koennte. Der Keycode selbst kommt aber sauber an -- und genau den bindet
+# bindcode.
+bindcode 248 exec --no-startup-id ~/.local/bin/i3-sitzung
 
 # Use Mouse+$mod to drag floating windows to their wanted position
 floating_modifier $mod
@@ -226,8 +312,10 @@ bindsym $mod+Shift+0 move container to workspace number $ws10
 bindsym $mod+Shift+c reload
 # restart i3 inplace (preserves your layout/session, can be used to upgrade i3)
 bindsym $mod+Shift+r restart
-# exit i3 (logs you out of your X session)
-bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'You pressed the exit shortcut. Do you really want to exit i3? This will end your X session.' -B 'Yes, exit i3' 'i3-msg exit'"
+# Abmelden: fuehrt auf dasselbe Menue wie F12, das fragt selbst nach.
+# Vorher stand hier der i3-nagbar -- der konnte nur abmelden und sah nicht aus
+# wie der Rest.
+bindsym $mod+Shift+e exec --no-startup-id ~/.local/bin/i3-sitzung
 
 # resize window (you can also use the mouse for that)
 mode "resize" {

@@ -1,0 +1,152 @@
+#!/bin/sh
+# akku-wache -- warnt, wenn der Akku zur Neige geht oder die CPU zu heiss wird
+#
+# Laeuft als Hintergrundprozess aus der i3-Config heraus. Braucht Polling:
+# acpid ist hier gar nicht eingeschaltet (installiert ja, /var/service/acpid
+# nein) und wuesste ohnehin nichts von Schwellwerten -- er meldet nur Ein- und
+# Ausstecken, nicht "noch 15 Prozent". Genau das Ein- und Ausstecken vertont
+# uebrigens ~/.local/bin/netz-ton, das ist absichtlich getrennt.
+#
+# Hysterese ueber Zustandsmerker: jede Stufe meldet sich genau EINMAL und
+# erst wieder, nachdem der Wert die Stufe verlassen hat. Ohne das kaeme alle
+# 60 Sekunden dieselbe Warnung.
+#
+# Kritische Meldungen haben in der dunstrc timeout 0, bleiben also stehen,
+# bis sie jemand wegklickt ODER dieses Skript sie schliesst. Genau darum
+# merken wir uns die Notification-ID (dunstify -p) in einer Datei: sobald
+# der Grund weg ist -- Netzteil dran, Akku wieder ueber der Schwelle, CPU
+# abgekuehlt -- wird die Meldung aktiv geschlossen. Und weil i3 dieses
+# Skript bei jedem Reload per exec_always neu startet, raeumt der Start die
+# Meldungen des Vorgaengers weg; sonst haengt eine alte "Akku fast leer"-
+# Warnung mit laengst falschem Prozentwert fuer immer am Bildschirm.
+#
+# Der Akku heisst auf diesem Geraet BAT1, nicht BAT0.
+
+AKKU=/sys/class/power_supply/BAT1
+NETZ=/sys/class/power_supply/ACAD
+TEMP=/sys/class/hwmon/hwmon4/temp1_input     # Package-Temperatur, wie i3status
+
+INTERVALL=60       # Sekunden im Normalbetrieb
+INTERVALL_WARN=10  # Sekunden, solange eine Warnung offen steht: dann soll das
+                   # Anstecken schnell quittiert werden, nicht erst nach einer
+                   # vollen Minute mit falschem Wert auf dem Schirm.
+WARN=20            # Prozent: erste Warnung
+KRITISCH=10        # Prozent: dringende Warnung
+TEMP_WARN=90       # Grad Celsius
+
+LAUFDIR="${XDG_RUNTIME_DIR:-/tmp}"
+PIDDATEI="$LAUFDIR/akku-wache.pid"
+IDDATEI="$LAUFDIR/akku-wache.ids"    # zwei Zeilen: Akku-ID, Temperatur-ID
+
+# Nur eine Instanz: i3 startet dieses Skript per exec_always bei jedem
+# Neuladen erneut. Ein "pkill -f akku-wache" hier wuerde die eigene Shell
+# mit erwischen, darum der Umweg ueber eine PID-Datei.
+if [ -r "$PIDDATEI" ]; then
+    alt=$(cat "$PIDDATEI")
+    [ -n "$alt" ] && [ "$alt" != "$$" ] && kill "$alt" 2>/dev/null
+fi
+echo $$ > "$PIDDATEI"
+
+# Offene Meldungen des Vorgaengers wegraeumen. Steht der Grund noch an,
+# meldet der erste Schleifendurchlauf ihn gleich wieder -- diesmal mit
+# aktuellen Zahlen.
+if [ -r "$IDDATEI" ]; then
+    while read -r verwaiste; do
+        [ -n "$verwaiste" ] && [ "$verwaiste" != 0 ] && dunstify -C "$verwaiste" 2>/dev/null
+    done < "$IDDATEI"
+fi
+
+id_akku=0
+id_temp=0
+
+ids_sichern() {
+    printf '%s\n%s\n' "$id_akku" "$id_temp" > "$IDDATEI"
+}
+ids_sichern
+
+melde() {   # melde <tag> <dringlichkeit> <icon> <titel> <text> <alte-id>
+    dunstify -a akku-wache -u "$2" -p -r "${6:-0}" \
+             -h "string:x-dunst-stack-tag:$1" \
+             "$3  $4" "$5"
+}
+
+schliesse() {   # schliesse <id>
+    [ -n "$1" ] && [ "$1" != 0 ] && dunstify -C "$1" 2>/dev/null
+}
+
+aufraeumen() {
+    # Nur aufraeumen, wenn kein Nachfolger uebernommen hat. Beim i3-Reload
+    # killt die neue Instanz die alte -- deren Trap laeuft dann verzoegert
+    # (dash arbeitet Signale erst nach dem laufenden "sleep" ab) und wuerde
+    # sonst die Meldungen und die ID-Datei des Nachfolgers wegputzen.
+    if [ "$(cat "$PIDDATEI" 2>/dev/null)" = "$$" ]; then
+        schliesse "$id_akku"
+        schliesse "$id_temp"
+        rm -f "$IDDATEI"
+    fi
+    exit 0
+}
+trap aufraeumen INT TERM
+
+[ -r "$AKKU/capacity" ] || { echo "akku-wache: $AKKU nicht lesbar" >&2; exit 1; }
+
+stufe_akku=voll        # voll | warn | kritisch
+temp_heiss=nein
+
+while :; do
+    ladung=$(cat "$AKKU/capacity" 2>/dev/null)
+    am_netz=$(cat "$NETZ/online"  2>/dev/null)
+
+    if [ "$am_netz" = "1" ]; then
+        # Am Netz: Warnungen zuruecknehmen, damit sie beim naechsten
+        # Akkubetrieb wieder greifen.
+        if [ "$stufe_akku" != voll ]; then
+            # Nur wegraeumen, nicht selbst quittieren: das "Netzteil
+            # angeschlossen" meldet netz-ton, und zwar sofort statt erst beim
+            # naechsten Takt. Zwei Meldungen dafuer waeren eine zu viel.
+            schliesse "$id_akku"
+            id_akku=0
+            stufe_akku=voll
+            ids_sichern
+        fi
+    else
+        if [ "$ladung" -le "$KRITISCH" ] && [ "$stufe_akku" != kritisch ]; then
+            id_akku=$(melde akku critical "󰂃" "Akku fast leer" \
+                            "Noch ${ladung}%. Jetzt anstecken." "$id_akku")
+            stufe_akku=kritisch
+            ids_sichern
+        elif [ "$ladung" -le "$WARN" ] && [ "$stufe_akku" = voll ]; then
+            id_akku=$(melde akku normal "󰁺" "Akku wird knapp" \
+                            "Noch ${ladung}%." "$id_akku")
+            stufe_akku=warn
+            ids_sichern
+        elif [ "$ladung" -gt "$WARN" ] && [ "$stufe_akku" != voll ]; then
+            schliesse "$id_akku"
+            id_akku=0
+            stufe_akku=voll
+            ids_sichern
+        fi
+    fi
+
+    if [ -r "$TEMP" ]; then
+        grad=$(( $(cat "$TEMP") / 1000 ))
+        if [ "$grad" -ge "$TEMP_WARN" ] && [ "$temp_heiss" = nein ]; then
+            id_temp=$(melde temp critical "󰸁" "CPU sehr heiss" "${grad} Grad." "$id_temp")
+            temp_heiss=ja
+            ids_sichern
+        elif [ "$grad" -lt $(( TEMP_WARN - 8 )) ] && [ "$temp_heiss" = ja ]; then
+            # 8 Grad Abstand nach unten, sonst flattert die Meldung an der
+            # Schwelle hin und her.
+            schliesse "$id_temp"
+            id_temp=0
+            temp_heiss=nein
+            ids_sichern
+        fi
+    fi
+
+    if [ "$stufe_akku" != voll ] || [ "$temp_heiss" = ja ]; then
+        sleep "$INTERVALL_WARN"
+    else
+        sleep "$INTERVALL"
+    fi
+done

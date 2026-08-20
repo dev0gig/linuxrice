@@ -1,0 +1,14 @@
+# Passwortfreie Ausnahme fuer das Sitzungsmenue auf F12
+# (~/.local/bin/i3-sitzung).
+#
+# Warum noetig: das Menue laeuft in rofi, und rofi hat kein Terminal, in dem
+# sudo nach dem Passwort fragen koennte. Ohne diese Zeile bliebe die Auswahl
+# "Bereitschaft" / "Neustart" / "Herunterfahren" einfach stumm haengen.
+#
+# Bewusst eng gehalten: nur diese drei Befehle, und durch das leere
+# Argumentpaar ("") auch nur ohne jedes Argument -- genau so ruft das Menue
+# sie auf. Alles andere bleibt bei der normalen Passwortabfrage.
+#
+# Hinweis: /usr/bin/poweroff und /usr/bin/reboot sind auf Void beides
+# Symlinks auf /usr/bin/halt, das anhand von argv[0] entscheidet.
+%wheel ALL=(root) NOPASSWD: /usr/bin/zzz "", /usr/bin/reboot "", /usr/bin/poweroff ""

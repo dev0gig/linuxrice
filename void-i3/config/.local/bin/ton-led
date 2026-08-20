@@ -1,0 +1,33 @@
+#!/bin/sh
+# ton-led -- LED in der F5-Taste (Ton stumm) setzen.
+#
+#   ton-led an | aus | auto | status
+#
+# "auto" (auch der Aufruf ohne Argument) liest den Mute-Zustand des
+# Standard-Ausgangs aus PipeWire und setzt die LED passend. Aufgerufen wird
+# das aus zeige_ton() in ~/.local/bin/osd -- also nach lauter, leiser und
+# stumm gleichermassen, denn "lauter" hebt die Stummschaltung mit auf.
+# Gegenstueck fuers Mikrofon: ~/.local/bin/mikro-led.
+#
+# Das eigentliche Schalten macht /usr/local/bin/tasten-led. Diese LED haengt
+# NICHT am GPIO wie die Mikrofon-LED, sondern an zwei Bits des COEF-Registers
+# 0x0b im Vendor-Widget des Codecs -- Begruendung im Kopf des Quelltexts.
+
+HELFER=/usr/local/bin/tasten-led
+
+[ -x "$HELFER" ] || { echo "${0##*/}: $HELFER fehlt" >&2; exit 1; }
+
+stumm() { pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | grep -q yes; }
+
+case "${1:-auto}" in
+    an)   exec "$HELFER" ton an ;;
+    aus)  exec "$HELFER" ton aus ;;
+    auto) if stumm; then exec "$HELFER" ton an; else exec "$HELFER" ton aus; fi ;;
+    status)
+        stumm && echo "Ton stumm -- LED an" || echo "Ton an -- LED aus"
+        ;;
+    *)
+        echo "Aufruf: ${0##*/} an|aus|auto|status" >&2
+        exit 1
+        ;;
+esac

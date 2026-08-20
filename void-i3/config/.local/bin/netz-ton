@@ -1,0 +1,135 @@
+#!/bin/sh
+# netz-ton -- Signalton und kurze Meldung, sobald das Netzteil ein- oder
+#             ausgesteckt wird.
+#
+# Laeuft als Hintergrundprozess aus der i3-Config, wie akku-wache. Die
+# Aufteilung ist Absicht: akku-wache warnt vor dem leeren Akku, netz-ton
+# quittiert nur das Stecken -- dafuer aber sofort.
+#
+# Warum Polling und kein Ereignis?
+#   * acpid meldet Ein- und Ausstecken zwar sofort, ist auf diesem System
+#     aber gar nicht eingeschaltet (installiert ja, /var/service/acpid nein).
+#     Und ein acpid-Handler laeuft als root -- der muesste sich erst in die
+#     PipeWire-Sitzung des Benutzers hineinhangeln.
+#   * "udevadm monitor --udev --subsystem-match=power_supply" laeuft zwar
+#     ohne root, liefert aber nur bei ACPI-Notifies etwas: 90 Sekunden
+#     Laden am Netz haben hier keinen einzigen Event erzeugt. Als alleinige
+#     Quelle also zu unsicher.
+# Zwei Sekunden Abfrage kosten praktisch nichts: "read < datei" ist ein
+# Shell-Builtin ohne eigenen Prozess, es bleibt ein fork je Takt fuer sleep.
+
+NETZ=/sys/class/power_supply/ACAD
+AKKU=/sys/class/power_supply/BAT1
+
+TAKT=2                 # Sekunden zwischen zwei Abfragen
+LAUTSTAERKE=1.0        # Faktor auf die eingestellte Lautstaerke
+
+TONDIR="${XDG_DATA_HOME:-$HOME/.local/share}/netz-ton"
+TON_AN="$TONDIR/anstecken.wav"
+TON_AUS="$TONDIR/abstecken.wav"
+
+LAUFDIR="${XDG_RUNTIME_DIR:-/tmp}"
+PIDDATEI="$LAUFDIR/netz-ton.pid"
+LOGDATEI="$LAUFDIR/netz-ton.log"   # zum Nachsehen, ob ein Stecken erkannt wurde
+
+# Nur eine Instanz: i3 startet dieses Skript per exec_always bei jedem
+# Neuladen erneut. Ein "pkill -f netz-ton" hier wuerde die eigene Shell
+# mit erwischen, darum der Umweg ueber eine PID-Datei.
+if [ -r "$PIDDATEI" ]; then
+    alt=$(cat "$PIDDATEI")
+    [ -n "$alt" ] && [ "$alt" != "$$" ] && kill "$alt" 2>/dev/null
+fi
+echo $$ > "$PIDDATEI"
+
+[ -r "$NETZ/online" ] || { echo "netz-ton: $NETZ nicht lesbar" >&2; exit 1; }
+
+# ---- Toene ----------------------------------------------------------------
+# Selbst erzeugt statt aus einem Sound-Theme: so haengt nichts an einem
+# weiteren Paket, die Lautstaerke ist bekannt, und vor allem steht eine halbe
+# Sekunde Stille am Anfang. Die braucht es, weil der Lautsprecher-Sink im
+# Leerlauf auf SUSPENDED steht -- PipeWire weckt das ALSA-Geraet erst auf, und
+# ein 300-Millisekunden-Klang aus einem Theme ist vorbei, bevor der Codec
+# ueberhaupt Ton macht. Genau daran scheiterte der erste Versuch.
+toene_erzeugen() {
+    mkdir -p "$TONDIR" || return 1
+    python3 - "$TONDIR" <<'PYTHON'
+import math, struct, sys, wave
+
+RATE = 24000
+
+def ton(pfad, noten):
+    daten = bytearray()
+    daten += b'\x00\x00' * int(RATE * 0.45)          # Vorlauf gegen den Suspend
+    for frequenz, dauer in noten:
+        n = int(RATE * dauer)
+        for i in range(n):
+            # Kurze Rampen an beiden Enden, sonst knackt es am Sprung.
+            rampe = min(1.0, i / (RATE * 0.008), (n - i) / (RATE * 0.008))
+            wert = 0.5 * rampe * math.sin(2 * math.pi * frequenz * i / RATE)
+            daten += struct.pack('<h', int(wert * 32767))
+    daten += b'\x00\x00' * int(RATE * 0.05)
+    with wave.open(pfad, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        w.writeframes(bytes(daten))
+
+ziel = sys.argv[1]
+ton(ziel + '/anstecken.wav', [(880.0, 0.11), (1318.5, 0.16)])   # aufsteigend
+ton(ziel + '/abstecken.wav', [(1318.5, 0.11), (880.0, 0.16)])   # absteigend
+PYTHON
+}
+
+if [ ! -r "$TON_AN" ] || [ ! -r "$TON_AUS" ]; then
+    toene_erzeugen || echo "netz-ton: Toene liessen sich nicht erzeugen" >&2
+fi
+
+spiele() {  # spiele <datei>
+    # Im Hintergrund, damit der naechste Takt nicht auf das Ende des Tons
+    # wartet. Ist der Ausgang stummgeschaltet, spielt es lautlos ins Leere,
+    # was genau richtig ist.
+    [ -r "$1" ] && pw-play --volume "$LAUTSTAERKE" "$1" >/dev/null 2>&1 &
+}
+
+# Akku-Symbol wie in der i3status-Leiste, damit die Meldung dieselbe
+# Bildsprache hat.
+symbol() {  # symbol <prozent>
+    if   [ "$1" -le 10 ]; then printf '󰂃'
+    elif [ "$1" -le 30 ]; then printf '󰁻'
+    elif [ "$1" -le 50 ]; then printf '󰁽'
+    elif [ "$1" -le 70 ]; then printf '󰁿'
+    elif [ "$1" -le 90 ]; then printf '󰂁'
+    else                       printf '󰁹'
+    fi
+}
+
+melde() {   # melde <icon> <titel> <text>
+    # Eigener Stack-Tag "netz": ersetzt die eigene Vorgaengermeldung, laesst
+    # aber die Warnungen der akku-wache (Tag "akku") in Ruhe.
+    dunstify -a netz-ton -u low \
+             -h "string:x-dunst-stack-tag:netz" \
+             "$1  $2" "$3"
+}
+
+# Startzustand nur merken, nicht melden: sonst piepst es bei jedem
+# i3-Reload und bei jeder Anmeldung.
+read -r vorher < "$NETZ/online"
+
+while :; do
+    sleep "$TAKT"
+    read -r jetzt < "$NETZ/online" 2>/dev/null || continue
+    [ "$jetzt" = "$vorher" ] && continue
+
+    ladung=$(cat "$AKKU/capacity" 2>/dev/null) || ladung=0
+
+    if [ "$jetzt" = 1 ]; then
+        spiele "$TON_AN"
+        melde "󰂄" "Netzteil angeschlossen" "Akku bei ${ladung}%, laedt."
+        echo "$(date '+%H:%M:%S') angesteckt (${ladung}%)" >> "$LOGDATEI"
+    else
+        spiele "$TON_AUS"
+        melde "$(symbol "$ladung")" "Netzteil abgezogen" "Akku bei ${ladung}%."
+        echo "$(date '+%H:%M:%S') abgesteckt (${ladung}%)" >> "$LOGDATEI"
+    fi
+    vorher="$jetzt"
+done

@@ -1,0 +1,33 @@
+#!/bin/sh
+# mikro-led -- LED in der F8-Taste (Mikrofon stumm) setzen.
+#
+#   mikro-led an | aus | auto | status
+#
+# "auto" (auch der Aufruf ohne Argument) liest den Mute-Zustand der
+# Standard-Quelle aus PipeWire und setzt die LED passend. Genau so rufen
+# ~/.local/bin/osd (nach jedem F8-Druck) und die i3-Config (beim Start und
+# bei jedem Reload) es auf. Gegenstueck fuer den Ton: ~/.local/bin/ton-led.
+#
+# Das eigentliche Schalten macht /usr/local/bin/tasten-led: die LED haengt am
+# GPIO-Pin 2 des Codecs ALC245, und dieses Geraet zu oeffnen verlangt
+# CAP_SYS_RAWIO -- das kann nur ein Binaerprogramm tragen, kein Skript.
+# Quelltext und Begruendung stehen dort im Kopf.
+
+HELFER=/usr/local/bin/tasten-led
+
+[ -x "$HELFER" ] || { echo "${0##*/}: $HELFER fehlt" >&2; exit 1; }
+
+stumm() { pactl get-source-mute @DEFAULT_SOURCE@ 2>/dev/null | grep -q yes; }
+
+case "${1:-auto}" in
+    an)   exec "$HELFER" mikro an ;;
+    aus)  exec "$HELFER" mikro aus ;;
+    auto) if stumm; then exec "$HELFER" mikro an; else exec "$HELFER" mikro aus; fi ;;
+    status)
+        stumm && echo "Mikrofon stumm -- LED an" || echo "Mikrofon offen -- LED aus"
+        ;;
+    *)
+        echo "Aufruf: ${0##*/} an|aus|auto|status" >&2
+        exit 1
+        ;;
+esac

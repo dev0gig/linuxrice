@@ -1,0 +1,31 @@
+# HP ENVY x360 13-bd0xxx: zwei F-Tasten fuer X11 nutzbar machen.
+#
+# Beide haengen am Device "HP WMI hotkeys" und senden Codes, die unter X11
+# nie ankommen:
+#   F8  (Mikrofon) KEY_MICMUTE 248 -> X-Keycode 256, X11 kann nur bis 255
+#   F12 (Zahnrad)  KEY_SETUP   141 -> X-Keycode 149, <I149> ist in
+#                                     /usr/share/X11/xkb/symbols/inet
+#                                     auskommentiert, hat also kein Keysym
+#
+# F12 steht bewusst NICHT hier drin, obwohl es naheliegt. Die Taste sendet
+# den Scancode 0x21a6 (gemessen an MSC_SCAN, nicht aus der Treibertabelle
+# geraten -- dort steht unter 0x216a ein KEY_SETUP, das eine andere Taste
+# meint). 0x21a6 kennt der hp-wmi-Treiber nicht und meldet ihn als
+# KEY_UNKNOWN. Ein Remap darauf ist unmoeglich: hp-wmi nutzt sparse_keymap,
+# und das laesst nur *vorhandene* Scancodes umschreiben -- ein neuer wird mit
+# EINVAL abgelehnt (nachgeprueft per EVIOCSKEYCODE). F12 wird deshalb in der
+# i3-Config ueber "bindcode 248" gebunden, den Keycode von KEY_UNKNOWN.
+#
+# F8 braucht hier KEINE eigene Zuordnung, im Gegenteil: die Taste laeuft
+# bereits ueber die AT-Tastatur, die Scancode 0x82 sendet und ihn durch eine
+# Regel im mitgelieferten /usr/lib/udev/hwdb.d/60-keyboard.hwdb auf f20 legt
+# (<FK20> traegt im X-Layout das Keysym XF86AudioMicMute, darum greift das
+# vorhandene Binding). Das WMI-Geraet meldet denselben Druck ein zweites Mal
+# ueber 0x270. Beide zusammen wuerden das Mikrofon zweimal umschalten, also
+# im Ergebnis gar nicht -- deshalb wird dieser zweite Weg hier stillgelegt.
+#
+# Nach Aenderungen an dieser Datei:
+#   udevadm hwdb --update && udevadm trigger --sysname-match="event*"
+
+evdev:name:HP WMI hotkeys:dmi:*svnHP:pnHPENVYx360Convertible13-bd0xxx:*
+ KEYBOARD_KEY_270=reserved

@@ -1,0 +1,106 @@
+#!/bin/sh
+# osd -- Lautstaerke, Mikrofon und Helligkeit aendern und dabei einen
+#        Balken einblenden.
+#
+#   osd lauter | leiser | stumm | mikro | heller | dunkler
+#
+# Aufgerufen wird das aus den F-Tasten-Bindings der i3-Config. Der Balken
+# selbst ist kein eigenes Programm: dunst zeichnet ihn, sobald eine Meldung
+# den Hinweis "int:value:N" mitbringt (progress_bar in ~/.config/dunst/dunstrc).
+#
+# Der Stack-Tag sorgt dafuer, dass schnelles Tippen auf F7 EIN Panel
+# aktualisiert, statt fuenf uebereinanderzustapeln. Dringlichkeit "low",
+# damit die Balken nach 2 s verschwinden und echte Benachrichtigungen
+# (Firefox, Akkuwache) daneben stehen bleiben duerfen.
+#
+# dunst muss nicht laufen: der D-Bus startet ihn beim ersten Aufruf selbst
+# (/usr/share/dbus-1/services/org.knopwob.dunst.service).
+
+SCHRITT_TON=5          # Prozentpunkte je Tastendruck
+SCHRITT_LICHT=20       # Prozentpunkte je Tastendruck
+LICHT_MIN=5            # Bildschirm nie ganz schwarz drehen
+
+melde() {   # melde <tag> <icon> <titel> <wert 0-100>
+    dunstify -a osd -u low \
+             -h "string:x-dunst-stack-tag:$1" \
+             -h "int:value:$4" \
+             "$2  $3"
+}
+
+ton_wert()  { pactl get-sink-volume @DEFAULT_SINK@ | grep -o '[0-9]\+%' | head -n1 | tr -d '%'; }
+ton_stumm() { pactl get-sink-mute   @DEFAULT_SINK@ | grep -q yes; }
+mik_stumm() { pactl get-source-mute @DEFAULT_SOURCE@ | grep -q yes; }
+# brightnessctl -m liefert "intel_backlight,backlight,400,100%,400"
+licht_wert() { brightnessctl -m | cut -d, -f4 | tr -d '%'; }
+
+zeige_ton() {
+    # Die LED in der F5-Taste zieht kein Kernel-Quirk nach -- ton-led setzt sie
+    # ueber ein COEF-Register des Codecs selbst. Hier und nicht nur im Zweig
+    # "stumm", weil "lauter" die Stummschaltung mit aufhebt.
+    "$HOME/.local/bin/ton-led" auto 2>/dev/null
+
+    w=$(ton_wert)
+    if ton_stumm; then
+        melde ton "󰝟" "Stumm" 0
+    else
+        if   [ "$w" -eq 0 ];  then i="󰝟"
+        elif [ "$w" -le 33 ]; then i="󰕿"
+        elif [ "$w" -le 66 ]; then i="󰖀"
+        else                       i="󰕾"
+        fi
+        melde ton "$i" "${w}%" "$w"
+    fi
+}
+
+zeige_licht() {
+    w=$(licht_wert)
+    [ "$w" -le 40 ] && i="󰃛" || i="󰃞"
+    melde licht "$i" "${w}%" "$w"
+}
+
+case "$1" in
+    lauter)
+        # max-volume 100%: ohne die Grenze dreht pactl beliebig weit hoch
+        pactl set-sink-mute @DEFAULT_SINK@ 0
+        pactl set-sink-volume @DEFAULT_SINK@ "+${SCHRITT_TON}%"
+        [ "$(ton_wert)" -gt 100 ] && pactl set-sink-volume @DEFAULT_SINK@ 100%
+        zeige_ton
+        ;;
+    leiser)
+        pactl set-sink-volume @DEFAULT_SINK@ "-${SCHRITT_TON}%"
+        zeige_ton
+        ;;
+    stumm)
+        pactl set-sink-mute @DEFAULT_SINK@ toggle
+        zeige_ton
+        ;;
+    mikro)
+        pactl set-source-mute @DEFAULT_SOURCE@ toggle
+        # Die LED in der F8-Taste zieht kein Kernel-Quirk nach (der ALC245 hat
+        # fuer diese HP-Subsystem-ID keins) -- mikro-led setzt sie ueber den
+        # GPIO des Codecs selbst.
+        "$HOME/.local/bin/mikro-led" auto 2>/dev/null
+        if mik_stumm; then
+            melde mikro "󰍭" "Mikrofon stumm" 0
+        else
+            melde mikro "󰍬" "Mikrofon an" 100
+        fi
+        ;;
+    heller)
+        brightnessctl -q set "${SCHRITT_LICHT}%+"
+        zeige_licht
+        ;;
+    dunkler)
+        brightnessctl -q -n"$LICHT_MIN" set "${SCHRITT_LICHT}%-"
+        zeige_licht
+        ;;
+    *)
+        echo "Aufruf: ${0##*/} lauter|leiser|stumm|mikro|heller|dunkler" >&2
+        exit 1
+        ;;
+esac
+
+# i3status sofort neu zeichnen, damit die Leiste nicht bis zum naechsten
+# Intervall den alten Wert zeigt.
+pkill -SIGUSR1 -x i3status 2>/dev/null || true
+exit 0

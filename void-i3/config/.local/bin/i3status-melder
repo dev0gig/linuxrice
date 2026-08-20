@@ -99,6 +99,13 @@ WLAN_AUS = "\U000f05aa"     # nf-md-wifi_off
 WLAN_AUS_TEXT = "  <span foreground='{0}'>{1}</span> <span foreground='{0}'>WLAN aus</span>  ".format(
     STUMPF, WLAN_AUS)
 
+# Zwischenanzeige nach dem Einschalten: wpa_supplicant braucht bis zur
+# Verbindung rund drei Sekunden. Ohne sie stuende dort so lange "kein WLAN"
+# -- der Klick saehe aus, als haette er nichts bewirkt.
+WLAN_AN = "\U000f05a9"      # nf-md-wifi
+WLAN_SUCHT_TEXT = "  <span foreground='{0}'>{1}</span> <span foreground='{0}'>verbindet ...</span>  ".format(
+    "#fabd2f", WLAN_AN)
+
 RFKILL = "/sys/class/rfkill"
 
 BLAU = "#83a598"
@@ -123,6 +130,13 @@ BLUETOOTH = os.path.expanduser("~/.local/bin/bluetooth")
 # Zustand des Adapters, gefuellt von bt_abfragen(): None heisst "noch nichts
 # gelesen", ein leeres dict heisst "kein Adapter da" -- dann faellt der Block weg.
 bt = None
+# Zielzustand waehrend des Umschaltens (True = soll an), sonst None. Damit
+# zeigt der Block sofort "schaltet ...", statt bis zur naechsten Antwort von
+# bluez auf dem alten Stand stehen zu bleiben.
+bt_ziel = None
+# Dasselbe fuers WLAN: True, solange nach dem Einschalten noch keine
+# Verbindung steht.
+wlan_verbindet = False
 bt_gelesen = 0.0
 bt_punkte = 0
 bt_puls_laeuft = False
@@ -211,10 +225,26 @@ def wlan_block_ersetzen(bloecke):
     Der Block wird kopiert, nicht geaendert: letzte_zeile haelt dieselben
     Objekte fuer das Neuzeichnen fest.
     """
-    if not wlan_geblockt():
+    global wlan_verbindet
+    if wlan_geblockt():
+        wlan_verbindet = False
+        return [dict(b, full_text=WLAN_AUS_TEXT) if b.get("name") == "wireless" else b
+                for b in bloecke]
+    if not wlan_verbindet:
         return bloecke
-    return [dict(b, full_text=WLAN_AUS_TEXT) if b.get("name") == "wireless" else b
-            for b in bloecke]
+    # Steht die Verbindung, meldet i3status wieder die ESSID -- dann ist die
+    # Zwischenanzeige erledigt. Erkennbar am Text von format_down, ein
+    # eigenes Feld dafuer gibt es im i3bar-Protokoll nicht.
+    aus = []
+    for b in bloecke:
+        if b.get("name") != "wireless":
+            aus.append(b)
+        elif "kein WLAN" in b.get("full_text", ""):
+            aus.append(dict(b, full_text=WLAN_SUCHT_TEXT))
+        else:
+            wlan_verbindet = False
+            aus.append(b)
+    return aus
 
 
 def i3status_wecken():
@@ -232,9 +262,11 @@ def nachziehen():
     """Nach dem Einschalten braucht wpa_supplicant ein paar Sekunden bis zur
     Verbindung (gemessen rund drei). Ohne Nachtreten stuende die Leiste
     solange auf "kein WLAN", obwohl der Funk laengst wieder laeuft."""
+    global wlan_verbindet
     for _ in range(6):
         time.sleep(2)
         i3status_wecken()
+    wlan_verbindet = False      # nach zwoelf Sekunden ist es kein Verbinden mehr
 
 
 def wlan_umschalten():
@@ -251,6 +283,8 @@ def wlan_umschalten():
                        capture_output=True, timeout=5)
     except (OSError, subprocess.SubprocessError):
         return
+    global wlan_verbindet
+    wlan_verbindet = aus    # eingeschaltet -> "verbindet ..." bis die ESSID steht
     neu_zeichnen()          # der ersetzte Block stimmt sofort
     i3status_wecken()
     if aus:
@@ -266,7 +300,7 @@ def bt_abfragen():
     kaum ins Gewicht: aufgerufen wird sie nicht im Takt, sondern nur wenn
     bluez eine Aenderung meldet (siehe bt_monitor).
     """
-    global bt, bt_gelesen, bt_puls_laeuft
+    global bt, bt_gelesen, bt_puls_laeuft, bt_ziel
     bt_gelesen = time.monotonic()
     try:
         fertig = subprocess.run([BLUETOOTH, "zustand"],
@@ -284,6 +318,8 @@ def bt_abfragen():
         "geraete": [z.split("  ", 1)[1].strip()
                     for z in zeilen[1:] if z.startswith("verbunden: ")],
     }
+    if bt_ziel is not None and bt["an"] == bt_ziel:
+        bt_ziel = None              # umgeschaltet, Zwischenanzeige weg
     if bt["sucht"] and not bt_puls_laeuft:
         bt_puls_laeuft = True       # vor dem Start gesetzt, sonst laufen zwei
         threading.Thread(target=bt_suchanzeige, daemon=True).start()
@@ -330,6 +366,11 @@ def bt_block():
     """Der Bluetooth-Block, oder None solange kein Adapter bekannt ist."""
     if not bt:
         return None
+    if bt_ziel is not None:
+        # Gelb wie ueberall in dieser Leiste: "hier passiert gerade etwas".
+        text = "  <span foreground='{0}'>{1}</span> <span foreground='{0}'>schaltet {2}</span>  ".format(
+            GELB, BT_SUCHE, "an" if bt_ziel else "aus")
+        return {"name": "bluetooth", "full_text": text, "markup": "pango"}
     if not bt["an"]:
         text = "  <span foreground='{0}'>{1}</span> <span foreground='{0}'>aus</span>  ".format(
             STUMPF, BT_AUS)
@@ -376,11 +417,21 @@ def bt_einfuegen(bloecke):
 def bt_nachziehen():
     """Nach einem Klick den Zustand nachlesen: Ein- und Ausschalten laeuft
     ueber mehrere Zwischenstufen ("off-enabling"), und der letzte Schritt
-    kommt erst nach gut einer Sekunde."""
-    for _ in range(4):
-        time.sleep(1.5)
+    kommt erst nach gut einer Sekunde.
+
+    Kurzer Takt statt der frueheren 1,5 s: solange bt_ziel steht, zeigt der
+    Block "schaltet ...", und der soll nicht laenger stehen bleiben als noetig.
+    Die Abfrage kostet rund 35 ms, zwoelf davon fallen nicht ins Gewicht.
+    """
+    global bt_ziel
+    for _ in range(12):
+        time.sleep(0.4)
         bt_abfragen()
         neu_zeichnen()
+        if bt_ziel is None:
+            return
+    bt_ziel = None              # nicht angekommen -- lieber den Iststand zeigen
+    neu_zeichnen()
 
 
 def bt_monitor():
@@ -716,7 +767,11 @@ def dunst_klick(taste):
 
 
 def bluetooth_klick(taste):
+    global bt_ziel
     if taste == 1:
+        if bt:
+            bt_ziel = not bt["an"]
+            neu_zeichnen()      # Rueckmeldung im selben Moment wie der Klick
         subprocess.Popen([BLUETOOTH, "um"])
         bt_nachziehen()
     elif taste == 3:

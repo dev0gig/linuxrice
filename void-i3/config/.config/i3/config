@@ -9,21 +9,6 @@
 #
 # Please see https://i3wm.org/docs/userguide.html for a complete reference!
 
-# ACHTUNG -- diese Datei ist eine VORLAGE, keine Kopie einer laufenden Config.
-# Sie darf nicht mit "cp ~/.config/i3/config hierher" aktualisiert werden;
-# genau so sind schon einmal echte Rechnernamen und ein fester /home/<name>
-# im oeffentlichen Repo gelandet. Zwei Dinge stehen hier absichtlich anders
-# als auf einem eingerichteten Rechner:
-#
-#   * Fensterklasse und Startskript der SSH-Flaeche tragen die neutralen
-#     Namen mit dem Praefix "remote", nicht den echten Rechnernamen.
-#     setup.sh sucht genau danach und kommentiert die beiden Zeilen aus,
-#     wenn beim Einrichten kein SSH-Ziel angegeben wurde. Wer sie umbenennt,
-#     bricht diesen Fall.
-#   * Pfade stehen als ~/.local/bin/..., nie als /home/<name>/...
-#
-# Aenderungen also von Hand nachziehen, Zeile fuer Zeile.
-
 set $mod Mod4
 
 # Font for window titles. Will also be used by the bar unless a different font
@@ -56,8 +41,8 @@ font pango:Red Hat Mono 9, Symbols Nerd Font Mono 9
 # exec --no-startup-id nm-applet
 
 # ---- Autostart: feste Belegung der Arbeitsflaechen 1 bis 5 ----
-#   1: Chrome    2: lokales Terminal
-#   3: SSH-Sitzung   4: Vitals (btop, volle Flaeche)
+#   1: Chrome    2: thor (lokales Terminal)
+#   3: odin (SSH)   4: Vitals (btop, volle Flaeche)
 #   5: Dateien (Yazi, volle Flaeche -- siehe Mod+e weiter unten)
 #
 # Jedes Autostart-Fenster bekommt eine eigene Fensterklasse, damit nur genau
@@ -65,18 +50,18 @@ font pango:Red Hat Mono 9, Symbols Nerd Font Mono 9
 # verhalten sich unveraendert.
 #
 # Wichtig das Schluesselwort "number": die Flaechen heissen durch
-# ~/.local/bin/i3-workspace-names dauerhaft "1: Chrome", "4: Vitals" usw.
+# ~/.local/bin/i3-workspace-names dauerhaft "1: Chrome", "3: odin" usw.
 # Ohne "number" wuerde i3 den Namen exakt gegen "1" pruefen, keinen Treffer
 # finden und eine zweite, gleichnamige Flaeche danebenlegen.
 assign [class="(?i)google-chrome"] number 1
 assign [class="autostart-term"]   number 2
-assign [class="remote-term"]        number 3
+assign [class="odin-term"]        number 3
 assign [class="vitals-dashboard"] number 4
 assign [class="yazi-term"]        number 5
 
 exec --no-startup-id ~/.local/bin/chrome
 exec --no-startup-id alacritty --class autostart-term
-exec --no-startup-id alacritty --class remote-term -e ~/.local/bin/remote-shell
+exec --no-startup-id alacritty --class odin-term -e ~/.local/bin/odin-shell
 exec --no-startup-id alacritty --class vitals-dashboard -e ~/.local/bin/vitals-btop
 exec --no-startup-id alacritty --class yazi-term -e yazi
 
@@ -443,6 +428,12 @@ bar {
         # er reicht i3status durch und haengt rechts die Glocke fuer den
         # Benachrichtigungs-Verlauf an (Linksklick oeffnet ihn, Rechtsklick
         # leert ihn). Klickbare Bloecke kann i3status selbst nicht liefern.
+        #
+        # Derselbe Wrapper fasst CPU, Temperatur, RAM und Platte zu einem
+        # Block ganz links zusammen -- sichtbar ist nur das CPU-Icon mit dem
+        # Prozentwert, ein Linksklick wechselt auf Arbeitsflaeche 4 zum
+        # Vitals-Dashboard. Schlaegt einer der vier Werte an, steht er wieder
+        # in der Leiste.
         status_command ~/.local/bin/i3status-melder
         # Pango-Syntax: erst die Familienliste (Komma-getrennt), die Groesse
         # ganz am Ende gilt fuer alle. Groesse 11 statt 10, damit die Icons

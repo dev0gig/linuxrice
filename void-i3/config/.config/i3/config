@@ -200,10 +200,25 @@ tiling_drag modifier titlebar
 bindsym Control+Mod1+t exec --no-startup-id alacritty
 
 # kill focused window
-bindsym $mod+Shift+q kill
+#
+# Beide Bindungen gehen ABSICHTLICH nicht auf das Vitals-Dashboard auf
+# Arbeitsflaeche 4. Das ist reine Anzeige; ein versehentliches Strg+q dort
+# schliesst nur das Terminal und die Flaeche steht leer da (die zellij-
+# Session selbst ueberlebt, ~/.local/bin/vitals haengt sie beim naechsten
+# Start wieder an -- gesehen hat man davon aber erst mal nichts).
+#
+# Der Ausschluss steckt im Kriterium vor dem Befehl. i3 nimmt PCRE, der
+# negative Lookahead "(?!...)" ist also erlaubt. con_id="__focused__" MUSS
+# dabeistehen: ohne ihn trifft das Kriterium JEDES Fenster ausser dem
+# Dashboard, und "kill" wuerde sie alle auf einmal schliessen.
+#
+# Nachgemessen ueber "title_format" (faellt nicht auf, weil default_border
+# none keine Titelleisten zeichnet): mit Fokus auf Firefox trifft das
+# Kriterium genau Firefox, mit Fokus auf dem Dashboard gar nichts.
+bindsym $mod+Shift+q [con_id="__focused__" class="^(?!vitals-dashboard$).*$"] kill
 # Fenster schliessen mit Strg+q (i3 faengt die Taste global ab,
 # Programme sehen sie also nicht mehr selbst)
-bindsym Control+q kill
+bindsym Control+q [con_id="__focused__" class="^(?!vitals-dashboard$).*$"] kill
 
 # start dmenu (a program launcher)
 # Kommando in "..." setzen: i3 wuerde das Komma in drun,run sonst als Befehlstrenner lesen

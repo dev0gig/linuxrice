@@ -76,6 +76,15 @@ BLAU = "#83a598"
 BT = "\U000f00af"        # nf-md-bluetooth         -- an, nichts verbunden
 BT_AUS = "\U000f00b2"    # nf-md-bluetooth_off     -- Funk aus
 BT_VERB = "\U000f00b1"   # nf-md-bluetooth_connect -- Geraet verbunden
+# Heisst in der Schrift bluetooth_settings, zeigt aber das Bluetooth-Zeichen
+# mit drei Punkten darunter -- gelesen wird es hier als "Bluetooth arbeitet".
+# bluetooth_transfer (die Fassung mit den Pfeilen) meint Datenuebertragung.
+BT_SUCHE = "\U000f00b3"
+
+# Takt der Suchanzeige. Die wandernden Punkte sind kein Zierrat: die Suche
+# dauert acht Sekunden und sieht sonst genauso aus wie eingeschaltetes
+# Bluetooth -- an der Bewegung ist sie ohne Nachdenken zu erkennen.
+PULS = 0.6
 
 BLUETOOTH = os.path.expanduser("~/.local/bin/bluetooth")
 
@@ -83,6 +92,9 @@ BLUETOOTH = os.path.expanduser("~/.local/bin/bluetooth")
 # gelesen", ein leeres dict heisst "kein Adapter da" -- dann faellt der Block weg.
 bt = None
 bt_gelesen = 0.0
+bt_punkte = 0
+bt_puls_laeuft = False
+bt_uhr = None
 
 anzahl = 0
 letzte_zeile = []
@@ -192,7 +204,7 @@ def bt_abfragen():
     kaum ins Gewicht: aufgerufen wird sie nicht im Takt, sondern nur wenn
     bluez eine Aenderung meldet (siehe bt_monitor).
     """
-    global bt, bt_gelesen
+    global bt, bt_gelesen, bt_puls_laeuft
     bt_gelesen = time.monotonic()
     try:
         fertig = subprocess.run([BLUETOOTH, "zustand"],
@@ -206,9 +218,50 @@ def bt_abfragen():
         return
     bt = {
         "an": zeilen[0].strip() == "an",
+        "sucht": "sucht" in [z.strip() for z in zeilen[1:]],
         "geraete": [z.split("  ", 1)[1].strip()
                     for z in zeilen[1:] if z.startswith("verbunden: ")],
     }
+    if bt["sucht"] and not bt_puls_laeuft:
+        bt_puls_laeuft = True       # vor dem Start gesetzt, sonst laufen zwei
+        threading.Thread(target=bt_suchanzeige, daemon=True).start()
+
+
+def bt_suchanzeige():
+    """Waehrend der Suche die Punkte weiterwandern lassen.
+
+    Laeuft nur, solange wirklich gesucht wird, und fragt dabei ab und zu selbst
+    nach: das Ende der Suche meldet bluez zwar, aber wenn diese eine Meldung
+    verloren ginge, liefe die Anzeige sonst endlos weiter.
+    """
+    global bt_punkte, bt_puls_laeuft
+    runde = 0
+    while bt and bt.get("sucht"):
+        time.sleep(PULS)
+        bt_punkte = (bt_punkte + 1) % 4
+        runde += 1
+        if runde % 4 == 0:
+            bt_abfragen()
+        neu_zeichnen()
+    bt_punkte = 0
+    bt_puls_laeuft = False
+    neu_zeichnen()                  # letzter Stand ohne Punkte
+
+
+def bt_uhr_stellen():
+    """Eine gedrosselte Meldung in einer Sekunde nachholen.
+
+    Ohne das koennte der Beginn einer Suche untergehen: er ist eine einzelne
+    Meldung, und faellt sie in die Drosselung von bt_monitor, kaeme die
+    naechste erst mit dem ersten gefundenen Geraet -- in einer leeren Umgebung
+    also nie.
+    """
+    global bt_uhr
+    if bt_uhr is not None and bt_uhr.is_alive():
+        return
+    bt_uhr = threading.Timer(1.0, lambda: (bt_abfragen(), neu_zeichnen()))
+    bt_uhr.daemon = True
+    bt_uhr.start()
 
 
 def bt_block():
@@ -218,6 +271,14 @@ def bt_block():
     if not bt["an"]:
         text = "  <span foreground='{0}'>{1}</span> <span foreground='{0}'>aus</span>  ".format(
             STUMPF, BT_AUS)
+        return {"name": "bluetooth", "full_text": text, "markup": "pango"}
+
+    if bt.get("sucht"):
+        # Gelb ist in dieser Leiste die Farbe fuer "hier passiert gerade
+        # etwas" (siehe Glocke und Akku). Die Punkte stehen auf fester Breite,
+        # damit die Nachbarbloecke im Takt nicht hin und her rutschen.
+        text = "  <span foreground='{0}'>{1}</span> <span foreground='{0}'>sucht{2}</span>  ".format(
+            GELB, BT_SUCHE, ("." * bt_punkte).ljust(3))
         return {"name": "bluetooth", "full_text": text, "markup": "pango"}
 
     geraete = bt["geraete"]
@@ -281,6 +342,7 @@ def bt_monitor():
         bt_monitor_laeuft = True
         for _zeile in lauscher.stdout:
             if time.monotonic() - bt_gelesen < 1.0:
+                bt_uhr_stellen()    # gedrosselt, aber nicht vergessen
                 continue
             bt_abfragen()
             neu_zeichnen()

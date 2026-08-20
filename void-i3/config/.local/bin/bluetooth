@@ -48,9 +48,24 @@ def ctl(*argumente, timeout=10):
     return ANSI.sub("", fertig.stdout)
 
 
-def an():
+def zeigen():
+    """Rohausgabe von "bluetoothctl show" -- Adapterzustand in einem Stueck."""
+    return ctl("show", timeout=5)
+
+
+def an(text=None):
     """True, wenn der Adapter eingeschaltet ist."""
-    return "Powered: yes" in ctl("show", timeout=5)
+    return "Powered: yes" in (zeigen() if text is None else text)
+
+
+def sucht(text=None):
+    """True, waehrend der Adapter die Umgebung absucht.
+
+    bluez fuehrt das als Adapter-Eigenschaft "Discovering" -- egal, wer den
+    Scan angestossen hat. Die Leiste zeigt die Suche darum auch dann an, wenn
+    sie nicht aus diesem Menue kommt.
+    """
+    return "Discovering: yes" in (zeigen() if text is None else text)
 
 
 def vorhanden():
@@ -200,7 +215,12 @@ def main():
         if not vorhanden():
             print("kein Adapter")
             return
-        print("an" if an() else "aus")
+        # Ein einziges "show" fuer beide Fragen: die Leiste ruft das hier
+        # jedes Mal auf, wenn bluez etwas meldet.
+        text = zeigen()
+        print("an" if an(text) else "aus")
+        if sucht(text):
+            print("sucht")
         for mac, name in geraete("Connected"):
             print("verbunden: {}  {}".format(mac, name))
     elif befehl == "menue":

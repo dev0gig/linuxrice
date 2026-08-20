@@ -107,7 +107,9 @@ dem WLAN, die Glocke des Benachrichtigungs-Verlaufs ganz rechts.
 | Glocke | Verlauf ansehen | Verlauf leeren |
 
 Das Bluetooth-Icon zeigt den Zustand: stumpf heißt aus, blau heißt an, und
-sobald ein Gerät verbunden ist, steht sein Name daneben. Dieselben Schritte
+sobald ein Gerät verbunden ist, steht sein Name daneben. Während der Suche
+wird der Block gelb und die Punkte hinter „sucht“ wandern — der Scan dauert
+acht Sekunden und sähe sonst aus wie eingeschaltetes Bluetooth. Dieselben Schritte
 gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
 
 ## Stolpersteine, die hier schon gelöst sind

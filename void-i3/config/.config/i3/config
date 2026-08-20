@@ -41,26 +41,26 @@ font pango:Red Hat Mono 9, Symbols Nerd Font Mono 9
 # exec --no-startup-id nm-applet
 
 # ---- Autostart: feste Belegung der Arbeitsflaechen 1 bis 4 ----
-#   1: Chrome    2: lokales Terminal
-#   3: SSH-Sitzung   4: Vitals (zellij-Dashboard)
+#   1: Chrome    2: thor (lokales Terminal)
+#   3: odin (SSH)   4: Vitals (zellij-Dashboard)
 #
 # Jedes Autostart-Fenster bekommt eine eigene Fensterklasse, damit nur genau
 # DIESES Fenster zugeordnet wird -- normale Alacritty-Fenster (Ctrl+Alt+t)
 # verhalten sich unveraendert.
 #
 # Wichtig das Schluesselwort "number": die Flaechen heissen durch
-# ~/.local/bin/i3-workspace-names dauerhaft "1: Chrome", "2: <Name>" usw.
+# ~/.local/bin/i3-workspace-names dauerhaft "1: Chrome", "3: odin" usw.
 # Ohne "number" wuerde i3 den Namen exakt gegen "1" pruefen, keinen Treffer
 # finden und eine zweite, gleichnamige Flaeche danebenlegen.
 assign [class="(?i)google-chrome"] number 1
 assign [class="autostart-term"]   number 2
-assign [class="remote-term"]        number 3
+assign [class="odin-term"]        number 3
 assign [class="vitals-dashboard"] number 4
 
-exec --no-startup-id $HOME/.local/bin/chrome
+exec --no-startup-id /home/patrick/.local/bin/chrome
 exec --no-startup-id alacritty --class autostart-term
-exec --no-startup-id alacritty --class remote-term -e $HOME/.local/bin/remote-shell
-exec --no-startup-id alacritty --class vitals-dashboard -e $HOME/.local/bin/vitals
+exec --no-startup-id alacritty --class odin-term -e /home/patrick/.local/bin/odin-shell
+exec --no-startup-id alacritty --class vitals-dashboard -e /home/patrick/.local/bin/vitals
 
 # Das Dashboard soll die volle Flaeche haben: kein Rahmen, keine Titelleiste.
 for_window [class="vitals-dashboard"] border none
@@ -284,9 +284,16 @@ bindsym $mod+s layout stacking
 bindsym $mod+w layout tabbed
 bindsym $mod+t layout toggle split
 
-# Dateimanager PCManFM (ohne --desktop, sonst legt es ein eigenes Vollbild-
-# Fenster ueber das Root-Window und verdeckt das feh-Wallpaper)
-bindsym $mod+e exec --no-startup-id pcmanfm
+# Dateimanager: Yazi im Terminal auf Mod+e, PCManFM auf Ctrl+Mod+e.
+# Yazi ist der Alltagsweg -- Cursortasten reichen zur Bedienung, Enter auf
+# einer Textdatei oeffnet Helix gleich im selben Fenster (ueber $EDITOR).
+bindsym $mod+e exec --no-startup-id alacritty --title Dateien -e yazi
+
+# PCManFM bleibt fuer die zwei Dinge, die ein TUI-Dateimanager nicht kann:
+# Dateien per Drag-and-Drop in andere Fenster ziehen und Bilder als
+# Vorschaubilder durchblaettern. Ohne --desktop, sonst legt es ein eigenes
+# Vollbild-Fenster ueber das Root-Window und verdeckt das feh-Wallpaper.
+bindsym Control+$mod+e exec --no-startup-id pcmanfm
 
 # PCManFM immer schwebend statt gekachelt, mittig und in fester Groesse.
 # Die Kommas trennen hier bewusst drei i3-Befehle -- anders als in exec-Zeilen,

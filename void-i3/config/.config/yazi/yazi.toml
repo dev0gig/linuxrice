@@ -1,0 +1,16 @@
+# Yazi -- Dateimanager im Terminal.
+# Bedienung geht komplett mit den Cursortasten: hoch/runter bewegen,
+# rechts oeffnet den Ordner, links geht wieder zurueck. hjkl liegt parallel
+# darauf, muss man aber nicht benutzen.
+
+[mgr]
+# Maus einschalten: Klicken zum Auswaehlen, Scrollen im Rad.
+mouse_events = ["click", "scroll"]
+show_hidden = false
+sort_by = "natural"
+sort_dir_first = true
+linemode = "size"
+
+[preview]
+max_width = 600
+max_height = 900

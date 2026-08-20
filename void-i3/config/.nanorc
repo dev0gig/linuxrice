@@ -1,0 +1,17 @@
+# nano ist hier nur der schnelle Notausgang fuer "eine Zeile aendern".
+# Der eigentliche Editor ist Helix.
+
+# Syntaxhervorhebung: die Definitionen liegen im nano-Paket, muessen aber
+# ausdruecklich eingebunden werden.
+include "/usr/share/nano/*.nanorc"
+
+set linenumbers
+set autoindent
+set tabstospaces
+set tabsize 4
+set softwrap
+set mouse
+set trimblanks
+# Zeigt die Tastenkombinationen dauerhaft unten an.
+set titlecolor bold,white,blue
+set numbercolor cyan

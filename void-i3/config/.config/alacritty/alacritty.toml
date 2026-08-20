@@ -24,10 +24,11 @@ style = "Bold Italic"
 # Hintergrund #1e1e1e, Schrift graeuliches Weiss (#c9c9c9, augenschonend,
 # kein hartes Reinweiss). Auch die ANSI-Farben sind auf Graustufen gemappt,
 # abgestuft hell genug, dass sich Prompt/ls/Syntax noch unterscheiden lassen.
-# Kein opacity/Transparenz: mit picom schien das Wallpaper durch und gab dem
-# Terminal einen olivgruen-gelben Stich, obwohl der Hintergrund #1e1e1e neutral ist.
+# opacity 0.95: leichte Transparenz ueber picom. Bei 0.92 schien das Wallpaper so
+# stark durch, dass das Terminal einen olivgruen-gelben Stich bekam, obwohl der
+# Hintergrund #1e1e1e neutral ist. Bei 0.95 faellt das kaum noch auf.
 [window]
-opacity = 1.0
+opacity = 0.95
 
 [colors.primary]
 background = "#1e1e1e"

@@ -139,6 +139,8 @@ gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
   hintereinander in einem XML-Kommentar legen die Datei still lahm.
 * **Der Gelbstich im Terminal** kam nicht vom Farbschema, sondern von
   `opacity` in `alacritty.toml` — picom ließ das Wallpaper durchscheinen.
+  Bei `0.92` war der Stich deutlich, `0.95` ist der Kompromiss aus etwas
+  Transparenz und neutralem Hintergrund.
 * **Mittelklick-Einfügen** hat unter X11 keinen globalen Schalter, es ist pro
   Toolkit zu setzen: GTK 3 und 4, Alacritty, Firefox — alle vier Stellen
   richtet `setup.sh` ein.

@@ -73,7 +73,10 @@ OSD = os.path.expanduser("~/.local/bin/osd")
 # den Autostart in ~/.config/i3/config).
 VITALS_FLAECHE = "4"
 VITALS_KLASSE = "vitals-dashboard"
-VITALS_START = os.path.expanduser("~/.local/bin/vitals")
+# Muss zum Autostart in ~/.config/i3/config passen (Zeile mit --class
+# vitals-dashboard); wird das Dashboard dort ausgetauscht, gehoert der neue
+# Name auch hierher.
+VITALS_START = os.path.expanduser("~/.local/bin/vitals-btop")
 
 # Die vier i3status-Module, die zu einem Block werden. Die Namen vergibt
 # i3status; der Block von 'disk "/"' heisst dort "disk_info", nicht "disk".

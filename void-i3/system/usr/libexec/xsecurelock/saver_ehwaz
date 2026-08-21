@@ -1,0 +1,24 @@
+#!/bin/sh
+# saver_ehwaz -- Hintergrundmodul fuer xsecurelock.
+#
+# xsecurelock zeichnet selbst nur eine Farbflaeche und startet fuer alles
+# Weitere ein Saver-Modul. Dieses hier baut mit ~/.local/bin/sperrbild die
+# beiden Zustandsbilder (Wallpaper, Name, Rechnername, Symbol, Text) und
+# uebergibt sie an /usr/local/bin/sperrsaver, der sie ins Fenster zeichnet.
+#
+# Warum die Bilder hier gebaut werden und nicht beim Sperren: sperrbild
+# braucht die Aufloesung des laufenden X-Servers, und der Saver laeuft
+# garantiert darauf. Gebaut wird ohnehin nur, wenn sich Wallpaper oder
+# Aufloesung geaendert haben, sonst kommt das Bild aus dem Cache.
+
+zustandsdatei="$HOME/.cache/sperrbild/zustand"
+mkdir -p "$HOME/.cache/sperrbild"
+
+# Beim Start immer im Ausgangszustand beginnen -- sonst stuende beim naechsten
+# Sperren noch das "Try again" vom letzten Mal da.
+: > "$zustandsdatei"
+
+finger=$("$HOME/.local/bin/sperrbild" finger)
+nochmal=$("$HOME/.local/bin/sperrbild" nochmal)
+
+exec /usr/local/bin/sperrsaver "$finger" "$nochmal" "$zustandsdatei"

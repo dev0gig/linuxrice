@@ -10,8 +10,9 @@
 # Neustart, Herunterfahren. Alle drei koennen Arbeit vernichten, darum fragt
 # jede noch einmal nach -- die Rueckfrage bleibt bewusst eine schmale Liste.
 #
-# Sperren und Bereitschaft stehen nicht mehr im Raster, die Funktionen gibt
-# es aber weiter: "i3-sitzung sperren" haengt an $mod+l, "i3-sitzung
+# Sperren und Bereitschaft stehen nicht im Raster, die Funktionen gibt es aber
+# weiter: "i3-sitzung sperren" haengt an $mod+l und wird ausserdem von
+# /etc/acpi/deckel.sh aufgerufen, wenn der Deckel zugeht. "i3-sitzung
 # bereitschaft" ist absichtlich ohne Taste und nur von Hand aufrufbar.
 #
 # Neustart/Ausschalten/Bereitschaft laufen ueber sudo. Die dafuer noetige
@@ -19,9 +20,8 @@
 # bliebe das Menue an der Passwortfrage haengen, weil rofi kein Terminal
 # fuer die Eingabe hat.
 
-LOCK_FARBE=161616          # wie client.background in der i3-Config
-
 RASTER="$HOME/.config/rofi/sitzung.rasi"
+ZUSTAND="$HOME/.cache/sperrbild/zustand"
 
 # Zeilen im dmenu-Format mit Symbol: Text, NUL, "icon", 0x1f, Symbolname.
 # Die Symbole kommen aus Papirus-Dark (icon-theme in config.rasi); rofi
@@ -38,17 +38,98 @@ frage_nach() {
     [ "$(printf 'Nein\nJa\n' | rofi -dmenu -i -no-show-icons -p "$1" -lines 2)" = "Ja" ]
 }
 
-sperren() {
-    # -e: leere Eingabe nicht als Fehlversuch werten
-    i3lock -c "$LOCK_FARBE" -e
-    finger_entsperren
+# ---------------------------------------------------------------- Sperren
+#
+# Gesperrt wird mit xsecurelock. Es trennt drei Dinge in eigene Prozesse: das
+# Fenster mit den Tastatur- und Mausgriffen, das Hintergrundbild (Saver-Modul)
+# und die Anmeldemaske. Stuerzt eines der beiden letzteren ab, bleibt der
+# Schirm trotzdem gesperrt -- deshalb hier und nicht i3lock, das ausser einer
+# Farbe oder einem PNG ohnehin nichts anzeigen kann.
+#
+# Das Bild liefert /usr/libexec/xsecurelock/saver_ehwaz, die Anmeldemaske
+# auth_x11. Die Maske erscheint nicht sofort: xsecurelock startet sie erst auf
+# Tastendruck -- oder auf das Signal USR2, das der Fingerwaechter weiter unten
+# nach einem misslungenen Versuch schickt. Genau das ist die gewuenschte
+# Abfolge: erst nur der Fingerabdruck, das Passwortfeld erst, wenn der Finger
+# nicht erkannt wurde.
+#
+# Die Farben sind dieselben wie in ~/.config/rofi/config.rasi, damit die Maske
+# nahtlos in der Flaeche sitzt, die das Bild schon mitbringt. Name und
+# Rechnername stehen ebenfalls im Bild, xsecurelock soll sie nicht ein zweites
+# Mal darueber schreiben -- daher SHOW_USERNAME und SHOW_HOSTNAME auf 0.
+# BLANK_TIMEOUT -1 schaltet das Schwarzschalten ab; sonst waere das Bild nach
+# kurzer Zeit weg und mit ihm der Hinweis auf den Finger.
+#
+# NO_COMPOSITE=1 ist die Bedingung fuer die Animation. Normalerweise legt
+# xsecurelock sein Fenster in das Composite-Overlay -- dort haengt es nicht
+# mehr am Wurzelfenster, und picom sieht es gar nicht. Auf einem Xvfb-Schirm
+# nachgesehen: mit Overlay listet der Fensterbaum nur den "obscurer", ohne es
+# genau ein Fenster der Klasse xsecurelock direkt unter der Wurzel -- und nur
+# das kann die Regel in ~/.config/picom.conf hereinfliegen lassen.
+#
+# Der Preis: ein Compositor koennte theoretisch etwas darueber zeichnen, etwa
+# eine Benachrichtigung. xsecurelock holt sein Fenster deshalb von sich aus
+# regelmaessig nach vorn. Ganz ausschliessen laesst sich ein kurzes Aufblitzen
+# damit nicht.
+starte_sperre() {
+    XSECURELOCK_SAVER=saver_ehwaz \
+    XSECURELOCK_NO_COMPOSITE=1 \
+    XSECURELOCK_BACKGROUND_COLOR='#161616' \
+    XSECURELOCK_AUTH_BACKGROUND_COLOR='#1e1e1e' \
+    XSECURELOCK_AUTH_FOREGROUND_COLOR='#e8e8e8' \
+    XSECURELOCK_AUTH_WARNING_COLOR='#fb4934' \
+    XSECURELOCK_SHOW_USERNAME=0 \
+    XSECURELOCK_SHOW_HOSTNAME=0 \
+    XSECURELOCK_SHOW_KEYBOARD_LAYOUT=0 \
+    XSECURELOCK_BURNIN_MITIGATION=0 \
+    XSECURELOCK_BLANK_TIMEOUT=-1 \
+    XSECURELOCK_PASSWORD_PROMPT=asterisks \
+    XSECURELOCK_FONT='Red Hat Mono:size=16' \
+    setsid xsecurelock >/dev/null 2>&1 &
 }
 
-# Fingerabdruck statt Passwort: solange i3lock laeuft, im Hintergrund auf
-# einen passenden Finger warten und i3lock dann beenden. Das Passwort geht
-# parallel weiter; i3lock selbst bleibt unangetastet (sein PAM-Stapel kennt
-# nur pam_unix). pam_fprintd in i3lock waere die naheliegende Alternative,
-# haelt aber jede Passworteingabe so lange auf, bis der Finger-Timeout um ist.
+sperren() {
+    uid=$(id -u)
+
+    # Schon gesperrt? Dann nichts tun -- zwei Sperren uebereinander wuerden
+    # sich gegenseitig die Tastaturgriffe wegnehmen.
+    if pgrep -u "$uid" -x xsecurelock >/dev/null 2>&1; then
+        return 0
+    fi
+
+    mkdir -p "$HOME/.cache/sperrbild"
+    : > "$ZUSTAND"          # immer im Ausgangszustand beginnen
+
+    starte_sperre
+
+    # Warten, bis die Sperre wirklich steht. xsecurelock scheitert, wenn ein
+    # anderes Fenster gerade die Tastatur greift (offenes rofi, Menue,
+    # Vollbildspiel). Das muss der Aufrufer erfahren: gleich danach klappt
+    # vielleicht der Deckel zu und der Rechner schlaeft ein.
+    n=0
+    while [ "$n" -lt 50 ]; do
+        pgrep -u "$uid" -x xsecurelock >/dev/null 2>&1 && break
+        sleep 0.1
+        n=$((n + 1))
+    done
+
+    if ! pgrep -u "$uid" -x xsecurelock >/dev/null 2>&1; then
+        logger -t i3-sitzung "xsecurelock kam nicht hoch -- Schirm bleibt offen"
+        return 1
+    fi
+
+    finger_entsperren
+    return 0
+}
+
+# Fingerabdruck statt Passwort: solange die Sperre laeuft, im Hintergrund auf
+# einen passenden Finger warten und xsecurelock dann beenden. Die
+# Passworteingabe geht parallel weiter.
+#
+# Warum der Finger nicht in /etc/pam.d/xsecurelock steht, wo er doch bei sudo
+# und login ueber PAM laeuft: pam_fprintd wuerde den Sensor selbst greifen,
+# und dann streiten sich zwei Prozesse darum. Ausserdem kaeme der Text dann
+# von pam_fprintd ("Place your finger...") statt aus dem eigenen Bild.
 #
 # Wird per Passwort entsperrt, muss der wartende fprintd-verify sterben --
 # sonst haelt er den Sensor belegt, und sudo bekaeme keinen Finger mehr.
@@ -60,37 +141,47 @@ finger_entsperren() {
     uid=$(id -u)
     pgrep -u "$uid" -x fprintd-verify >/dev/null && return 0
     (
-        while pgrep -u "$uid" -x i3lock >/dev/null; do
-            fprintd-verify >/dev/null 2>&1 &
+        ausgabe=$(mktemp) || exit 0
+        while pgrep -u "$uid" -x xsecurelock >/dev/null; do
+            fprintd-verify >"$ausgabe" 2>&1 &
             pruefer=$!
             while kill -0 "$pruefer" 2>/dev/null; do
-                if ! pgrep -u "$uid" -x i3lock >/dev/null; then
+                if ! pgrep -u "$uid" -x xsecurelock >/dev/null; then
                     kill "$pruefer" 2>/dev/null
+                    rm -f "$ausgabe"
                     exit 0
                 fi
                 sleep 1
             done
             if wait "$pruefer"; then
-                pkill -u "$uid" -x i3lock
+                pkill -u "$uid" -x xsecurelock
+                rm -f "$ausgabe"
                 exit 0
+            fi
+            # Kein Treffer: das Bild auf "Try again" umlegen und mit USR2 die
+            # Passwortmaske einblenden. Nur bei einem echten no-match --
+            # bricht fprintd aus einem anderen Grund ab (Sensor belegt, Dienst
+            # weg), soll nichts Rotes dastehen.
+            if grep -q 'no-match' "$ausgabe" 2>/dev/null; then
+                echo nochmal > "$ZUSTAND"
+                pkill -u "$uid" -USR2 -x xsecurelock
             fi
             sleep 1
         done
+        rm -f "$ausgabe"
     ) >/dev/null 2>&1 &
 }
 
 bereitschaft() {
     # Erst sperren, dann schlafen -- sonst liegt der entsperrte Schirm beim
-    # Aufwachen offen da. i3lock forkt, kehrt also sofort zurueck; das kurze
-    # Warten laesst das Fenster noch sicher hochkommen.
+    # Aufwachen offen da. sperren kehrt zurueck, sobald die Sperre steht.
     sperren
-    sleep 1
     sudo zzz
 }
 
 case "$1" in
-    sperren)      sperren;      exit 0 ;;
-    bereitschaft) bereitschaft; exit 0 ;;
+    sperren)      sperren;      exit $? ;;
+    bereitschaft) bereitschaft; exit 0  ;;
 esac
 
 auswahl=$(zeilen | rofi -dmenu -i -theme "$RASTER")

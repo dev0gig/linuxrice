@@ -1,0 +1,133 @@
+#!/bin/sh
+# sperrbild [finger|nochmal]  -- baut den Hintergrund des Sperrbildschirms und
+# gibt den Pfad des fertigen PNG aus.
+#
+# xsecurelock zeichnet selbst nur eine Farbflaeche; alles Bildliche kommt vom
+# Saver-Modul (/usr/libexec/xsecurelock/saver_ehwaz), und das zeigt genau
+# dieses PNG an. Der Text steht also im Bild, nicht im Programm -- deshalb
+# gibt es zwei Zustaende:
+#
+#   finger   -- Ausgangsbild: Fingerabdruck-Symbol und "Unlock with
+#               fingerprint"
+#   nochmal  -- nach einem misslungenen Fingerversuch: "Try again" in Rot.
+#               Das Passwortfeld darunter zeichnet xsecurelock selbst.
+#
+# Gebaut wird nur, wenn noetig: liegt das Bild schon passend zu Wallpaper und
+# Aufloesung im Cache, wird es wiederverwendet. Das Sperren soll nicht auf
+# ImageMagick warten.
+
+zustand="${1:-finger}"
+
+SYMBOLSCHRIFT=/usr/share/fonts/NerdFonts/ttf/symbols/SymbolsNerdFontMono-Regular.ttf
+TEXTSCHRIFT=Red-Hat-Mono-Regular
+TEXTSCHRIFT_KRAEFTIG=Red-Hat-Mono-Medium
+
+# Farben wie in ~/.config/rofi/config.rasi
+HELL='#e8e8e8'
+GEDIMMT='#9a9a9a'
+WARNUNG='#fb4934'
+
+# Fingerabdruck: U+F0237 aus der Nerd Font. Die Glyphe steht hier als
+# Escape-Sequenz und nicht als Zeichen, damit die Datei reiner ASCII bleibt --
+# ein unsichtbar kaputtes Symbol waere sonst kaum zu finden.
+GLYPHE=$(printf '\363\260\210\267')
+
+cachedir="$HOME/.cache/sperrbild"
+mkdir -p "$cachedir"
+
+# ---- Aufloesung des laufenden X-Servers
+# Ueber xdotool, nicht ueber xdpyinfo: das gibt es auf diesem System nicht,
+# und sein Fehlschlag waere still -- die Groesse fiele wortlos auf den
+# Standardwert zurueck und das Bild passte auf einem anderen Schirm nicht.
+masse=$(xdotool getdisplaygeometry 2>/dev/null)
+breite=$(printf '%s\n' "$masse" | cut -d' ' -f1)
+hoehe=$( printf '%s\n' "$masse" | cut -d' ' -f2)
+case "$breite$hoehe" in
+    *[!0-9]*|"") breite=1920; hoehe=1080 ;;
+esac
+
+# ---- Wallpaper: dieselbe Quelle, aus der auch i3 beim Start liest
+wallpaper=$(sed -n "s/.*feh .*'\(.*\)'.*/\1/p" "$HOME/.fehbg" 2>/dev/null | tail -n1)
+if [ ! -f "$wallpaper" ]; then
+    wallpaper=$(find "$HOME/Bilder/Wallpapers" -maxdepth 1 -type f \
+                \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) 2>/dev/null |
+                sort | head -n1)
+fi
+
+ziel="$cachedir/$zustand-$breite-$hoehe.png"
+
+# Frisch genug? Dann nichts tun. -nt ist in dash vorhanden.
+if [ -f "$ziel" ] && [ -n "$wallpaper" ] && [ ! "$wallpaper" -nt "$ziel" ] &&
+   [ ! "$0" -nt "$ziel" ]; then
+    echo "$ziel"
+    exit 0
+fi
+
+benutzer=$(id -un)
+rechner=$(uname -n)
+
+case "$zustand" in
+    nochmal) meldung="Try again";               farbe="$WARNUNG" ;;
+    *)       meldung="Unlock with fingerprint"; farbe="$HELL"    ;;
+esac
+
+# ---- Groessen und Hoehen, alles aus der Bildhoehe abgeleitet, damit es auf
+#      jeder Aufloesung gleich aussieht.
+#
+# Die Schrift steht nicht direkt auf dem Wallpaper: darauf ist sie je nach
+# Bild kaum zu lesen. Stattdessen liegt in der Mitte eine Flaeche in genau der
+# Sprache deiner rofi-Fenster -- #1e1e1e mit 2px Rahmen in #6e6e6e, eckig.
+# Sie reicht bewusst bis unter die Bildmitte: dort setzt xsecurelock spaeter
+# das Passwortfeld hin, und das soll in derselben Flaeche stehen und nicht
+# halb daneben.
+FLAECHE='#1e1e1e'
+RAHMEN='#6e6e6e'
+
+# Die Hoehen sind nicht frei gewaehlt, sondern um die Anmeldemaske herum
+# gelegt. xsecurelock zeichnet sie mittig; auf einem 1920x1080-Testschirm
+# nachgemessen (Differenz zweier Aufnahmen, mit und ohne Maske) liegt sie bei
+# x 755..1167, y 480..569 -- also 44,4 % bis 52,7 % der Hoehe. Alles Eigene
+# muss darueber bleiben, sonst uebermalt die Maske das Symbol.
+#
+# Die Flaeche reicht bis 58 %: die Maske liegt dann vollstaendig darin, mit
+# Luft fuer die Fehlerzeile, die xsecurelock nach einem falschen Passwort
+# zusaetzlich einblendet. Ihre Hintergrundfarbe ist dieselbe wie die der
+# Flaeche, die Naht ist also unsichtbar.
+FLAECHE_BIS_PROZENT=58
+
+fl_breite=$(( breite * 42 / 100 ))
+fl_links=$((  (breite - fl_breite) / 2 ))
+fl_rechts=$(( fl_links + fl_breite ))
+fl_oben=$((   hoehe * 15 / 100 ))
+fl_unten=$((  hoehe * FLAECHE_BIS_PROZENT / 100 ))
+
+gr_name=$((   hoehe * 100 / 2700 ))   # 1080 -> 40
+gr_rechner=$((hoehe * 100 / 4500 ))   # 1080 -> 24
+gr_symbol=$(( hoehe * 100 / 1130 ))   # 1080 -> 95
+gr_meldung=$((hoehe * 100 / 4000 ))   # 1080 -> 27
+
+y_name=$((    hoehe * 18   / 100 ))
+y_rechner=$(( hoehe * 23   / 100 ))
+y_symbol=$((  hoehe * 28   / 100 ))
+y_meldung=$(( hoehe * 375  / 1000 ))
+
+if [ -n "$wallpaper" ] && [ -f "$wallpaper" ]; then
+    grundlage="$wallpaper -resize ${breite}x${hoehe}^ -gravity center -extent ${breite}x${hoehe} -fill black -colorize 25%"
+else
+    # Kein Wallpaper gefunden: einfarbig wie der i3-Hintergrund.
+    grundlage="-size ${breite}x${hoehe} xc:#161616"
+fi
+
+# shellcheck disable=SC2086  -- $grundlage soll in Woerter zerfallen
+magick $grundlage \
+    -fill "$FLAECHE" -stroke "$RAHMEN" -strokewidth 2 \
+    -draw "rectangle $fl_links,$fl_oben $fl_rechts,$fl_unten" \
+    -stroke none \
+    -gravity north \
+    -font "$TEXTSCHRIFT_KRAEFTIG" -pointsize "$gr_name"    -fill "$HELL"    -annotate +0+"$y_name"    "$benutzer" \
+    -font "$TEXTSCHRIFT"          -pointsize "$gr_rechner" -fill "$GEDIMMT" -annotate +0+"$y_rechner" "$rechner" \
+    -font "$SYMBOLSCHRIFT"        -pointsize "$gr_symbol"  -fill "$farbe"   -annotate +0+"$y_symbol"  "$GLYPHE" \
+    -font "$TEXTSCHRIFT"          -pointsize "$gr_meldung" -fill "$farbe"   -annotate +0+"$y_meldung" "$meldung" \
+    "$ziel" 2>/dev/null
+
+echo "$ziel"

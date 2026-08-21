@@ -1,0 +1,9 @@
+#%PAM-1.0
+# void-i3: Sperrbildschirm. Bewusst NUR Passwort.
+#
+# Kein pam_fprintd hier, obwohl sudo und login es haben: der Finger wird auf
+# dem Sperrbildschirm von einem eigenen Waechter geprueft (fprintd-verify in
+# i3-sitzung). Stuende er zusaetzlich in dieser Datei, wuerden zwei Prozesse
+# gleichzeitig nach dem Sensor greifen -- einer von beiden bekaeme ihn nicht.
+auth    include system-auth
+account include system-auth

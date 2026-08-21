@@ -116,6 +116,15 @@ PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils
 # wird hier nur fuer den Deckelschalter gebraucht.
 PAKETE="$PAKETE dunst libnotify brightnessctl playerctl acpi acpid"
 
+# Sperrbildschirm. xsecurelock statt i3lock, weil es Hintergrundbild,
+# Anmeldemaske und Fenstergriffe in getrennte Prozesse legt -- nur so laesst
+# sich ein eigenes Bild samt Fingerabdruck-Hinweis zeigen. Das Bild baut
+# ImageMagick (steht weiter unten schon in der Liste).
+PAKETE="$PAKETE xsecurelock"
+# cairo und libX11 als Entwicklungsdateien: daraus wird sperrsaver gebaut,
+# das kleine Programm, das das Bild in das Fenster von xsecurelock malt.
+PAKETE="$PAKETE cairo-devel libX11-devel"
+
 # Ton. PipeWire ersetzt hier PulseAudio und JACK; wireplumber ist die
 # Geraeteverwaltung, ohne die PipeWire zwar laeuft, aber nichts verschaltet.
 # alsa-pipewire legt das ALSA-Plugin dazu, damit auch Programme Ton machen,
@@ -455,6 +464,8 @@ for rel in etc/X11/xorg.conf.d/00-keyboard.conf \
            etc/acpi/deckel.sh \
            etc/acpi/events/deckel \
            etc/acpi/events/anything \
+           etc/pam.d/xsecurelock \
+           usr/libexec/xsecurelock/saver_ehwaz \
            etc/rc.local; do
     sudo mkdir -p "/$(dirname "$rel")"
     sichern_system "/$rel"
@@ -470,6 +481,11 @@ sudo chmod 755 /etc/rc.local
 
 # Dasselbe fuer den Deckel-Handler: acpid ruft ihn direkt auf.
 sudo chmod 755 /etc/acpi/deckel.sh
+
+# Und fuer das Saver-Modul: xsecurelock startet es als Programm. Es muss neben
+# den mitgelieferten Modulen liegen -- xsecurelock sucht seine Module nur in
+# diesem einen Verzeichnis, ein Pfad in XSECURELOCK_SAVER hilft nicht.
+sudo chmod 755 /usr/libexec/xsecurelock/saver_ehwaz
 
 # Der Dienst wurde weiter oben eingeschaltet, also bevor diese Regeln hier
 # lagen -- acpid liest sie nur beim Start. Ohne den Neustart bliebe bis zum
@@ -570,6 +586,25 @@ if command -v gcc >/dev/null 2>&1 && command -v setcap >/dev/null 2>&1; then
     fi
 else
     warn "gcc oder setcap fehlt -- die LEDs in F5/F8 bleiben dunkel."
+fi
+
+# Das Bild des Sperrbildschirms. Warum ein eigenes Programm noetig ist, steht
+# ausfuehrlich im Kopf von system/bin/sperrsaver.c -- kurz: ImageMagicks
+# "display -window" findet die namenlosen Fenster von xsecurelock nicht, und
+# mpv nur zum Anzeigen eines Standbilds mitzuschleppen waere unverhaeltnismaessig.
+schritt "Sperrbildschirm"
+if command -v gcc >/dev/null 2>&1 && pkg-config --exists cairo x11 2>/dev/null; then
+    if gcc -O2 -o "/tmp/sperrsaver.$$" "$QUELLE/system/bin/sperrsaver.c" \
+           $(pkg-config --cflags --libs cairo x11) 2>/dev/null; then
+        sudo install -m 755 "/tmp/sperrsaver.$$" /usr/local/bin/sperrsaver
+        rm -f "/tmp/sperrsaver.$$"
+        gut "/usr/local/bin/sperrsaver gebaut"
+    else
+        rm -f "/tmp/sperrsaver.$$"
+        warn "sperrsaver liess sich nicht uebersetzen -- der Sperrbildschirm bliebe schwarz."
+    fi
+else
+    warn "gcc oder die Entwicklungsdateien von cairo/x11 fehlen -- kein Sperrbild."
 fi
 
 # ------------------------------------------------------ Fingerabdrucksensor

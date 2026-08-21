@@ -1,0 +1,19 @@
+# Kein Zeitfenster nach einer erfolgreichen sudo-Anmeldung.
+#
+# Standard bei sudo sind 5 Minuten: nach der ersten Anmeldung laesst jedes
+# weitere sudo im selben Terminal die Abfrage kommentarlos aus. Mit 0 wird
+# jedes einzelne sudo wieder geprueft.
+#
+# Warum hier so gewollt: die Anmeldung laeuft ueber den Fingerabdruck
+# (pam_fprintd in /etc/pam.d/sudo). Ein Fingertipp ist so schnell, dass das
+# Zwischenspeichern keinen Komfort mehr bringt -- es wuerde nur ein
+# unbeaufsichtigtes Terminal fuenf Minuten lang offen halten. Das betrifft
+# ausdruecklich auch "sudo -i": die Root-Shell selbst bleibt natuerlich bis
+# zum exit bestehen, nur der Freifahrtschein fuer weitere sudo-Aufrufe faellt weg.
+#
+# Nicht betroffen sind die NOPASSWD-Zeilen in 10-sitzung -- die fragen sowieso nie.
+#
+# Rueckgaengig: diese Datei loeschen (dann gelten wieder 5 Minuten) oder den
+# Wert hochsetzen. Ein negativer Wert wuerde das Zeitfenster nie ablaufen
+# lassen, das ist hier nicht gemeint.
+Defaults timestamp_timeout=0

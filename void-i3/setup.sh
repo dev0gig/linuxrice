@@ -351,15 +351,23 @@ info "Tastatur-Remap F8/F12 uebersetzt und aktiv"
 
 # sudoers braucht Modus 440 und muss fehlerfrei sein -- eine kaputte Datei
 # dort sperrt sudo komplett aus. Also erst pruefen, dann mit install ablegen
-# (cp wuerde die Rechte des Repos mitnehmen).
-if sudo visudo -c -f "$QUELLE/system/etc/sudoers.d/10-sitzung" >/dev/null 2>&1; then
-    sudo install -m 440 -o root -g root \
-         "$QUELLE/system/etc/sudoers.d/10-sitzung" /etc/sudoers.d/10-sitzung
-    info "/etc/sudoers.d/10-sitzung"
-else
-    warn "sudoers-Schnipsel fehlerhaft -- uebersprungen."
-    warn "Das Sitzungsmenue kann dann nur sperren und abmelden."
-fi
+# (cp wuerde die Rechte des Repos mitnehmen). Jede Datei einzeln, damit ein
+# Fehler in der einen die andere nicht mitreisst.
+for schnipsel in "$QUELLE"/system/etc/sudoers.d/*; do
+    name=$(basename "$schnipsel")
+    if sudo visudo -c -f "$schnipsel" >/dev/null 2>&1; then
+        sudo install -m 440 -o root -g root "$schnipsel" "/etc/sudoers.d/$name"
+        info "/etc/sudoers.d/$name"
+    else
+        warn "sudoers-Schnipsel $name fehlerhaft -- uebersprungen."
+        case "$name" in
+            10-sitzung)
+                warn "Das Sitzungsmenue kann dann nur sperren und abmelden." ;;
+            20-zeitfenster)
+                warn "sudo merkt sich die Anmeldung dann wieder fuenf Minuten." ;;
+        esac
+    fi
+done
 
 gut "abgelegt, Schriftcache erneuert"
 

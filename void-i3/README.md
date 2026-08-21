@@ -174,6 +174,24 @@ Das ist kein Wischen, das am Finger klebt — libinput-gestures meldet erst
 das Ende der Geste. Ein echtes Finger-Karussell gäbe es unter X11 nicht,
 dafür bräuchte es einen Wayland-Compositor wie Hyprland oder niri.
 
+### Benachrichtigungen fliegen von oben herein
+
+Dieselbe picom-Technik, nur ohne `_SWIPE_DIR`: eine dritte Regel auf
+`class_g = 'Dunst'` lässt Meldungen von oben hereinfliegen und nach oben
+wieder verschwinden (0,15 s). dunst selbst kann keine Animationen.
+
+Zwei Dinge, die man dabei wissen muss:
+
+- **Die Trigger sind unsymmetrisch.** dunst hält *ein* Fenster und mappt es
+  nur ab und zu. picom meldet das erste Mappen nach dem Start als `open`,
+  jedes weitere als `show` — steht nur `open` da, fliegt bloß die allererste
+  Meldung. Beim Verschwinden ist es `hide`; `close` kommt erst, wenn dunst
+  endet. Deshalb stehen in der Regel alle vier.
+- **Mehrere Meldungen zeichnet dunst in dasselbe Fenster**, es wird nur
+  größer. Geflogen wird also einmal am Anfang und einmal am Ende, nicht pro
+  Meldung — und das OSD fliegt nicht bei jedem Tastendruck neu, solange die
+  stehende Meldung ersetzt wird.
+
 Deutsches Tastaturlayout — deshalb steht in den Bindings `$mod+odiaeresis`
 statt `$mod+semicolon`.
 

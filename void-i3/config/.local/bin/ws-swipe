@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Arbeitsflaeche wechseln und picom vorher die Wischrichtung mitteilen.
+
+    ws-swipe next        naechste Arbeitsflaeche, Inhalt faehrt nach links
+    ws-swipe prev        vorherige Arbeitsflaeche, Inhalt faehrt nach rechts
+    ws-swipe number N    direkt zu N; Richtung aus dem Vergleich mit der aktuellen
+
+i3 kennt keine Animationen, picom 13 kennt keine Arbeitsflaechen. Beim
+Wechsel un-/mapped i3 die Fenster, picom animiert das als hide/show. Damit
+die Animation in die richtige Richtung laeuft, schreibt dieses Skript vor
+dem Wechsel die X-Property _SWIPE_DIR auf jedes i3-Rahmenfenster; die
+Regeln in ~/.config/picom.conf lesen sie aus.
+
+Zwei Fallstricke, beide am 21.08.2026 nachgemessen:
+- Der Rahmen, nicht das Client-Fenster: beim Unmap verliert picom den Bezug
+  zum Client, eine Regel auf "_SWIPE_DIR@" matcht dann nicht mehr und das
+  ausfliegende Fenster bliebe stehen.
+- picom liest geaenderte Properties erst im naechsten Zeichenzyklus nach,
+  und eine Property-Aenderung allein loest keinen aus. Folgt der Wechsel
+  direkt, animiert picom mit der alten Richtung (oder gar nicht). Darum
+  blendet das Skript kurz ein 1-Pixel-Fenster ein -- das erzwingt einen
+  Zyklus -- und wartet zwei Bildwiederholungen, bevor es wechselt.
+"""
+import subprocess
+import sys
+import time
+
+from Xlib import X, Xatom, display
+
+
+def main(argv):
+    if not argv or argv[0] not in ("next", "prev", "number"):
+        sys.exit(__doc__)
+
+    dpy = display.Display()
+    root = dpy.screen().root
+
+    if argv[0] == "next":
+        direction, cmd = "left", "workspace next"
+    elif argv[0] == "prev":
+        direction, cmd = "right", "workspace prev"
+    else:
+        target = int(argv[1])
+        cmd = f"workspace number {target}"
+        direction = None
+        cur = root.get_full_property(dpy.intern_atom("_NET_CURRENT_DESKTOP"), Xatom.CARDINAL)
+        names = root.get_full_property(dpy.intern_atom("_NET_DESKTOP_NAMES"), dpy.intern_atom("UTF8_STRING"))
+        if cur and names:
+            labels = names.value.decode("utf-8", "replace").split("\0")
+            try:
+                # i3 benennt "2: Terminal", die Nummer steht immer vorn.
+                current = int(labels[cur.value[0]].split(":")[0])
+                if target != current:
+                    direction = "left" if target > current else "right"
+            except (IndexError, ValueError):
+                pass
+
+    if direction:
+        atom = dpy.intern_atom("_SWIPE_DIR")
+        for win in root.query_tree().children:
+            try:
+                cls = win.get_wm_class()
+            except Exception:
+                continue
+            if cls and cls[1] == "i3-frame":
+                win.change_property(atom, Xatom.STRING, 8, direction.encode())
+        # Zeichenzyklus erzwingen, siehe Kopf der Datei.
+        poke = root.create_window(0, 0, 1, 1, 0, X.CopyFromParent,
+                                  override_redirect=True, background_pixel=0)
+        poke.map()
+        dpy.sync()
+        time.sleep(0.04)
+    else:
+        poke = None
+
+    subprocess.run(["i3-msg", cmd], stdout=subprocess.DEVNULL, check=False)
+
+    if poke is not None:
+        # Erst nach dem Wechsel schliessen, sonst warnt picom, weil es die
+        # Properties eines schon zerstoerten Fensters abfragen will.
+        poke.destroy()
+        dpy.sync()
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

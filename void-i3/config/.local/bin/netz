@@ -55,10 +55,6 @@ ICON_FEHLER = "network-error"
 ICON_SUCHE = "edit-find"
 ICON_TS_AN = "network-vpn"
 ICON_TS_AUS = "network-offline"
-# Nach Signalstaerke, gleiche Reihenfolge wie BALKEN.
-ICON_SIGNAL = ("network-wireless-signal-none", "network-wireless-signal-weak",
-               "network-wireless-signal-ok", "network-wireless-signal-good",
-               "network-wireless-signal-excellent")
 
 RFKILL = "/sys/class/rfkill"
 

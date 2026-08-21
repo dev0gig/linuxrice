@@ -157,6 +157,16 @@ PAKETE="$PAKETE gcc libcap-progs"
 # Bildvorschau im Terminal gewesen, und dafuer ist nsxiv ohnehin besser.
 PAKETE="$PAKETE nano glow bat nsxiv desktop-file-utils"
 
+# Papierkorb. libfm loescht schon von sich aus nach ~/.local/share/Trash
+# (use_trash=1), aber oeffnen laesst sich der Papierkorb ohne gvfs nicht:
+# trash:/// beantwortet GIO dann mit "Operation not supported", der Eintrag in
+# der Seitenleiste bleibt tot, und Wiederherstellen oder Leeren gibt es gar
+# nicht. gvfs bringt dafuer gvfsd-trash mit. Es zieht udisks2 nach, womit
+# nebenbei das Einhaengen von USB-Sticks funktioniert, das pcmanfm.conf mit
+# mount_removable=1 ohnehin schon verlangt. Beide starten per D-Bus-Aktivierung
+# und brauchen keinen eigenen Dienst unter /var/service.
+PAKETE="$PAKETE gvfs"
+
 # Werkzeuge, die im Alltag dazugehoeren.
 PAKETE="$PAKETE git github-cli rclone xclip ImageMagick nodejs tailscale
         fonttools"

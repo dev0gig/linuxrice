@@ -67,7 +67,7 @@ Es richtet ein:
 
 | | |
 | --- | --- |
-| Pakete | Xorg ohne Display-Manager, i3, rofi, picom, Alacritty, PCManFM, Flatpak, btop |
+| Pakete | Xorg ohne Display-Manager, i3, rofi, picom, Alacritty, PCManFM mit gvfs, Flatpak, btop |
 | Dienste | `dbus`, `dhcpcd`, `wpa_supplicant`, `tailscaled`, `bluetoothd`, `alsa`, `rtkit` |
 | Locale | `de_DE.UTF-8` erzeugen (Systemsprache bleibt `C.UTF-8`), Konsolentastatur auf `de` |
 | Schriften | Red Hat Mono nach `/usr/share/fonts`, dazu die fontconfig-Regel, die `monospace` darauf umbiegt |
@@ -219,6 +219,18 @@ nur kurz aufgemacht wird — er soll über der Arbeit liegen und sie nicht zur
 Seite schieben. Drag-and-Drop in andere Fenster und Vorschaubilder für Bilder
 kann er von Haus aus; Ordner sind ihm auch als `inode/directory` zugeordnet,
 damit „Ordner öffnen" aus den Browser-Downloads dort landet.
+
+Gelöschtes landet im **Papierkorb** unter `~/.local/share/Trash`, nicht im
+Nichts — das macht libfm mit `use_trash=1` von allein, ohne dass etwas
+installiert sein muss. Zu sehen bekommt man ihn aber erst mit **gvfs**:
+`trash:///` ist eine GIO-Adresse, und ohne `gvfsd-trash` beantwortet GIO sie
+mit „Operation not supported“. Der Eintrag *Trash Can* in der Seitenleiste
+steht auch vorher schon da (`places_trash=1`), führt dann aber ins Leere.
+Mit dem Paket öffnet er sich — über die Seitenleiste oder *Go → Trash*. Der
+Rechtsklick auf eine Datei darin kennt *Restore* und legt sie an ihren alten
+Pfad zurück; der Rechtsklick auf *Trash Can* in der Seitenleiste hat *Empty
+Trash Can*. Endgültig löschen ohne Umweg bleibt `Umschalt+Entf`.
+
 
 **VS Code** auf `$mod+c` ist die Entwicklungsumgebung, installiert als
 Flatpak (`com.visualstudio.code`). Der Flatpak statt des Void-Pakets, weil

@@ -72,7 +72,7 @@ Es richtet ein:
 | Locale | `de_DE.UTF-8` erzeugen (Systemsprache bleibt `C.UTF-8`), Konsolentastatur auf `de` |
 | Schriften | Red Hat Mono nach `/usr/share/fonts`, dazu die fontconfig-Regel, die `monospace` darauf umbiegt |
 | Mauszeiger | Nordzy nach `~/.local/share/icons` (nicht `~/.icons` — sonst sehen Flatpaks ihn nicht) |
-| Eingabe | deutsches Tastaturlayout in X, Touchpad mit natürlichem Scrollen und Tap-to-Click, Drei-Finger-Gesten |
+| Eingabe | deutsches Tastaturlayout in X, Touchpad mit natürlichem Scrollen und Tap-to-Click, Drei-Finger-Gesten mit Karussell-Animation beim Arbeitsflächenwechsel |
 | Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten |
 | Fingerabdruck | auf Nachfrage: libfprint-Fork mit dem Treiber `synatlsmoc` und gepatchtes fprintd nach `/usr/local`, polkit-Regel, `pam_fprintd` für sudo und Login; das Sperrmenü entsperrt auf Fingertipp (`fingerabdruck/`) |
 | Ton | PipeWire mit WirePlumber und PulseAudio-Schnittstelle, dazu `dumb_runtime_dir` (nicht in `base-system`) und `/run/user` aus `rc.local` — ohne `XDG_RUNTIME_DIR` startet PipeWire nicht |
@@ -127,7 +127,32 @@ funktionieren `workspace number N` und die `assign`-Regeln weiter.
 | `$mod+Shift+w` | Hintergrundbild wählen |
 | `$mod+v` | Verlauf der Zwischenablage |
 | `$mod+Shift+v` | senkrecht teilen |
-| `$mod+1` … `$mod+4` | Arbeitsflächen |
+| `$mod+1` … `$mod+4` | Arbeitsflächen (wie die Drei-Finger-Geste mit Karussell-Animation) |
+
+### Karussell beim Arbeitsflächenwechsel
+
+Drei Finger nach links wischen wechselt zur nächsten Arbeitsfläche, nach
+rechts zur vorherigen — und die Fenster fahren dabei in die Wischrichtung
+aus dem Bild, die neuen kommen von der Gegenseite herein. i3 kann das nicht
+selbst, picom 13 kennt zwar Animationen, aber keine Arbeitsflächen. Die
+Konstruktion:
+
+- i3 un-/mapped die Fenster beim Wechsel; picom animiert das über die
+  Trigger `hide` und `show` mit den Presets `fly-out` und `fly-in`
+  (`config/.config/picom.conf`).
+- Die Richtung kommt aus der X-Property `_SWIPE_DIR`, die
+  `config/.local/bin/ws-swipe` vor jedem Wechsel auf alle i3-Rahmenfenster
+  schreibt; zwei picom-Regeln wählen danach die Flugrichtung. Gesten
+  (`libinput-gestures.conf`) und `$mod+1` … `$mod+0` laufen alle über
+  dieses Skript, bei Nummern ergibt sich die Richtung aus dem Vergleich mit
+  der aktuellen Fläche.
+- Zwei Fallstricke stecken als Kommentar im Skript: die Property muss auf
+  den **Rahmen** (nicht den Client), und picom braucht nach der Änderung
+  einen erzwungenen Zeichenzyklus, sonst animiert es mit der alten Richtung.
+
+Das ist kein Wischen, das am Finger klebt — libinput-gestures meldet erst
+das Ende der Geste. Ein echtes Finger-Karussell gäbe es unter X11 nicht,
+dafür bräuchte es einen Wayland-Compositor wie Hyprland oder niri.
 
 Deutsches Tastaturlayout — deshalb steht in den Bindings `$mod+odiaeresis`
 statt `$mod+semicolon`.

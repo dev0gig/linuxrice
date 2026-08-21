@@ -112,6 +112,25 @@ unverändert verhalten. Die Beschriftungen setzt `~/.local/bin/i3-workspace-name
 live nach der Fensterklasse; die Nummer bleibt vorn stehen, deshalb
 funktionieren `workspace number N` und die `assign`-Regeln weiter.
 
+### Blinken, wenn woanders etwas passiert
+
+Will ein Programm auf einer *anderen* Fläche nach vorn — der Alltagsfall: ein
+Klick in VS Code macht einen neuen Tab in Chrome auf, und Chrome liegt auf
+Fläche 1 —, dann gibt i3 den Fokus nicht her, sondern setzt das
+`urgent`-Flag. Bis dahin wurde der Knopf in der Leiste dabei nur still rot,
+was man beim Schreiben übersieht. Jetzt **blinkt** er: hinter dem Namen steht
+ein Punkt, und die Farbe wechselt im 0,6-Sekunden-Takt zwischen Warnrot und
+dem Grau der inaktiven Flächen. Beim Hinschalten ist es sofort vorbei, i3
+löscht das Flag dann selbst.
+
+Das Blinken steckt in `i3-workspace-names` und nicht in einem eigenen Dienst:
+der Name der Fläche ist der einzige Hebel, mit dem sich ein Knopf in i3bar
+umfärben lässt (i3bar rendert ihn mit Pango-Markup, `bar { colors }` kennt nur
+feste Farben). Zwei Dienste würden also im selben Takt umbenennen und sich
+gegenseitig überschreiben. Die Nummer bleibt bewusst außerhalb des Markups —
+`ws-swipe` liest die Namen aus `_NET_DESKTOP_NAMES` und schneidet die Nummer
+mit `split(":")[0]` ab.
+
 ## Tastenbelegung
 
 | Taste | Wirkung |

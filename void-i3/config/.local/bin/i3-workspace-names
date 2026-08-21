@@ -1,15 +1,32 @@
 #!/usr/bin/env python3
 """Benennt i3-Arbeitsflaechen automatisch nach den Programmen, die darin laufen.
 
-Aus "2" wird "2: Alacritty", aus "1" wird "1: Chrome".  Die fuehrende Nummer
+Aus "2" wird "2: Alacritty", aus "1" wird "1: Browser".  Die fuehrende Nummer
 bleibt erhalten -- i3 adressiert Arbeitsflaechen ueber "workspace number N",
 darum funktionieren $mod+1..0 und die assign-Regeln unveraendert weiter.
 
+Ausserdem laesst dieses Skript eine Arbeitsflaeche BLINKEN, sobald dort etwas
+Aufmerksamkeit verlangt -- der Fall aus dem Alltag: ein Klick in VS Code
+oeffnet einen neuen Tab in Chrome, Chrome liegt aber auf Flaeche 1.  Chrome
+bittet dann per _NET_ACTIVE_WINDOW um den Fokus; i3 gibt ihn nicht her
+(focus_on_window_activation "smart" stiehlt nur auf der sichtbaren Flaeche
+den Fokus) und setzt stattdessen das urgent-Flag.  In der Leiste wurde die
+Flaeche dadurch bisher nur still rot -- das uebersieht man leicht.
+
+Warum das Blinken hier drinsteckt und nicht in einem eigenen Dienst: es gibt
+nur EINEN Weg, einen Knopf in der Leiste umzufaerben, naemlich den Namen der
+Arbeitsflaeche (i3bar rendert ihn mit Pango-Markup).  Ein zweiter Dienst
+wuerde also im selben Takt umbenennen wie dieser hier und beide wuerden sich
+gegenseitig ueberschreiben.
+
 Laeuft als Daemon, gestartet per exec_always aus der i3-Config.
 """
+import html
 import os
 import re
 import signal
+import threading
+import time
 import i3ipc
 
 # Einmalig-Lauf ueber eine PID-Datei absichern.  "pkill -f i3-workspace-names"
@@ -21,11 +38,21 @@ PIDFILE = os.path.join(
 
 
 def take_over():
-    """Eine evtl. noch laufende aeltere Instanz beenden und die PID-Datei uebernehmen."""
+    """Eine evtl. noch laufende aeltere Instanz beenden und die PID-Datei uebernehmen.
+
+    Auf das Ende der alten Instanz wird gewartet: sie setzt in ihrem
+    SIGTERM-Handler alle Namen auf die nackten Nummern zurueck. Ohne das
+    Warten kaeme dieses Zuruecksetzen nach dem ersten Durchlauf der neuen
+    Instanz an und die Leiste stuende bis zum naechsten Fenster-Ereignis auf
+    "1 2 3 4" statt "1: Browser ...".
+    """
     try:
         old = int(open(PIDFILE).read().strip())
         if old != os.getpid():
             os.kill(old, signal.SIGTERM)
+            for _ in range(50):             # hoechstens 5 s, dann eben nicht
+                time.sleep(0.1)
+                os.kill(old, 0)             # wirft OSError, sobald sie weg ist
     except (OSError, ValueError):
         pass
     try:
@@ -37,6 +64,29 @@ def take_over():
 MAXLEN = 22          # Laenge des Programmteils, danach wird gekuerzt
 SEP = " "            # Trenner zwischen mehreren Programmen auf einer Flaeche
 
+# ---- Blinken bei urgent ----
+# Takt in Sekunden. 0.6 ist bewusst gemaechlich: schnelleres Blinken zieht den
+# Blick staendig aus dem Text, in dem man gerade schreibt.
+BLINK_TAKT = 0.6
+# nf-md-circle_medium. Bewusst NICHT die Glocke -- die steht rechts aussen in
+# der Leiste fuer den Meldungsverlauf und meint dort etwas anderes.
+PUNKT = "\U000f09de"
+# Die beiden Phasen. Rot ist dieselbe Warnfarbe wie ueberall sonst
+# (~/.config/i3status/config), das stumpfe Grau ist die Farbe der inaktiven
+# Flaechen aus dem bar-Block -- der Knopf pulsiert also zwischen "Achtung"
+# und seinem Normalzustand.
+BLINK_FARBEN = ("#fb4934", "#555555")
+
+# Der Blinktakt und das Umbenennen bei Fenster-Ereignissen laufen in zwei
+# Threads. _phase gehoert dem Blinker, gelesen wird sie von beiden -- beide
+# bauen daraus denselben Namen, es kann also nicht flackern. Das Lock haelt
+# nur die i3-Kommandos selbst auseinander.
+_phase = 0
+_lock = threading.Lock()
+# Weckt den Blinker sofort, wenn urgent auftritt oder verschwindet -- ohne ihn
+# wuerde er im Sekundentakt pollen, obwohl 99% der Zeit nichts zu tun ist.
+_wecker = threading.Event()
+
 # Fensterklassen sind oft haesslich ("Pcmanfm", "Gimp-2.10") -- hier huebschen
 # wir die haeufigen auf.  Alles Uebrige bekommt nur ein grosses Anfangszeichen.
 PRETTY = {
@@ -44,7 +94,6 @@ PRETTY = {
     "brave-browser": "Brave",
     "alacritty": "Terminal",
     "autostart-term": "Terminal",
-    "remote-term": "Terminal",
     "pcmanfm": "Dateien",
     "code": "Code",
     "xterm": "xterm",
@@ -58,14 +107,14 @@ PRETTY = {
 
 
 # Feste Namen fuer die vier Stamm-Arbeitsflaechen.  Sie haben Vorrang vor der
-# dynamischen Benennung nach Fensterklasse -- der Name der SSH-Flaeche soll
-# auch dann stehen bleiben, wenn die Sitzung beendet oder die Flaeche leer ist.
+# dynamischen Benennung nach Fensterklasse -- "3: Server" soll auch dann stehen
+# bleiben, wenn die SSH-Sitzung beendet oder die Flaeche gerade leer ist.
 # Ab 5 aufwaerts wird nach dem laufenden Programm benannt.
 STATIC = {
-    1: "Chrome",
+    1: "Browser",
     2: "@@WS2_NAME@@",
     3: "@@WS3_NAME@@",
-    4: "Vitals",
+    4: "vitals",
 }
 
 
@@ -82,34 +131,82 @@ def label(con):
     return base[:1].upper() + base[1:]
 
 
+def zusammensetzen(num, rest, urgent):
+    """Baut den Namen aus Nummer und Programmteil -- blinkend, wenn urgent.
+
+    Die Nummer bleibt bewusst AUSSERHALB des Pango-Spans. ws-swipe liest die
+    Flaechennamen aus _NET_DESKTOP_NAMES und schneidet die Nummer mit
+    split(":")[0] ab; stuende sie im Markup, holte es sich "<span foreground"
+    statt einer Zahl. Faerben muss man sie ohnehin nicht: i3bar zeichnet den
+    ganzen Knopf bei urgent bereits in urgent_workspace-Rot, die Nummer steht
+    also dauerhaft rot da, waehrend der Name daneben pulsiert.
+    """
+    if not urgent:
+        return f"{num}: {rest}" if rest else str(num)
+
+    farbe = BLINK_FARBEN[_phase]
+    # Pango bricht an einem rohen & oder < im Namen ab, und i3 zeigt dann den
+    # Markup-Text roh an. Fenstertitel liefern beides.
+    inhalt = f"{html.escape(rest)} {PUNKT}" if rest else PUNKT
+    return f"{num}: <span foreground='{farbe}'>{inhalt}</span>" if rest \
+        else f"{num} <span foreground='{farbe}'>{inhalt}</span>"
+
+
 def rename(i3):
-    for ws in i3.get_tree().workspaces():
-        # Reihenfolge beibehalten, aber jedes Programm nur einmal nennen
-        names = []
-        for con in ws.leaves():
-            n = label(con)
-            if n and n not in names:
-                names.append(n)
+    with _lock:
+        for ws in i3.get_tree().workspaces():
+            # Reihenfolge beibehalten, aber jedes Programm nur einmal nennen
+            names = []
+            for con in ws.leaves():
+                n = label(con)
+                if n and n not in names:
+                    names.append(n)
 
-        num = ws.num
-        if num == -1:                       # unbenannte Sonderflaeche: nicht anfassen
-            continue
+            num = ws.num
+            if num == -1:                   # unbenannte Sonderflaeche: nicht anfassen
+                continue
 
-        if num in STATIC:                   # feste Flaeche: Inhalt ist egal
-            new = f"{num}: {STATIC[num]}"
-        elif names:
-            text = SEP.join(names)
-            if len(text) > MAXLEN:
-                text = text[: MAXLEN - 1].rstrip() + "…"
-            new = f"{num}: {text}"
+            if num in STATIC:               # feste Flaeche: Inhalt ist egal
+                rest = STATIC[num]
+            elif names:
+                rest = SEP.join(names)
+                if len(rest) > MAXLEN:
+                    rest = rest[: MAXLEN - 1].rstrip() + "…"
+            else:
+                rest = ""                   # leere Flaeche: nur die Nummer
+
+            new = zusammensetzen(num, rest, ws.urgent)
+
+            if new != ws.name:
+                # Doppelte Anfuehrungszeichen im Namen wuerden das Kommando zerlegen
+                old_q = ws.name.replace('"', r'\"')
+                new_q = new.replace('"', r'\"')
+                i3.command(f'rename workspace "{old_q}" to "{new_q}"')
+
+
+def blinker():
+    """Schaltet die Blinkphase weiter, solange irgendeine Flaeche urgent ist.
+
+    Eigene i3ipc-Verbindung: die des Hauptthreads sitzt in ihrer
+    Ereignisschleife, ein Kommando von hier aus wuerde sich mit deren
+    Antworten auf demselben Socket vermischen.
+    """
+    global _phase
+    i3 = i3ipc.Connection()
+    while True:
+        if any(ws.urgent for ws in i3.get_tree().workspaces()):
+            _phase ^= 1
+            rename(i3)
+            _wecker.wait(BLINK_TAKT)
         else:
-            new = str(num)                  # leere Flaeche: nur die Nummer
-
-        if new != ws.name:
-            # Doppelte Anfuehrungszeichen im Namen wuerden das Kommando zerlegen
-            old_q = ws.name.replace('"', r'\"')
-            new_q = new.replace('"', r'\"')
-            i3.command(f'rename workspace "{old_q}" to "{new_q}"')
+            # Aufgeraeumt zurueck in den Normalzustand -- verlaesslicher, als
+            # sich darauf zu verlassen, dass zum Loeschen des urgent-Flags
+            # immer auch ein Fenster-Ereignis kommt.
+            if _phase:
+                _phase = 0
+                rename(i3)
+            _wecker.wait()      # schlafen, bis wieder etwas urgent wird
+        _wecker.clear()
 
 
 def main():
@@ -118,10 +215,16 @@ def main():
 
     def on_event(i3_conn, event):
         rename(i3_conn)
+        # Ein urgent-Wechsel soll nicht bis zum naechsten Blinktakt warten --
+        # und wenn das Blinken schlaeft, weckt ihn genau das hier auf.
+        _wecker.set()
 
     for ev in ("window::new", "window::close", "window::move",
-               "window::title", "workspace::init"):
+               "window::title", "window::urgent", "workspace::init",
+               "workspace::focus", "workspace::urgent"):
         i3.on(ev, on_event)
+
+    threading.Thread(target=blinker, daemon=True).start()
 
     # Beim Beenden von i3 die Namen wieder auf die nackten Nummern zuruecksetzen,
     # sonst startet die naechste Sitzung mit "1: Chrome" als statischem Namen.

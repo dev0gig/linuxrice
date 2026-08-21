@@ -150,6 +150,21 @@ mit `split(":")[0]` ab.
 | `$mod+Shift+v` | senkrecht teilen |
 | `$mod+1` … `$mod+4` | Arbeitsflächen (wie die Drei-Finger-Geste mit Karussell-Animation) |
 
+Deutsches Tastaturlayout — deshalb steht in den Bindings `$mod+odiaeresis`
+statt `$mod+semicolon`.
+
+`$mod+v` ist die Entsprechung zu Super+V unter Windows: `clipmenud` schreibt
+jeden Kopiervorgang mit, `~/.local/bin/zwischenablage` zeigt den Verlauf als
+rofi-Liste, und ein gewählter Eintrag landet wieder in der Zwischenablage.
+Deshalb ist `split v` auf `$mod+Shift+v` umgezogen.
+
+Der Verlauf liegt unter `$XDG_RUNTIME_DIR/clipmenu.6.$USER`, also im tmpfs —
+beim Neustart ist er weg und landet nie auf der Platte. Nur Text; Bilder kann
+clipmenu nicht. Solange er lebt, steht darin allerdings alles im Klartext,
+auch kopierte Passwörter. Eine Ausnahmeliste über `CM_IGNORE_WINDOW` geht nur
+nach Fensterklasse und hilft deshalb nicht gegen ein Passwort-Plugin im
+Browser — das wäre dieselbe Klasse wie der Browser selbst.
+
 ### Karussell beim Arbeitsflächenwechsel
 
 Drei Finger nach links wischen wechselt zur nächsten Arbeitsfläche, nach
@@ -179,7 +194,67 @@ Das ist kein Wischen, das am Finger klebt — libinput-gestures meldet erst
 das Ende der Geste. Ein echtes Finger-Karussell gäbe es unter X11 nicht,
 dafür bräuchte es einen Wayland-Compositor wie Hyprland oder niri.
 
-### Benachrichtigungen fliegen von oben herein
+## Benachrichtigungen
+
+### Wie eine Meldung aussieht
+
+Eckig, einzeilig, immer mit Icon. Die Form steht in
+`config/.config/dunst/dunstrc`, das Icon geben die Skripte selbst mit.
+
+- **Eckig.** `corner_radius = 0`, beim Fortschrittsbalken genauso. Das spart
+  nebenbei die Transparenz: runde Ecken müssten den Hintergrund durchscheinen
+  lassen, gerade nicht.
+- **Einzeilig, höchstens ein Drittel breit.** `format = "<b>%s</b>  %b"` setzt
+  den Text hinter den fetten Titel statt darunter; `word_wrap = no` und
+  `ellipsize = end` schneiden hinten ab, nicht in der Mitte. `width = (240,
+  640)` heißt: kurze Meldungen bleiben schmal, lange wachsen bis 640 px — ein
+  Drittel der Bildbreite — und enden mit „…". `progress_bar_max_width` steht
+  deshalb auf 600 statt auf 390, sonst bliebe der OSD-Balken im breiteren
+  Fenster stehen.
+- **Immer ein Icon**, links, 24×24 px. Die Skripte geben es per
+  `dunstify -i <name>` mit; dafür fällt das Nerd-Font-Zeichen aus dem Titel
+  weg. Was keins mitgibt, bekommt `default_icon = dialog-information`.
+
+| Skript | Fall | Icon |
+| --- | --- | --- |
+| `osd` | stumm oder 0 % | `audio-volume-muted` |
+| `osd` | ≤ 33 / ≤ 66 / darüber | `audio-volume-low` / `-medium` / `-high` |
+| `osd` | Mikrofon an / stumm | `microphone-sensitivity-high` / `-muted` |
+| `osd` | Helligkeit | `gpm-brightness-lcd` |
+| `netz` | WLAN an / aus / verbindet | `network-wireless-connected` / `-offline` / `-acquiring` |
+| `netz` | Tailscale an / aus | `network-vpn` / `network-offline` |
+| `netz` | ging schief | `network-error` |
+| `netz-ton` | Netzteil angesteckt | `ac-adapter` |
+| `netz-ton` | abgezogen | `battery-000` … `battery-100` nach Ladung |
+| `akku-wache` | knapp / kritisch | `battery-020` / `battery-010` |
+| `akku-wache` | CPU heiß | `indicator-sensors-cpu` |
+| `bluetooth` | an / aus / verbunden / Suche | `bluetooth-active` / `-disabled` / `-paired` / `edit-find` |
+| `benachrichtigungen` | Verlauf leer | `notification-active` |
+
+**Der Fallstrick steckt in `icon_theme`.** Dort stand `Papirus-Dark`, und
+dessen symbolische Icons sind `#dfdfdf` — fast weiß, auf dem hellen
+Meldungsfenster (`#e8e8e8`) also praktisch unsichtbar. „Dark" meint eben die
+dunkle *Umgebung*, für die das Icon gedacht ist, nicht seine eigene Farbe.
+Jetzt steht dort `Papirus-Light, Papirus, Adwaita, hicolor`; Papirus-Light
+zeichnet dieselben Icons in `#444444`. Das große `Papirus` muss dahinter
+stehen, weil Papirus-Light nur ein Aufsatz mit 7314 Icons ist und **nicht**
+von Papirus erbt (`Inherits=breeze,hicolor`) — die Programm-Icons wie Chrome
+kommen von dort.
+
+Zwei Dinge, die auffallen und trotzdem in Ordnung sind: die „Aus"-Icons
+(`audio-volume-muted`, `microphone-sensitivity-muted`, `bluetooth-disabled`)
+zeichnet Papirus mit `opacity:.35`, also blass — bei upstream sieht „aus"
+ausgegraut aus. Und kommt dieselbe Meldung zweimal, schreibt dunst `(1)`
+davor: der Zähler gestapelter Dubletten, der die *zusätzlichen* Kopien meint.
+`hide_duplicate_count = yes` würde ihn abschalten.
+
+**Die Position gilt für alle Meldungen gemeinsam.** `origin` und `offset` sind
+global und nicht pro Regel einstellbar, und zwei dunst-Instanzen gehen auch
+nicht — den D-Bus-Namen `org.freedesktop.Notifications` gibt es nur einmal.
+„Normale Meldungen oben, OSD unten" ist mit dunst allein also nicht zu haben;
+hier steht deshalb alles oben mittig, das OSD eingeschlossen.
+
+### Wie sie hereinfliegen
 
 Dieselbe picom-Technik, nur ohne `_SWIPE_DIR`: eine dritte Regel auf
 `class_g = 'Dunst'` lässt Meldungen von oben hereinfliegen und nach oben
@@ -196,21 +271,6 @@ Zwei Dinge, die man dabei wissen muss:
   größer. Geflogen wird also einmal am Anfang und einmal am Ende, nicht pro
   Meldung — und das OSD fliegt nicht bei jedem Tastendruck neu, solange die
   stehende Meldung ersetzt wird.
-
-Deutsches Tastaturlayout — deshalb steht in den Bindings `$mod+odiaeresis`
-statt `$mod+semicolon`.
-
-`$mod+v` ist die Entsprechung zu Super+V unter Windows: `clipmenud` schreibt
-jeden Kopiervorgang mit, `~/.local/bin/zwischenablage` zeigt den Verlauf als
-rofi-Liste, und ein gewählter Eintrag landet wieder in der Zwischenablage.
-Deshalb ist `split v` auf `$mod+Shift+v` umgezogen.
-
-Der Verlauf liegt unter `$XDG_RUNTIME_DIR/clipmenu.6.$USER`, also im tmpfs —
-beim Neustart ist er weg und landet nie auf der Platte. Nur Text; Bilder kann
-clipmenu nicht. Solange er lebt, steht darin allerdings alles im Klartext,
-auch kopierte Passwörter. Eine Ausnahmeliste über `CM_IGNORE_WINDOW` geht nur
-nach Fensterklasse und hilft deshalb nicht gegen ein Passwort-Plugin im
-Browser — das wäre dieselbe Klasse wie der Browser selbst.
 
 ## Dateien, Text und Code
 

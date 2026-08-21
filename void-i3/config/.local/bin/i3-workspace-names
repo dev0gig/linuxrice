@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Benennt i3-Arbeitsflaechen automatisch nach den Programmen, die darin laufen.
 
-Aus "2" wird "2: Alacritty", aus "1" wird "1: Browser".  Die fuehrende Nummer
+Aus "2" wird "2: terminal", aus "1" wird "1: browser".  Die fuehrende Nummer
 bleibt erhalten -- i3 adressiert Arbeitsflaechen ueber "workspace number N",
 darum funktionieren $mod+1..0 und die assign-Regeln unveraendert weiter.
 
@@ -44,7 +44,7 @@ def take_over():
     SIGTERM-Handler alle Namen auf die nackten Nummern zurueck. Ohne das
     Warten kaeme dieses Zuruecksetzen nach dem ersten Durchlauf der neuen
     Instanz an und die Leiste stuende bis zum naechsten Fenster-Ereignis auf
-    "1 2 3 4" statt "1: Browser ...".
+    "1 2 3 4" statt "1: browser ...".
     """
     try:
         old = int(open(PIDFILE).read().strip())
@@ -88,20 +88,22 @@ _lock = threading.Lock()
 _wecker = threading.Event()
 
 # Fensterklassen sind oft haesslich ("Pcmanfm", "Gimp-2.10") -- hier huebschen
-# wir die haeufigen auf.  Alles Uebrige bekommt nur ein grosses Anfangszeichen.
+# wir die haeufigen auf.  Alles wird kleingeschrieben, auch Eigennamen und
+# Abkuerzungen ("vlc", "gimp"): die Leiste soll ruhig bleiben, und Grossbuchstaben
+# springen zwischen den Flaechennamen unnoetig hervor.
 PRETTY = {
-    "google-chrome": "Chrome",
-    "brave-browser": "Brave",
-    "alacritty": "Terminal",
-    "autostart-term": "Terminal",
-    "pcmanfm": "Dateien",
-    "code": "Code",
+    "google-chrome": "chrome",
+    "brave-browser": "brave",
+    "alacritty": "terminal",
+    "autostart-term": "terminal",
+    "pcmanfm": "dateien",
+    "code": "code",
     "xterm": "xterm",
     "rofi": "rofi",
-    "thunderbird": "Mail",
-    "libreoffice": "LibreOffice",
-    "gimp": "GIMP",
-    "vlc": "VLC",
+    "thunderbird": "mail",
+    "libreoffice": "libreoffice",
+    "gimp": "gimp",
+    "vlc": "vlc",
     "mpv": "mpv",
 }
 
@@ -111,7 +113,7 @@ PRETTY = {
 # bleiben, wenn die SSH-Sitzung beendet oder die Flaeche gerade leer ist.
 # Ab 5 aufwaerts wird nach dem laufenden Programm benannt.
 STATIC = {
-    1: "Browser",
+    1: "browser",
     2: "@@WS2_NAME@@",
     3: "@@WS3_NAME@@",
     4: "vitals",
@@ -126,9 +128,9 @@ def label(con):
     key = name.lower()
     if key in PRETTY:
         return PRETTY[key]
-    # "Gimp-2.10" -> "Gimp", "Vlc" -> "Vlc"
+    # "Gimp-2.10" -> "gimp", "Vlc" -> "vlc"
     base = re.split(r"[-_.]\d", name)[0]
-    return base[:1].upper() + base[1:]
+    return base.lower()
 
 
 def zusammensetzen(num, rest, urgent):

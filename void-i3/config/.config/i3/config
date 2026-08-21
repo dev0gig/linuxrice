@@ -41,7 +41,7 @@ font pango:Red Hat Mono 9, Symbols Nerd Font Mono 9
 # exec --no-startup-id nm-applet
 
 # ---- Autostart: feste Belegung der Arbeitsflaechen 1 bis 4 ----
-#   1: Browser   2: lokales Terminal
+#   1: browser   2: lokales Terminal
 #   3: SSH-Sitzung   4: vitals (btop, volle Flaeche)
 #
 # Ab 5 aufwaerts sind die Flaechen frei und werden nach dem laufenden
@@ -52,7 +52,7 @@ font pango:Red Hat Mono 9, Symbols Nerd Font Mono 9
 # verhalten sich unveraendert.
 #
 # Wichtig das Schluesselwort "number": die Flaechen heissen durch
-# ~/.local/bin/i3-workspace-names dauerhaft "1: Browser", "3: Server" usw.
+# ~/.local/bin/i3-workspace-names dauerhaft "1: browser", "3: Server" usw.
 # Ohne "number" wuerde i3 den Namen exakt gegen "1" pruefen, keinen Treffer
 # finden und eine zweite, gleichnamige Flaeche danebenlegen.
 assign [class="(?i)google-chrome"] number 1

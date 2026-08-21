@@ -103,7 +103,7 @@ fingerabdruck/        Treiber-Build fuer den Synaptics-Sensor, eigenes README
 | 4 | btop über die volle Fläche | `vitals-dashboard` |
 
 Ab 5 sind die Flächen frei: sie entstehen beim Hinschalten, werden nach dem
-Programm darin benannt (`5: Code`) und verschwinden wieder, sobald das letzte
+Programm darin benannt (`5: code`) und verschwinden wieder, sobald das letzte
 Fenster zu ist.
 
 Jedes Autostart-Fenster hat eine eigene Fensterklasse — damit landet genau

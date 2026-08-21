@@ -190,7 +190,23 @@ sudo flatpak remote-add --if-not-exists flathub \
 # hat filesystems=host, kommt also ohne Zusatzrechte an alle Dateien.
 sudo flatpak install -y flathub com.google.Chrome com.brave.Browser \
      com.visualstudio.code
-gut "Chrome und Brave installiert"
+gut "Chrome, Brave und VS Code installiert"
+
+# Mauszeiger: Flatpak reicht XCURSOR_THEME und XCURSOR_SIZE NICHT in den
+# Sandkasten durch, auch wenn beide in der Sitzung gesetzt sind. VS Code
+# (Electron) zeigt ohne diesen Override den Adwaita-Standardzeiger, waehrend
+# der Rest des Desktops Nordzy benutzt. Chrome faellt das nicht auf die
+# Fuesse, es liest das Thema aus den GTK-Einstellungen -- der Override gilt
+# trotzdem global fuer alle Flatpaks des Nutzers, das ist eine Sorge weniger
+# bei der naechsten App.
+#
+# ~/.icons kommt read-only dazu: Apps mit filesystems=host sehen den Ordner
+# ohnehin, aber ein Flatpak mit engeren Rechten faende das Thema sonst nicht.
+flatpak override --user \
+    --env=XCURSOR_THEME=Nordzy-cursors \
+    --env=XCURSOR_SIZE=48 \
+    --filesystem=~/.icons:ro
+gut "Mauszeiger fuer Flatpaks gesetzt"
 
 # ---------------------------------------------------------------- Bluetooth
 

@@ -264,6 +264,24 @@ gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
   Terminalprogramme aus den Paketen. Die eigenen Einträge unter
   `~/.local/share/applications/*-alacritty.desktop` rufen Alacritty deshalb
   ausdrücklich im `Exec` auf und lassen `Terminal=false`.
+* **Flatpak reicht `XCURSOR_THEME`/`XCURSOR_SIZE` nicht durch.** Beide sind
+  in der Sitzung gesetzt (`~/.xinitrc`) und stehen auch im Environment von
+  i3 — die Sandbox bekommt sie trotzdem nicht, dort sind sie leer. **VS Code
+  zeigte deshalb den Adwaita-Zeiger**, der restliche Desktop Nordzy. Chrome
+  war davon nicht betroffen: es liest das Thema über die GTK-Einstellungen
+  aus `~/.config/gtk-3.0/settings.ini`, die im Sandkasten sichtbar sind.
+  Electron geht diesen Weg nicht und ist auf `XCURSOR_*` angewiesen. Gesetzt
+  wird das mit `flatpak override --user --env=…` (global, ohne App-Name, gilt
+  für alle Flatpaks) plus `--filesystem=~/.icons:ro`.
+
+  Nachmessen lässt sich der Zeiger **nicht** per Screenshot — er ist ein
+  Overlay des X-Servers und fehlt in `import` und `xwd`. `XFixesGetCursorImage`
+  über `ctypes` liefert dagegen Größe und Hotspot des Zeigers, der gerade
+  angezeigt wird. Der Hotspot allein taugt zur Unterscheidung, wenn man ihn
+  gegen die Xcursor-Dateien hält (Chunk-Typ `0xfffd0002`, Hotspot ab Byte 16
+  im Chunk): `left_ptr` liegt bei Nordzy auf 5,4 und bei Adwaita auf 6,2,
+  `xterm` bei 22,22 gegen 22,24. **Ohne diesen Abgleich vergleicht man
+  leicht Pfeil mit Textcursor** und hält den Unterschied für das Thema.
 * **VS Code meldet seine Fensterklasse klein: `code`, nicht `Code`.** i3
   vergleicht `class=` mit einem regulären Ausdruck und achtet dabei auf
   Groß- und Kleinschreibung — eine Regel auf `[class="Code"]` greift

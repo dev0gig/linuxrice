@@ -3,9 +3,10 @@
 #
 #   ton-led an | aus | auto | status
 #
-# "auto" (auch der Aufruf ohne Argument) liest den Mute-Zustand des
-# Standard-Ausgangs aus PipeWire und setzt die LED passend. Aufgerufen wird
-# das aus zeige_ton() in ~/.local/bin/osd -- also nach lauter, leiser und
+# "auto" (auch der Aufruf ohne Argument) liest Mute-Zustand und Lautstaerke des
+# Standard-Ausgangs aus PipeWire und setzt die LED passend: an, sobald nichts zu
+# hoeren ist -- also stumm geschaltet ODER auf 0 % heruntergeregelt. Aufgerufen
+# wird das aus zeige_ton() in ~/.local/bin/osd -- also nach lauter, leiser und
 # stumm gleichermassen, denn "lauter" hebt die Stummschaltung mit auf.
 # Gegenstueck fuers Mikrofon: ~/.local/bin/mikro-led.
 #
@@ -19,12 +20,26 @@ HELFER=/usr/local/bin/tasten-led
 
 stumm() { pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | grep -q yes; }
 
+# Auf 0 % heruntergeregelt ist fuer PipeWire NICHT stumm -- get-sink-mute sagt
+# dann weiterhin "no". Hoerbar ist trotzdem nichts, also soll die LED auch da
+# leuchten. Die Zahl wird genauso gelesen wie in ton_wert() aus ~/.local/bin/osd.
+null() {
+    wert=$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null |
+           grep -o '[0-9]\+%' | head -n1 | tr -d '%')
+    [ "$wert" = 0 ]
+}
+
+lautlos() { stumm || null; }
+
 case "${1:-auto}" in
     an)   exec "$HELFER" ton an ;;
     aus)  exec "$HELFER" ton aus ;;
-    auto) if stumm; then exec "$HELFER" ton an; else exec "$HELFER" ton aus; fi ;;
+    auto) if lautlos; then exec "$HELFER" ton an; else exec "$HELFER" ton aus; fi ;;
     status)
-        stumm && echo "Ton stumm -- LED an" || echo "Ton an -- LED aus"
+        if stumm; then   echo "Ton stumm -- LED an"
+        elif null; then  echo "Ton auf 0 % -- LED an"
+        else             echo "Ton an -- LED aus"
+        fi
         ;;
     *)
         echo "Aufruf: ${0##*/} an|aus|auto|status" >&2

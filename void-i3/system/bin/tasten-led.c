@@ -31,7 +31,11 @@
  *
  * Warum C und warum eine Capability
  * ---------------------------------
- * Geschrieben wird ueber die hwdep-Schnittstelle des Codecs (/dev/snd/hwC0D0).
+ * Geschrieben wird ueber die hwdep-Schnittstelle des Codecs. Deren Nummer
+ * verschiebt sich von Start zu Start (mal /dev/snd/hwC0D0, mal hwC1D0), darum
+ * sucht codec_oeffnen() alle /dev/snd/hwC*D* ab und erkennt den richtigen an
+ * der Vendor-ID -- ein fester Pfad waere falsch.
+ *
  * Der Kernel verlangt zum Oeffnen dieses Geraets CAP_SYS_RAWIO
  * (hda_hwdep_open in sound/pci/hda/hda_hwdep.c) -- Mitgliedschaft in der
  * Gruppe audio genuegt NICHT, und ein Skript kann keine Capability tragen.
@@ -105,8 +109,8 @@ static int sende(int fd, unsigned nid, unsigned verb, unsigned param, uint32_t *
 	return 0;
 }
 
-/* Das hwdep-Geraet des ALC245 suchen -- die Nummer kann sich verschieben,
-   und hwC0D2 ist der HDMI-Codec. */
+/* Das hwdep-Geraet des ALC245 suchen -- die Kartennummer kann sich verschieben,
+   und der zweite Codec derselben Karte ist der fuer HDMI. */
 static int codec_oeffnen(void)
 {
 	glob_t g;

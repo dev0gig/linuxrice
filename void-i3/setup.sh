@@ -193,21 +193,65 @@ sudo flatpak install -y flathub com.google.Chrome com.brave.Browser \
      com.visualstudio.code
 gut "Chrome, Brave und VS Code installiert"
 
-# Mauszeiger in Flatpak-Fenstern. Zwei Haelften, beide noetig:
+# VS Code meldet sonst dauerhaft "Update verfuegbar" und schickt beim Klick
+# darauf nur den Browser auf die Download-Seite: der Flatpak kann sich nicht
+# selbst aktualisieren, und Flathub hinkt der Version von Microsoft ohnehin
+# hinterher (Stand 21.08.2026: Flathub 1.130, Microsoft bietet 1.134 an).
+# Der Hinweis kaeme also immer wieder und liesse sich nie erledigen.
+# Aktualisiert wird hier ueber "flatpak update".
+#
+# Angelegt wird die Datei hier gleich mit: das Verzeichnis entsteht sonst erst
+# beim ersten Start von VS Code, und bis dahin hat es schon einmal gemeldet.
+VSCODE_USER="$HOME/.var/app/com.visualstudio.code/config/Code/User"
+mkdir -p "$VSCODE_USER"
+if [ -s "$VSCODE_USER/settings.json" ]; then
+    # Schon eigene Einstellungen da: nur die beiden Schluessel dazulegen,
+    # nicht die Datei ersetzen. Schlaegt fehl, wenn dort Kommentare stehen --
+    # VS Code erlaubt sie, json.load nicht. Dann bleibt es beim Hinweis.
+    [ -e "$VSCODE_USER/settings.json.vor-void-i3" ] \
+        || cp -a "$VSCODE_USER/settings.json" "$VSCODE_USER/settings.json.vor-void-i3"
+    if python3 -c '
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d["update.mode"] = "none"
+d["update.showReleaseNotes"] = False
+open(p, "w").write(json.dumps(d, indent=4) + "\n")
+' "$VSCODE_USER/settings.json" 2>/dev/null; then
+        gut "Update-Meldung in VS Code abgeschaltet"
+    else
+        warn "settings.json von VS Code nicht lesbar -- \"update.mode\": \"none\" bitte selbst eintragen"
+    fi
+else
+    cat > "$VSCODE_USER/settings.json" <<'JSON'
+{
+    "update.mode": "none",
+    "update.showReleaseNotes": false
+}
+JSON
+    gut "Update-Meldung in VS Code abgeschaltet"
+fi
+
+# Mauszeiger in Flatpak-Fenstern. Drei Haelften, alle noetig:
 #
 # 1. Flatpak reicht XCURSOR_THEME und XCURSOR_SIZE NICHT in den Sandkasten
 #    durch, auch wenn beide in der Sitzung gesetzt sind. Ohne den Override
 #    kennt die Anwendung den Namen des Themas gar nicht.
-# 2. Das Thema muss an einem Ort liegen, den der Sandkasten sieht -- darum
-#    ~/.local/share/icons statt ~/.icons, siehe der Cursor-Abschnitt weiter
-#    oben.
+# 2. Das Thema muss an einem Ort liegen, den der Sandkasten sieht.
+#    /usr/share/icons ist dort als /run/host/share/icons eingeblendet,
+#    ~/.local/share/icons als /run/host/user-share/icons -- ~/.icons dagegen
+#    gar nicht. Das Thema liegt deshalb systemweit, siehe Cursor-Abschnitt.
+# 3. XCURSOR_PATH wird ausdruecklich auf diese beiden Host-Pfade gesetzt.
+#    Ohne die Variable sucht libXcursor im Sandkasten unter /usr/share/icons
+#    -- das ist dort die Runtime, nicht das Wirtssystem.
 #
 # Fehlt das Thema, faellt Chromium/Electron auf eingebaute Zeiger zurueck:
 # die Groesse stimmt dann, das Aussehen nicht. Der Override gilt global fuer
 # alle Flatpaks des Nutzers, nicht nur fuer eine App.
 flatpak override --user \
-    --env=XCURSOR_THEME=Nordzy-cursors \
-    --env=XCURSOR_SIZE=48
+    --env=XCURSOR_THEME=Colloid-dark-cursors \
+    --env=XCURSOR_SIZE=36 \
+    --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
 gut "Mauszeiger fuer Flatpaks gesetzt"
 
 # ---------------------------------------------------------------- Bluetooth
@@ -325,29 +369,60 @@ fi
 
 # ------------------------------------------------------------------- Cursor
 
-# Das Thema gehoert nach ~/.local/share/icons und NICHT nach ~/.icons --
-# beide Orte kennt libXcursor (Suchreihenfolge:
-# ~/.local/share/icons:~/.icons:/usr/share/icons:/usr/share/pixmaps), aber
-# ein Flatpak setzt XCURSOR_PATH selbst auf
-# /run/host/user-share/icons:/run/host/share/icons. Dahinter stecken
-# ~/.local/share/icons und /usr/share/icons -- ~/.icons ist dort nicht
-# vertreten. Ein Thema in ~/.icons sieht deshalb jede native Anwendung,
-# aber keine Flatpak-Anwendung.
-ZIEL_ICONS="$HOME/.local/share/icons"
+# Colloid, weisse Variante. Im Quellbaum heisst sie "dist-dark" und traegt
+# den Namen Colloid-dark-cursors -- "dark" meint die dunkle Oberflaeche, fuer
+# die der Zeiger gedacht ist, der Zeiger selbst ist weiss mit dunklem Rand.
+#
+# Das Thema liegt systemweit unter /usr/share/icons und nicht im Home:
+# * jede native Anwendung findet es dort (Suchreihenfolge von libXcursor:
+#   ~/.local/share/icons:~/.icons:/usr/share/icons:/usr/share/pixmaps),
+# * Flatpaks sehen es als /run/host/share/icons (siehe Override weiter oben),
+# * und Programme ohne eigene Cursor-Einstellung landen ueber
+#   /usr/share/icons/default/index.theme ebenfalls dort.
+# ~/.icons ist als Ablage in beiden Faellen falsch: nativ sichtbar, im
+# Sandkasten nicht.
+#
+# Groesse 36 ist eine der vier im Theme gebauten Groessen (24/30/36/48, die
+# zugehoerigen Pixmaps sind 32/40/48/64 px). Nur bei diesen Werten wird nicht
+# skaliert. 36 entspricht optisch etwa Nordzy in Groesse 48.
 
-schritt "Mauszeiger Nordzy"
-if [ -d "$ZIEL_ICONS/Nordzy-cursors" ]; then
-    info "liegt schon unter ~/.local/share/icons/Nordzy-cursors"
+schritt "Mauszeiger Colloid (weiss)"
+if [ -d /usr/share/icons/Colloid-dark-cursors ]; then
+    info "liegt schon unter /usr/share/icons/Colloid-dark-cursors"
 else
     TMPC=$(mktemp -d)
-    xbps-fetch -o "$TMPC/nz.tar.gz" \
-        "https://github.com/guillaumeboehm/Nordzy-cursors/releases/latest/download/Nordzy-cursors.tar.gz" \
-        || fehler "Nordzy-cursors konnte nicht geladen werden."
-    mkdir -p "$ZIEL_ICONS"
-    tar xzf "$TMPC/nz.tar.gz" -C "$ZIEL_ICONS"
+    # Nur den Cursor-Ordner holen -- der ganze Baum des Icon-Themes waere
+    # rund 76 MB, die fertigen Zeiger sind 3 MB.
+    git clone --depth 1 --filter=blob:none --sparse \
+        https://github.com/vinceliuice/Colloid-icon-theme.git "$TMPC/colloid" \
+        || fehler "Colloid-icon-theme konnte nicht geladen werden."
+    ( cd "$TMPC/colloid" && git sparse-checkout set cursors/dist-dark ) \
+        || fehler "sparse-checkout fehlgeschlagen."
+    sudo cp -r "$TMPC/colloid/cursors/dist-dark" /usr/share/icons/Colloid-dark-cursors
+    sudo chown -R root:root /usr/share/icons/Colloid-dark-cursors
+    sudo find /usr/share/icons/Colloid-dark-cursors -type d -exec chmod 755 {} +
+    sudo find /usr/share/icons/Colloid-dark-cursors -type f -exec chmod 644 {} +
     rm -rf "$TMPC"
-    gut "nach ~/.local/share/icons/Nordzy-cursors entpackt"
+    gut "nach /usr/share/icons/Colloid-dark-cursors entpackt"
 fi
+
+# /usr/share/icons/default/index.theme ist der Weg, ueber den Programme OHNE
+# eigene Cursor-Einstellung zum Thema kommen -- das X-Wurzelfenster, Toolkits
+# ohne gesetztes XCURSOR_THEME, alles was ausserhalb der Sitzung startet.
+# Ohne diese Datei bleibt es dort beim eingebauten X-Zeiger, egal wie gut der
+# Rest konfiguriert ist. Dieselbe Datei nochmal im Home, damit der Nutzer sie
+# ohne Root aendern kann.
+schritt "Standard-Cursorthema"
+for D in /usr/share/icons/default "$HOME/.local/share/icons/default"; do
+    case "$D" in
+        /usr/*) SUDO=sudo ;;
+        *)      SUDO= ;;
+    esac
+    $SUDO mkdir -p "$D"
+    printf '[Icon Theme]\nName=Default\nComment=Default cursor theme\nInherits=Colloid-dark-cursors\n' \
+        | $SUDO tee "$D/index.theme" >/dev/null
+done
+gut "default/index.theme zeigt auf Colloid-dark-cursors"
 
 # ------------------------------------------------------------- Systemdateien
 

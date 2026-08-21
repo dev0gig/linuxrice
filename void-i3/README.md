@@ -71,7 +71,7 @@ Es richtet ein:
 | Dienste | `dbus`, `dhcpcd`, `wpa_supplicant`, `tailscaled`, `bluetoothd`, `alsa`, `rtkit` |
 | Locale | `de_DE.UTF-8` erzeugen (Systemsprache bleibt `C.UTF-8`), Konsolentastatur auf `de` |
 | Schriften | Red Hat Mono nach `/usr/share/fonts`, dazu die fontconfig-Regel, die `monospace` darauf umbiegt |
-| Mauszeiger | Nordzy nach `~/.local/share/icons` (nicht `~/.icons` — sonst sehen Flatpaks ihn nicht) |
+| Mauszeiger | Colloid in Weiß (`Colloid-dark-cursors`) systemweit nach `/usr/share/icons`, Größe 36, dazu `default/index.theme` als Auffangnetz für alles ohne eigene Einstellung |
 | Eingabe | deutsches Tastaturlayout in X, Touchpad mit natürlichem Scrollen und Tap-to-Click, Drei-Finger-Gesten mit Karussell-Animation beim Arbeitsflächenwechsel |
 | Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten |
 | Fingerabdruck | auf Nachfrage: libfprint-Fork mit dem Treiber `synatlsmoc` und gepatchtes fprintd nach `/usr/local`, polkit-Regel, `pam_fprintd` für sudo und Login; das Sperrmenü entsperrt auf Fingertipp (`fingerabdruck/`) |
@@ -210,6 +210,12 @@ Config: das erste Fenster meldet eine eigene Wunschgröße an und der
 Willkommensbildschirm kann als Dialog durchgehen, was i3 sonst gelegentlich
 schwebend stehen lässt.
 
+Der eingebaute Update-Prüfer ist abgeschaltet (`"update.mode": "none"` in den
+Benutzereinstellungen). Ein Flatpak kann sich nicht selbst aktualisieren, und
+Flathub hinkt Microsoft hinterher — die Meldung „Update verfügbar" kam
+deshalb immer wieder, und der Klick darauf öffnete nur einen neuen Browser-Tab
+auf der Download-Seite. Aktualisiert wird mit `flatpak update`.
+
 Zum Ansehen und Bearbeiten im Terminal:
 
 | Werkzeug | Wofür |
@@ -319,30 +325,57 @@ gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
   Terminalprogramme aus den Paketen. Die eigenen Einträge unter
   `~/.local/share/applications/*-alacritty.desktop` rufen Alacritty deshalb
   ausdrücklich im `Exec` auf und lassen `Terminal=false`.
-* **Der Mauszeiger in Flatpak-Fenstern hängt an zwei Dingen, nicht an
-  einem.** Erstens reicht Flatpak `XCURSOR_THEME`/`XCURSOR_SIZE` **nicht**
-  in den Sandkasten durch — beide sind in `~/.xinitrc` gesetzt und stehen im
-  Environment von i3, in der Sandbox sind sie trotzdem leer. Das setzt
-  `flatpak override --user --env=…` gerade (global, ohne App-Name, für alle
-  Flatpaks).
+* **Ein Cursor-Thema braucht vier Einträge, nicht einen.** Damit der Zeiger
+  wirklich überall stimmt — und zwar ab dem ersten Moment einer neuen
+  Sitzung, ohne Nachhelfen:
 
-  Zweitens — und das ist die eigentliche Falle — **setzt Flatpak
-  `XCURSOR_PATH` selbst**, auf
-  `/run/host/user-share/icons:/run/host/share/icons`. Dahinter stecken
-  `~/.local/share/icons` und `/usr/share/icons`. **`~/.icons` ist dort nicht
-  vertreten**, obwohl es im nativen Suchpfad von libXcursor an zweiter
-  Stelle steht (`~/.local/share/icons:~/.icons:/usr/share/icons:/usr/share/pixmaps`,
-  nachzulesen mit `strings /usr/lib/libXcursor.so.1`). Ein Thema in
-  `~/.icons` ist damit für jede native Anwendung sichtbar und für keine
-  Flatpak-Anwendung. Deshalb liegt Nordzy in `~/.local/share/icons` — der
-  einzige Ordner, den beide Seiten sehen, ohne dass man pro App etwas
-  einträgt.
+  1. `XCURSOR_THEME`/`XCURSOR_SIZE` in `~/.xinitrc` (alles, was i3 startet),
+  2. `Xcursor.theme`/`Xcursor.size` in `~/.Xresources` (Anwendungen, die
+     ohne diese Umgebung starten),
+  3. `gtk-cursor-theme-name`/`-size` in GTK 2, 3 und 4,
+  4. **`/usr/share/icons/default/index.theme` mit `Inherits=`** — der Weg
+     für alles, was von keinem der drei etwas weiß: das X-Wurzelfenster,
+     Fenster ohne eigenen Zeiger (die erben ihn vom Elternfenster),
+     Programme außerhalb der Sitzung. Fehlt diese Datei, bleibt es dort beim
+     eingebauten X-Zeiger, egal wie sauber der Rest gesetzt ist.
+
+  Nachprüfen lässt sich Punkt 4 ohne X: `XcursorLibraryLoadImage("left_ptr",
+  NULL, 36)` über `ctypes` liefert dann trotzdem das Bild aus dem Thema.
+
+* **Das Thema gehört nach `/usr/share/icons`, nicht nach `~/.icons`.**
+  libXcursor sucht in `~/.local/share/icons:~/.icons:/usr/share/icons:/usr/share/pixmaps`
+  (nachzulesen mit `strings /usr/lib/libXcursor.so.1`), ein Flatpak sieht
+  vom Wirtssystem aber nur `/run/host/user-share/icons` (= `~/.local/share/icons`)
+  und `/run/host/share/icons` (= `/usr/share/icons`). **`~/.icons` ist dort
+  nicht vertreten** — ein Thema dort ist für jede native Anwendung sichtbar
+  und für keine Flatpak-Anwendung.
+
+* **Der Mauszeiger in Flatpak-Fenstern hängt an drei Dingen.** Erstens
+  reicht Flatpak `XCURSOR_THEME`/`XCURSOR_SIZE` **nicht** in den Sandkasten
+  durch — beide sind in `~/.xinitrc` gesetzt und stehen im Environment von
+  i3, in der Sandbox sind sie trotzdem leer. Zweitens muss das Thema an
+  einem der beiden `/run/host`-Pfade liegen (siehe oben). Drittens wird
+  `XCURSOR_PATH` ausdrücklich auf genau diese beiden Pfade gesetzt — ohne
+  die Variable sucht libXcursor im Sandkasten unter `/usr/share/icons`, und
+  das ist dort die Runtime und nicht das Wirtssystem. Alle drei erledigt
+  `flatpak override --user --env=…` (global, ohne App-Name, für alle
+  Flatpaks).
 
   Findet Chromium/Electron das Thema nicht, fällt es auf **eingebaute
   Zeiger** zurück: die Größe stimmt dann (die kommt aus `XCURSOR_SIZE` bzw.
   den GTK-Einstellungen), das Aussehen nicht. „Richtige Größe, falscher
   Zeiger" ist also genau das Zeichen für ein Thema, das nicht gefunden wird
   — nicht für eine falsche Größenangabe.
+
+* **Die Größenangabe eines Themas ist nicht die Pixelgröße.** Colloid bringt
+  die Nenngrößen 24/30/36/48 mit, die zugehörigen Pixmaps sind aber
+  32/40/48/64 px — der Pfeil füllt seine Fläche nicht aus. Nordzy dagegen
+  zeichnet bei Nenngröße 48 auch 48 px. Dasselbe `XCURSOR_SIZE=48` sieht in
+  Colloid deshalb rund ein Drittel größer aus. Wer die Größen zweier Themen
+  vergleicht, misst die **Tinte** (Alpha-Bounding-Box der Pixmap), nicht die
+  Nenngröße: Nordzy@48 ergibt 21×40 px, Colloid@36 ergibt 20×30 px,
+  Colloid@48 wäre 26×40 px. Und: nur bei den gebauten Nenngrößen wird nicht
+  skaliert — ein Zwischenwert wie 32 wäre unscharf.
 
 * **Den Zeiger nachmessen geht nicht per Screenshot** — er ist ein Overlay
   des X-Servers und fehlt in `import` und `xwd`. `XFixesGetCursorImage` über
@@ -357,6 +390,15 @@ gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
   lässt viele Anwendungen den Cursor nicht neu setzen — gemessen wird dann
   der alte. Eine winzige Relativbewegung hinterher (`mousemove_relative 3 3`
   und zurück) erzeugt das nötige Motion-Event.
+* **Ein Themenwechsel ist in der laufenden Sitzung nicht nachmessbar.** Der
+  X-Server hält den einmal geladenen Zeiger; i3 lädt seinen beim Start und
+  setzt ihn auf Wurzelfenster und Rahmen. Fenster, die selbst keinen Zeiger
+  setzen (PCManFM etwa), erben ihn von dort — dort steht nach einem Wechsel
+  also weiter der **alte** Pfeil, obwohl das alte Thema schon gelöscht ist.
+  Was der Wechsel gebracht hat, prüft man deshalb nicht am Bildschirm,
+  sondern an der Auflösung: `XcursorGetTheme`/`XcursorGetDefaultSize` und
+  `XcursorLibraryLoadImage` über `ctypes`, mit genau der Umgebung, die die
+  neue Sitzung setzen wird — das ist derselbe Aufruf, den i3 macht.
 * **VS Code meldet seine Fensterklasse klein: `code`, nicht `Code`.** i3
   vergleicht `class=` mit einem regulären Ausdruck und achtet dabei auf
   Groß- und Kleinschreibung — eine Regel auf `[class="Code"]` greift

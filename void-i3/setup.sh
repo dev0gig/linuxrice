@@ -104,6 +104,7 @@ PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils
         mesa-dri xf86-video-intel
         i3 i3status i3lock rofi dmenu picom feh clipmenu
         alacritty xterm pcmanfm flatpak
+        xdg-desktop-portal xdg-desktop-portal-gtk
         libinput-gestures python3-i3ipc
         nerd-fonts-symbols-ttf noto-fonts-cjk-sans papirus-icon-theme"
 

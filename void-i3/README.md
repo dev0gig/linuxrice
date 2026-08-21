@@ -256,6 +256,17 @@ gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
 * **Chrome kann sich selbst nicht zum Standardbrowser machen.** Im Sandkasten
   fehlt `xdg-settings`, der Knopf läuft ins Leere (`failed to execvp`). Der
   Eintrag steht deshalb direkt in `~/.config/mimeapps.list`.
+* **Flatpak-Apps öffnen keine Links, solange `xdg-desktop-portal` fehlt.**
+  Im Sandkasten gibt es kein `xdg-open` zum Host; VS Code, Chrome und Brave
+  reichen Links über `org.freedesktop.portal.OpenURI` weiter. Ohne Portal
+  verpufft der Klick auf „Sign in" in VS Code lautlos, und auch der Rückweg
+  (`vscode://`-Link aus dem Browser) kommt nie an. Dazu kommt: `gtk.portal`
+  hat `UseIn=gnome`, und i3 setzt kein `XDG_CURRENT_DESKTOP` — darum steht in
+  `~/.config/xdg-desktop-portal/portals.conf` ausdrücklich `default=gtk`.
+  Prüfen: `gdbus call --session --dest org.freedesktop.portal.Desktop
+  --object-path /org/freedesktop/portal/desktop --method
+  org.freedesktop.portal.OpenURI.OpenURI '' 'https://example.com' '{}'` muss
+  einen Browser-Tab öffnen.
 * **Die `assign`-Regel trifft `Google-chrome`, nicht `chrome`.** Die WM_CLASS
   des Flatpak-Fensters vorher mit `i3-msg -t get_tree` nachsehen, nicht raten.
 * **`Terminal=true` in einer `.desktop`-Datei ist hier eine Falle.** libfm

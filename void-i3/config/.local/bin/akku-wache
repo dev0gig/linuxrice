@@ -134,10 +134,12 @@ spiele() {  # spiele <datei>
     [ -r "$1" ] && pw-play --volume "$LAUTSTAERKE" "$1" >/dev/null 2>&1 &
 }
 
-melde() {   # melde <tag> <dringlichkeit> <icon> <titel> <text> <alte-id>
-    dunstify -a akku-wache -u "$2" -p -r "${6:-0}" \
+# Das Icon ist ein Name aus dem Icon-Theme (Papirus-Light, sonst Papirus),
+# frueher stand hier ein Nerd-Font-Zeichen im Titel.
+melde() {   # melde <tag> <dringlichkeit> <icon-name> <titel> <text> <alte-id>
+    dunstify -a akku-wache -u "$2" -p -r "${6:-0}" -i "$3" \
              -h "string:x-dunst-stack-tag:$1" \
-             "$3  $4" "$5"
+             "$4" "$5"
 }
 
 schliesse() {   # schliesse <id>
@@ -189,7 +191,7 @@ while :; do
             # Warnung; das ist bei zehn Prozent genau richtig.
             if [ "$stufe_akku" != kritisch ] || \
                [ "$seit_meldung" -ge "$KRITISCH_WIEDERHOLUNG" ]; then
-                id_akku=$(melde akku critical "󰂃" "Akku kritisch -- noch ${ladung}%" \
+                id_akku=$(melde akku critical battery-010 "Akku kritisch -- noch ${ladung}%" \
                                 "Jetzt anstecken. Sonst schaltet das Geraet in Kuerze ab." "$id_akku")
                 spiele "$TON_ALARM"
                 stufe_akku=kritisch
@@ -203,7 +205,7 @@ while :; do
             # Meldung stehen, als dass sie zur milden herabgestuft wird.
             if [ "$stufe_akku" = voll ] || \
                { [ "$stufe_akku" = warn ] && [ "$seit_meldung" -ge "$WARN_WIEDERHOLUNG" ]; }; then
-                id_akku=$(melde akku normal "󰁺" "Akku wird knapp" \
+                id_akku=$(melde akku normal battery-020 "Akku wird knapp" \
                                 "Noch ${ladung}%." "$id_akku")
                 spiele "$TON_WARNUNG"
                 stufe_akku=warn
@@ -221,7 +223,7 @@ while :; do
     if [ -r "$TEMP" ]; then
         grad=$(( $(cat "$TEMP") / 1000 ))
         if [ "$grad" -ge "$TEMP_WARN" ] && [ "$temp_heiss" = nein ]; then
-            id_temp=$(melde temp critical "󰸁" "CPU sehr heiss" "${grad} Grad." "$id_temp")
+            id_temp=$(melde temp critical indicator-sensors-cpu "CPU sehr heiss" "${grad} Grad." "$id_temp")
             temp_heiss=ja
             ids_sichern
         elif [ "$grad" -lt $(( TEMP_WARN - 8 )) ] && [ "$temp_heiss" = ja ]; then

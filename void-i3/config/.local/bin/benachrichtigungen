@@ -28,6 +28,11 @@ SCHNITT = "org.dunstproject.cmd0"
 GLOCKE = "\U000f009a"   # nf-md-bell
 MUELL = "\U000f01b4"    # nf-md-delete
 
+# Icon fuers Meldungsfenster. Die Nerd-Font-Symbole oben bleiben, sie stehen
+# aber nur noch im rofi-Fenster; in der dunst-Meldung zeichnet dunst das
+# echte Theme-Icon links daneben.
+ICON = "notification-active"
+
 # dunst liefert den Verlauf als GVariant-Text. Die Schluessel stehen dort in
 # fester Reihenfolge, darum genuegt ein Muster pro Eintrag statt eines echten
 # Parsers. "(?:[^'\\]|\\.)*" liest einen Text bis zum naechsten unmaskierten
@@ -119,7 +124,7 @@ def main():
 
     if not eintraege:
         subprocess.run(["dunstify", "-a", "benachrichtigungen", "-u", "low",
-                        GLOCKE + "  Verlauf ist leer"])
+                        "-i", ICON, "Verlauf ist leer"])
         return
 
     zeilen = ["{}  Verlauf leeren ({})".format(MUELL, len(eintraege))]

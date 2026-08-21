@@ -91,24 +91,21 @@ spiele() {  # spiele <datei>
     [ -r "$1" ] && pw-play --volume "$LAUTSTAERKE" "$1" >/dev/null 2>&1 &
 }
 
-# Akku-Symbol wie in der i3status-Leiste, damit die Meldung dieselbe
-# Bildsprache hat.
+# Akkustand als Icon-Name aus dem Theme. Papirus hat die Stufen in
+# Zehnerschritten (battery-000 ... battery-100), abgerundet wird nach unten.
 symbol() {  # symbol <prozent>
-    if   [ "$1" -le 10 ]; then printf '󰂃'
-    elif [ "$1" -le 30 ]; then printf '󰁻'
-    elif [ "$1" -le 50 ]; then printf '󰁽'
-    elif [ "$1" -le 70 ]; then printf '󰁿'
-    elif [ "$1" -le 90 ]; then printf '󰂁'
-    else                       printf '󰁹'
-    fi
+    printf 'battery-%03d' $(( $1 / 10 * 10 ))
 }
 
-melde() {   # melde <icon> <titel> <text>
+melde() {   # melde <icon-name> <titel> <text>
     # Eigener Stack-Tag "netz": ersetzt die eigene Vorgaengermeldung, laesst
     # aber die Warnungen der akku-wache (Tag "akku") in Ruhe.
-    dunstify -a netz-ton -u low \
+    #
+    # -i setzt das Icon links neben den Text; frueher stand hier ein
+    # Nerd-Font-Zeichen im Titel, das ist jetzt das echte Theme-Icon.
+    dunstify -a netz-ton -u low -i "$1" \
              -h "string:x-dunst-stack-tag:netz" \
-             "$1  $2" "$3"
+             "$2" "$3"
 }
 
 # Startzustand nur merken, nicht melden: sonst piepst es bei jedem
@@ -124,7 +121,7 @@ while :; do
 
     if [ "$jetzt" = 1 ]; then
         spiele "$TON_AN"
-        melde "󰂄" "Netzteil angeschlossen" "Akku bei ${ladung}%, laedt."
+        melde ac-adapter "Netzteil angeschlossen" "Akku bei ${ladung}%, laedt."
         echo "$(date '+%H:%M:%S') angesteckt (${ladung}%)" >> "$LOGDATEI"
     else
         spiele "$TON_AUS"

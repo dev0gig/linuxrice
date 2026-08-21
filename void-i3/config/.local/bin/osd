@@ -20,11 +20,14 @@ SCHRITT_TON=5          # Prozentpunkte je Tastendruck
 SCHRITT_LICHT=20       # Prozentpunkte je Tastendruck
 LICHT_MIN=5            # Bildschirm nie ganz schwarz drehen
 
-melde() {   # melde <tag> <icon> <titel> <wert 0-100>
-    dunstify -a osd -u low \
+# Das Icon ist ein Name aus dem Icon-Theme, kein Nerd-Font-Zeichen mehr:
+# dunst stellt es links neben den Text (icon_position/icon_theme im dunstrc).
+# Aufgeloest wird es aus Papirus-Light, sonst Papirus.
+melde() {   # melde <tag> <icon-name> <titel> <wert 0-100>
+    dunstify -a osd -u low -i "$2" \
              -h "string:x-dunst-stack-tag:$1" \
              -h "int:value:$4" \
-             "$2  $3"
+             "$3"
 }
 
 ton_wert()  { pactl get-sink-volume @DEFAULT_SINK@ | grep -o '[0-9]\+%' | head -n1 | tr -d '%'; }
@@ -41,21 +44,23 @@ zeige_ton() {
 
     w=$(ton_wert)
     if ton_stumm; then
-        melde ton "󰝟" "Stumm" 0
+        melde ton audio-volume-muted "Stumm" 0
     else
-        if   [ "$w" -eq 0 ];  then i="󰝟"
-        elif [ "$w" -le 33 ]; then i="󰕿"
-        elif [ "$w" -le 66 ]; then i="󰖀"
-        else                       i="󰕾"
+        if   [ "$w" -eq 0 ];  then i=audio-volume-muted
+        elif [ "$w" -le 33 ]; then i=audio-volume-low
+        elif [ "$w" -le 66 ]; then i=audio-volume-medium
+        else                       i=audio-volume-high
         fi
         melde ton "$i" "${w}%" "$w"
     fi
 }
 
 zeige_licht() {
+    # Anders als beim Ton gibt es hier keine Abstufung im Icon-Theme --
+    # Papirus hat fuer die Helligkeit nur das eine Symbol. Den Wert zeigen
+    # ohnehin die Prozentzahl und der Balken.
     w=$(licht_wert)
-    [ "$w" -le 40 ] && i="󰃛" || i="󰃞"
-    melde licht "$i" "${w}%" "$w"
+    melde licht gpm-brightness-lcd "${w}%" "$w"
 }
 
 case "$1" in
@@ -81,9 +86,9 @@ case "$1" in
         # GPIO des Codecs selbst.
         "$HOME/.local/bin/mikro-led" auto 2>/dev/null
         if mik_stumm; then
-            melde mikro "󰍭" "Mikrofon stumm" 0
+            melde mikro microphone-sensitivity-muted "Mikrofon stumm" 0
         else
-            melde mikro "󰍬" "Mikrofon an" 100
+            melde mikro microphone-sensitivity-high "Mikrofon an" 100
         fi
         ;;
     heller)

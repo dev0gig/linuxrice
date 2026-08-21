@@ -26,7 +26,10 @@
     # die Meldung nicht mehr mittig.
     origin = top-center
     offset = (0, 42)
-    width = (240, 420)
+    # Breite: bis zum inneren Drittel des Bildschirms (1920 / 3 = 640).
+    # Der Text ist einzeilig (word_wrap unten), die Laenge geht also in die
+    # Breite -- deshalb hier viel Luft und erst danach "...".
+    width = (240, 640)
     height = (0, 180)
     notification_limit = 4
 
@@ -45,7 +48,7 @@
     progress_bar_height = 8
     progress_bar_frame_width = 0
     progress_bar_min_width = 210
-    progress_bar_max_width = 390
+    progress_bar_max_width = 600
     progress_bar_corner_radius = 0
     highlight = "#3a3a3a"
 
@@ -54,18 +57,32 @@
     font = Red Hat Mono, Symbols Nerd Font Mono 11
     line_height = 0
     markup = full
-    format = "<b>%s</b>\n%b"
+    # Einzeilig: Titel fett, dahinter in derselben Zeile der Text. Der
+    # Umbruch ist bewusst aus -- was nicht in die 640 px passt, endet mit
+    # "..." (ellipsize = end schneidet hinten ab, nicht in der Mitte).
+    format = "<b>%s</b>  %b"
     alignment = left
     vertical_alignment = center
-    word_wrap = yes
-    ellipsize = middle
+    word_wrap = no
+    ellipsize = end
 
-    # Symbole aus Programmen (z. B. Chrome) anzeigen, aber klein halten.
+    # Immer ein Icon links. Zwei Faellen muss man dabei zusehen:
+    #
+    # Erstens die Farbe. Das Meldungsfenster ist hell (#e8e8e8) -- die
+    # symbolischen Icons aus Papirus-DARK sind aber #dfdfdf und waeren darauf
+    # praktisch unsichtbar. Papirus-Light zeichnet dieselben Icons in #444444.
+    # Zweitens die Vollstaendigkeit: Papirus-Light ist nur ein kleiner
+    # Aufsatz (7314 Icons, vor allem Leisten-Symbole) und erbt NICHT von
+    # Papirus. Deshalb steht das grosse Papirus (88300 Icons, ebenfalls
+    # #444444) dahinter -- daher kommen die Programm-Icons wie Chrome.
+    #
+    # default_icon ist das Auffangnetz fuer alles ohne eigenes Icon.
     enable_recursive_icon_lookup = true
-    icon_theme = "Papirus-Dark, Adwaita, hicolor"
+    icon_theme = "Papirus-Light, Papirus, Adwaita, hicolor"
     icon_position = left
-    min_icon_size = 0
-    max_icon_size = 32
+    min_icon_size = 24
+    max_icon_size = 24
+    default_icon = dialog-information
 
     # Mausbedienung: jeder Klick macht die Meldung sofort weg. Links schliesst
     # die angeklickte, rechts alle auf einmal; die Mitte oeffnet zusaetzlich

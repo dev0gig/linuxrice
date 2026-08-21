@@ -29,6 +29,14 @@ BT_AUS = "\U000f00b2"    # nf-md-bluetooth_off
 BT_VERB = "\U000f00b1"   # nf-md-bluetooth_connect
 SUCHE = "\U000f0349"     # nf-md-magnify
 
+# Icon-Namen fuers Meldungsfenster. Die Nerd-Font-Symbole oben bleiben, sie
+# stehen aber nur noch im rofi-Menue -- in den dunst-Meldungen zeichnet dunst
+# das echte Theme-Icon links daneben (siehe melden()).
+ICON = "bluetooth-active"
+ICON_AUS = "bluetooth-disabled"
+ICON_VERB = "bluetooth-paired"
+ICON_SUCHE = "edit-find"
+
 # bluetoothctl faerbt seine Ausgabe auch dann, wenn sie in eine Pipe geht.
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
@@ -93,11 +101,11 @@ def ausschalten():
     ctl("power", "off")
 
 
-def melden(text, symbol=BT):
+def melden(text, icon=ICON):
     """Kurze Rueckmeldung ueber dunst -- im Terminal nach stdout."""
     if os.environ.get("DISPLAY") and shutil.which("dunstify"):
         subprocess.run(["dunstify", "-a", "bluetooth", "-u", "low",
-                        symbol + "  " + text], capture_output=True)
+                        "-i", icon, text], capture_output=True)
     else:
         print(text)
 
@@ -106,9 +114,9 @@ def verbinden(mac, name):
     melden("Verbinde mit " + name + " ...")
     ausgabe = ctl("connect", mac, timeout=25)
     if "Connection successful" in ausgabe:
-        melden(name + " verbunden", BT_VERB)
+        melden(name + " verbunden", ICON_VERB)
     else:
-        melden("Verbindung zu " + name + " fehlgeschlagen", BT_AUS)
+        melden("Verbindung zu " + name + " fehlgeschlagen", ICON_AUS)
 
 
 def trennen(mac, name):
@@ -122,7 +130,7 @@ def koppeln(mac, name):
     melden("Koppele " + name + " ...")
     ausgabe = ctl("pair", mac, timeout=40)
     if "Pairing successful" not in ausgabe and "AlreadyExists" not in ausgabe:
-        melden("Kopplung mit " + name + " fehlgeschlagen", BT_AUS)
+        melden("Kopplung mit " + name + " fehlgeschlagen", ICON_AUS)
         return
     ctl("trust", mac)
     verbinden(mac, name)
@@ -131,14 +139,14 @@ def koppeln(mac, name):
 def suchen():
     """Umgebung absuchen. bluetoothctl beendet sich mit --timeout selbst;
     die gefundenen Geraete stehen danach in "devices"."""
-    melden("Suche " + str(SCAN_SEKUNDEN) + " Sekunden lang ...", SUCHE)
+    melden("Suche " + str(SCAN_SEKUNDEN) + " Sekunden lang ...", ICON_SUCHE)
     ctl("--timeout", str(SCAN_SEKUNDEN), "scan", "on",
         timeout=SCAN_SEKUNDEN + 10)
 
 
 def menue():
     if not vorhanden():
-        melden("Kein Bluetooth-Adapter gefunden", BT_AUS)
+        melden("Kein Bluetooth-Adapter gefunden", ICON_AUS)
         return
 
     laeuft = an()

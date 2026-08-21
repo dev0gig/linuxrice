@@ -158,8 +158,12 @@ selbst, picom 13 kennt zwar Animationen, aber keine Arbeitsflächen. Die
 Konstruktion:
 
 - i3 un-/mapped die Fenster beim Wechsel; picom animiert das über die
-  Trigger `hide` und `show` mit den Presets `fly-out` und `fly-in`
-  (`config/.config/picom.conf`).
+  Trigger `hide` und `show`/`open` mit den Presets `fly-out` und `fly-in`
+  (`config/.config/picom.conf`). `open` steht daneben, weil picom Fenster,
+  die beim Start oder beim Neuladen seiner Konfig gerade auf einer anderen
+  Fläche liegen, beim nächsten Auftauchen als `open` meldet — sie flögen
+  sonst genau einmal nicht herein. Frisch geöffnete Fenster stört das nicht,
+  die bekommen einen neuen i3-Rahmen ohne `_SWIPE_DIR`.
 - Die Richtung kommt aus der X-Property `_SWIPE_DIR`, die
   `config/.local/bin/ws-swipe` vor jedem Wechsel auf alle i3-Rahmenfenster
   schreibt; zwei picom-Regeln wählen danach die Flugrichtung. Gesten

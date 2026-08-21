@@ -34,6 +34,42 @@ frage_nach() {
 sperren() {
     # -e: leere Eingabe nicht als Fehlversuch werten
     i3lock -c "$LOCK_FARBE" -e
+    finger_entsperren
+}
+
+# Fingerabdruck statt Passwort: solange i3lock laeuft, im Hintergrund auf
+# einen passenden Finger warten und i3lock dann beenden. Das Passwort geht
+# parallel weiter; i3lock selbst bleibt unangetastet (sein PAM-Stapel kennt
+# nur pam_unix). pam_fprintd in i3lock waere die naheliegende Alternative,
+# haelt aber jede Passworteingabe so lange auf, bis der Finger-Timeout um ist.
+#
+# Wird per Passwort entsperrt, muss der wartende fprintd-verify sterben --
+# sonst haelt er den Sensor belegt, und sudo bekaeme keinen Finger mehr.
+# Laeuft nur, wenn fprintd da ist und Finger angelernt sind; sonst wuerde die
+# Schleife jede Sekunde ins Leere fragen. Siehe fingerabdruck/README.md.
+finger_entsperren() {
+    command -v fprintd-verify >/dev/null 2>&1 || return 0
+    fprintd-list "$(id -un)" 2>/dev/null | grep -q '^Fingerprints for user' || return 0
+    uid=$(id -u)
+    pgrep -u "$uid" -x fprintd-verify >/dev/null && return 0
+    (
+        while pgrep -u "$uid" -x i3lock >/dev/null; do
+            fprintd-verify >/dev/null 2>&1 &
+            pruefer=$!
+            while kill -0 "$pruefer" 2>/dev/null; do
+                if ! pgrep -u "$uid" -x i3lock >/dev/null; then
+                    kill "$pruefer" 2>/dev/null
+                    exit 0
+                fi
+                sleep 1
+            done
+            if wait "$pruefer"; then
+                pkill -u "$uid" -x i3lock
+                exit 0
+            fi
+            sleep 1
+        done
+    ) >/dev/null 2>&1 &
 }
 
 auswahl=$(printf '%s\n' "$SPERREN" "$BEREIT" "$ABMELDEN" "$NEUSTART" "$AUS" |

@@ -1,0 +1,554 @@
+#!/usr/bin/python3
+# netz  -- WLAN und Tailscale schalten, Netze suchen und verbinden
+#
+# Aufgerufen vom WLAN-Block in der i3-Leiste (siehe ~/.local/bin/i3status-melder):
+#
+#   Linksklick  -> "netz um"      (Funk an/aus)
+#   Rechtsklick -> "netz"         (Menue per rofi)
+#
+# Gegenstueck zu ~/.local/bin/bluetooth, gleicher Aufbau, gleiche Befehle
+# (an|aus|um|zustand|menue). Ohne DISPLAY oder ohne rofi geht die Liste nach
+# stdout, damit sich das Netz auch im Terminal bedienen laesst.
+#
+# WARUM wpa_cli und nicht nmcli: auf diesem Rechner laufen wpa_supplicant und
+# dhcpcd als runit-Dienste, einen NetworkManager gibt es nicht. wpa_cli gehoert
+# zu wpa_supplicant, liegt also ohnehin da, und seine Ausgabe ist zeilenweise
+# lesbar.
+#
+# Rechte -- kein sudo noetig, an drei Stellen aus dem Weg geraeumt:
+#   * Funk an/aus geht ueber /dev/rfkill, das per udev-Regel der Gruppe wheel
+#     gehoert (/etc/udev/rules.d/60-rfkill-unblock.rules).
+#   * Der Steuersocket von wpa_supplicant gehoert seit dem 21.08.2026 der
+#     Gruppe wheel: "ctrl_interface=DIR=/run/wpa_supplicant GROUP=wheel" in
+#     /etc/wpa_supplicant/wpa_supplicant-wlo1.conf, dazu die chown-Zeilen in
+#     /etc/sv/wpa_supplicant/run. Die Konfigdatei selbst bleibt root allein --
+#     das Passwort schreibt wpa_supplicant hinein, nicht dieses Skript.
+#   * "tailscale up/down" laeuft, weil der Benutzer bei tailscaled als Operator
+#     eingetragen ist ("tailscale set --operator=patrick").
+
+import hashlib
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+# Nerd-Font-Zeichen fuers rofi-Menue. In den dunst-Meldungen stehen sie nicht,
+# dort zeichnet dunst das echte Theme-Icon (siehe melden() und C3 in
+# ~/desktop-ideen.md).
+WLAN = "\U000f05a9"        # nf-md-wifi
+WLAN_AUS = "\U000f05aa"    # nf-md-wifi_off
+SUCHE = "\U000f0349"       # nf-md-magnify
+SCHLOSS = "\U000f033e"     # nf-md-lock
+OFFEN = "\U000f033f"       # nf-md-lock_open
+TS_AN = "\U000f048d"       # nf-md-server_network
+TS_AUS = "\U000f048e"      # nf-md-server_network_off
+# Balken nach Signalstaerke, von leer bis voll.
+BALKEN = ("\U000f092b", "\U000f0925", "\U000f0926", "\U000f0927", "\U000f0928")
+
+# Icon-Namen fuers Meldungsfenster.
+ICON_AN = "network-wireless-connected"
+ICON_AUS = "network-wireless-offline"
+ICON_VERBINDET = "network-wireless-acquiring"
+ICON_FEHLER = "network-error"
+ICON_SUCHE = "edit-find"
+ICON_TS_AN = "network-vpn"
+ICON_TS_AUS = "network-offline"
+# Nach Signalstaerke, gleiche Reihenfolge wie BALKEN.
+ICON_SIGNAL = ("network-wireless-signal-none", "network-wireless-signal-weak",
+               "network-wireless-signal-ok", "network-wireless-signal-good",
+               "network-wireless-signal-excellent")
+
+RFKILL = "/sys/class/rfkill"
+
+# Nach dem Anstossen der Suche braucht wpa_supplicant ein paar Sekunden, bis
+# alle Kanaele durch sind. Gemessen: nach 4 s stehen die 2,4-GHz-Netze, nach
+# rund 6 s auch die 5-GHz-Netze.
+SUCH_SEKUNDEN = 6
+
+# "bssid / frequency / signal level / flags / ssid", Tabulatoren dazwischen.
+SCAN = re.compile(r"^([0-9a-f:]{17})\t(\d+)\t(-?\d+)\t(\S*)\t(.*)$", re.M)
+# "0\tMeinNetz\tany\t[CURRENT]" -- das Flag-Feld fehlt, wenn es leer ist.
+BEKANNT = re.compile(r"^(\d+)\t(.*?)\t(\S*)\t?(\S*)$", re.M)
+
+# wpa_supplicant gibt SSIDs printf-escaped aus: \xNN, \\, \", \n und Freunde.
+ESCAPE = re.compile(r"\\x([0-9a-fA-F]{2})|\\(.)")
+ESCAPE_EINFACH = {"n": "\n", "r": "\r", "t": "\t", "e": "\x1b",
+                  "\\": "\\", '"': '"', "'": "'"}
+
+
+def entwirren(text):
+    """Die Escapes aus wpa_cli zurueckuebersetzen."""
+    def eins(t):
+        if t.group(1):
+            return chr(int(t.group(1), 16))
+        return ESCAPE_EINFACH.get(t.group(2), t.group(2))
+    return ESCAPE.sub(eins, text)
+
+
+def schnittstelle():
+    """Der Name der WLAN-Karte, also "wlo1".
+
+    Gelesen aus /sys statt fest verdrahtet: die Karte heisst nach den
+    udev-Regeln zwar stabil, aber ein zweiter Stick oder ein anderer Rechner
+    haette einen anderen Namen, und wpa_cli ohne -i greift dann daneben.
+    """
+    try:
+        for name in sorted(os.listdir("/sys/class/net")):
+            if os.path.isdir("/sys/class/net/" + name + "/wireless"):
+                return name
+    except OSError:
+        pass
+    return None
+
+
+IFACE = schnittstelle()
+
+
+def wpa(*argumente, timeout=10):
+    """wpa_cli aufrufen und die Ausgabe zurueckgeben, "" bei jedem Fehler."""
+    if not IFACE:
+        return ""
+    try:
+        fertig = subprocess.run(["wpa_cli", "-i", IFACE, *argumente],
+                                capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if fertig.returncode != 0:
+        return ""
+    return fertig.stdout
+
+
+def ok(*argumente):
+    """wpa_cli aufrufen und True zurueckgeben, wenn es geklappt hat.
+
+    WARUM nicht der Rueckgabewert: wpa_cli beendet sich auch dann mit 0, wenn
+    der Befehl abgelehnt wurde -- es schreibt dann "FAIL" nach stdout. Ohne
+    diese Pruefung liefe ein abgelehntes set_network stillschweigend durch.
+    """
+    return wpa(*argumente).strip().endswith("OK")
+
+
+def erreichbar():
+    """True, wenn der Steuersocket antwortet.
+
+    Trennt "wpa_supplicant laeuft nicht" von "Funk ist aus" -- die Meldung
+    lautet sonst in beiden Faellen dasselbe, obwohl nur einer davon per Klick
+    zu beheben ist.
+    """
+    return "wpa_state" in wpa("status", timeout=5)
+
+
+def geblockt():
+    """True, wenn der WLAN-Funk per rfkill abgeschaltet ist.
+
+    Gelesen aus /sys, nicht ueber "rfkill list": ein reiner Dateizugriff ohne
+    eigenen Prozess, dieselbe Stelle, die auch die Leiste liest. Ein Hard-Block
+    (Schalter am Geraet) zaehlt mit -- fuer die Anzeige ist er dasselbe, nur
+    aufheben laesst er sich per Software nicht.
+    """
+    try:
+        for eintrag in os.listdir(RFKILL):
+            ordner = os.path.join(RFKILL, eintrag)
+            with open(ordner + "/type", encoding="ascii") as d:
+                if d.read().strip() != "wlan":
+                    continue
+            for was in ("soft", "hard"):
+                with open(ordner + "/" + was, encoding="ascii") as d:
+                    if d.read().strip() == "1":
+                        return True
+    except OSError:
+        pass
+    return False
+
+
+def status():
+    """"wpa_cli status" als Woerterbuch."""
+    werte = {}
+    for zeile in wpa("status", timeout=5).splitlines():
+        if "=" in zeile:
+            schluessel, _, wert = zeile.partition("=")
+            werte[schluessel] = wert
+    return werte
+
+
+def verbunden_mit():
+    """Die SSID der laufenden Verbindung, oder None."""
+    werte = status()
+    if werte.get("wpa_state") != "COMPLETED":
+        return None
+    return entwirren(werte.get("ssid", "")) or None
+
+
+def stufe(dbm):
+    """Signalstaerke in fuenf Stufen, 0 = nichts bis 4 = voll.
+
+    Die Schwellen sind die ueblichen: ab -55 dBm ist die Verbindung voll,
+    unter -80 dBm traegt sie kaum noch.
+    """
+    if dbm >= -55:
+        return 4
+    if dbm >= -67:
+        return 3
+    if dbm >= -75:
+        return 2
+    if dbm >= -85:
+        return 1
+    return 0
+
+
+def bekannte():
+    """Gespeicherte Netze als {SSID: Nummer}.
+
+    Die Nummer ist die Netz-ID in wpa_supplicant -- ueber sie laeuft spaeter
+    select_network, ohne dass das Passwort noch einmal noetig waere.
+    """
+    aus = {}
+    for nummer, ssid, _bssid, _flags in BEKANNT.findall(wpa("list_networks")):
+        if ssid and ssid != "ssid":     # die Kopfzeile faellt sonst mit rein
+            aus[entwirren(ssid)] = nummer
+    return aus
+
+
+def gefunden():
+    """Die Netze aus der letzten Suche, das staerkste zuerst.
+
+    Mehrere Zugangspunkte mit demselben Namen (Mesh, 2,4 und 5 GHz) stehen in
+    scan_results einzeln -- hier bleibt je SSID nur der staerkste uebrig,
+    sonst stuende dasselbe Netz vier Mal im Menue.
+    """
+    beste = {}
+    for _bssid, _freq, signal, flags, ssid in SCAN.findall(wpa("scan_results")):
+        name = entwirren(ssid)
+        if not name.strip() or "\x00" in name:
+            continue                    # versteckte Netze haben keinen Namen
+        dbm = int(signal)
+        if name not in beste or dbm > beste[name]["dbm"]:
+            beste[name] = {"ssid": name, "dbm": dbm, "flags": flags,
+                           "offen": "WPA" not in flags and "WEP" not in flags}
+    return sorted(beste.values(), key=lambda n: -n["dbm"])
+
+
+def melden(text, icon=ICON_AN):
+    """Kurze Rueckmeldung ueber dunst -- im Terminal nach stdout."""
+    if os.environ.get("DISPLAY") and shutil.which("dunstify"):
+        subprocess.run(["dunstify", "-a", "netz", "-u", "low",
+                        "-i", icon, text], capture_output=True)
+    else:
+        print(text)
+
+
+def i3status_wecken():
+    """Die Leiste sofort neu zeichnen lassen, statt bis zum naechsten Takt
+    (5 s) zu warten -- dasselbe Signal, das auch ~/.local/bin/osd schickt."""
+    try:
+        subprocess.run(["pkill", "-SIGUSR1", "-x", "i3status"],
+                       capture_output=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def einschalten(mit_meldung=True):
+    try:
+        subprocess.run(["rfkill", "unblock", "wlan"],
+                       capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return
+    if mit_meldung:
+        melden("WLAN an", ICON_VERBINDET)
+    i3status_wecken()
+
+
+def ausschalten(mit_meldung=True):
+    try:
+        subprocess.run(["rfkill", "block", "wlan"],
+                       capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return
+    if mit_meldung:
+        melden("WLAN aus", ICON_AUS)
+    i3status_wecken()
+
+
+def suchen():
+    """Umgebung absuchen. Die Funde stehen danach in scan_results.
+
+    Die laufende Verbindung bleibt dabei bestehen -- die Karte hoert nur kurz
+    auf den anderen Kanaelen mit.
+    """
+    melden("Suche Netze ...", ICON_SUCHE)
+    wpa("scan", timeout=5)
+    time.sleep(SUCH_SEKUNDEN)
+
+
+def warten_auf_verbindung(ssid, sekunden=20):
+    """Warten, bis wpa_supplicant fertig ist, und melden wie es ausging."""
+    for _ in range(sekunden * 2):
+        time.sleep(0.5)
+        werte = status()
+        if werte.get("wpa_state") == "COMPLETED":
+            if entwirren(werte.get("ssid", "")) == ssid:
+                melden(ssid + " verbunden", ICON_AN)
+                i3status_wecken()
+                return True
+    melden("Keine Verbindung zu " + ssid, ICON_FEHLER)
+    i3status_wecken()
+    return False
+
+
+def verbinden(ssid, nummer):
+    """Mit einem gespeicherten Netz verbinden.
+
+    select_network statt enable_network: es schaltet die uebrigen Netze fuer
+    diesen Versuch ab, sonst wechselt wpa_supplicant gleich wieder zurueck.
+    Gespeichert wird das nicht -- nach einem Neustart des Dienstes stehen
+    wieder alle Netze zur Auswahl.
+    """
+    melden("Verbinde mit " + ssid + " ...", ICON_VERBINDET)
+    wpa("select_network", nummer)
+    warten_auf_verbindung(ssid)
+
+
+def trennen():
+    """Die Verbindung loesen, ohne den Funk abzuschalten.
+
+    "disconnect" haelt an, bis jemand "reconnect" sagt oder ein Netz aus dem
+    Menue gewaehlt wird -- genau das ist hier gewollt, sonst haengt die Karte
+    sofort wieder am selben Netz.
+    """
+    name = verbunden_mit()
+    wpa("disconnect")
+    melden((name or "WLAN") + " getrennt", ICON_AUS)
+    i3status_wecken()
+
+
+def passwort_fragen(ssid):
+    """Passwort per rofi abfragen, verdeckt. None, wenn abgebrochen wurde."""
+    if not (os.environ.get("DISPLAY") and shutil.which("rofi")):
+        try:
+            import getpass
+            return getpass.getpass("Passwort fuer " + ssid + ": ") or None
+        except (EOFError, KeyboardInterrupt):
+            return None
+    fertig = subprocess.run(
+        ["rofi", "-dmenu", "-password", "-lines", "0",
+         "-p", SCHLOSS + " " + ssid[:24]],
+        input="", capture_output=True, text=True)
+    if fertig.returncode != 0:
+        return None
+    return fertig.stdout.rstrip("\n") or None
+
+
+def neues_netz(eintrag):
+    """Ein unbekanntes Netz aufnehmen: Passwort holen, speichern, verbinden.
+
+    Das Passwort wandert nicht im Klartext in die Konfig, sondern als der
+    daraus gerechnete Schluessel (PBKDF2 ueber SSID, 4096 Runden) -- genau
+    das, was wpa_passphrase auch tut, nur ohne den Umweg ueber ein zweites
+    Programm. Bei WPA3/SAE geht das nicht, dort muss die Passphrase selbst in
+    die Konfig; und zu kurze oder zu lange Passwoerter kann PBKDF2 ebenfalls
+    nicht fassen (WPA-PSK laesst 8 bis 63 Zeichen zu).
+    """
+    ssid = eintrag["ssid"]
+    passwort = None
+    if not eintrag["offen"]:
+        passwort = passwort_fragen(ssid)
+        if passwort is None:
+            return                      # mit Escape abgebrochen
+
+    nummer = wpa("add_network").strip().splitlines()[-1:] or [""]
+    nummer = nummer[0].strip()
+    if not nummer.isdigit():
+        melden("Konnte kein Netz anlegen", ICON_FEHLER)
+        return
+
+    # SSID als Hex: so ist kein Anfuehrungszeichen und kein Umlaut ein Problem.
+    gut = ok("set_network", nummer, "ssid", ssid.encode().hex())
+    if eintrag["offen"]:
+        gut = gut and ok("set_network", nummer, "key_mgmt", "NONE")
+    elif "SAE" in eintrag["flags"] or not 8 <= len(passwort) <= 63:
+        gut = gut and ok("set_network", nummer, "psk",
+                         '"' + passwort.replace("\\", "\\\\").replace('"', '\\"') + '"')
+    else:
+        schluessel = hashlib.pbkdf2_hmac("sha1", passwort.encode(),
+                                         ssid.encode(), 4096, 32).hex()
+        gut = gut and ok("set_network", nummer, "psk", schluessel)
+
+    if not gut:
+        wpa("remove_network", nummer)
+        melden("Netz " + ssid + " liess sich nicht anlegen", ICON_FEHLER)
+        return
+
+    melden("Verbinde mit " + ssid + " ...", ICON_VERBINDET)
+    wpa("enable_network", nummer)
+    wpa("select_network", nummer)
+    if warten_auf_verbindung(ssid):
+        # Erst nach der geglueckten Verbindung speichern: ein falsches Passwort
+        # steht sonst dauerhaft in der Konfig und der Rechner probiert es bei
+        # jedem Start erneut.
+        wpa("save_config")
+    else:
+        wpa("remove_network", nummer)
+
+
+def ts_vorhanden():
+    return bool(shutil.which("tailscale"))
+
+
+def ts_an():
+    """True, wenn das Tailnet laeuft.
+
+    "tailscale status" ohne --json reicht hier: der Text beginnt mit
+    "Tailscale is stopped", wenn es aus ist. Die Leiste fragt genauer nach
+    (siehe ts_abfragen() in ~/.local/bin/i3status-melder), fuers Menue zaehlt
+    nur an oder aus.
+    """
+    try:
+        fertig = subprocess.run(["tailscale", "status"],
+                                capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "Tailscale is stopped" not in fertig.stdout + fertig.stderr
+
+
+def ts_schalten(aus):
+    """Tailnet an- (aus=True) oder abschalten.
+
+    Die Richtung kommt von aussen, nicht aus ts_an(): die Leiste kennt den
+    Zustand genauer und will bei "Gegenstelle weg" noch einmal "up" schicken,
+    obwohl das Tailnet formal laeuft (siehe ts_umschalten() in
+    ~/.local/bin/i3status-melder).
+    """
+    try:
+        subprocess.run(["tailscale", "up" if aus else "down"],
+                       capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        melden("Tailscale antwortet nicht", ICON_FEHLER)
+        return
+    melden("Tailscale an" if aus else "Tailscale aus",
+           ICON_TS_AN if aus else ICON_TS_AUS)
+    i3status_wecken()
+
+
+def ts_umschalten():
+    ts_schalten(not ts_an())
+
+
+def menue():
+    if not IFACE:
+        melden("Keine WLAN-Karte gefunden", ICON_FEHLER)
+        return
+
+    funk = not geblockt()
+    zeilen = []
+    aktionen = []
+
+    def eintragen(text, aktion):
+        zeilen.append(text)
+        aktionen.append(aktion)
+
+    eintragen((WLAN_AUS + "  WLAN ausschalten") if funk
+              else (WLAN + "  WLAN einschalten"), ("funk",))
+
+    # Tailscale gleich hinter den WLAN-Schalter, nicht ans Ende: die Netzliste
+    # ist an einem belebten Ort zwei Dutzend Zeilen lang, und der Schalter
+    # stuende dann unter der Bildkante.
+    if ts_vorhanden():
+        eintragen((TS_AUS + "  Tailscale ausschalten") if ts_an()
+                  else (TS_AN + "  Tailscale einschalten"), ("ts",))
+
+    if funk and erreichbar():
+        eintragen(SUCHE + "  Netze suchen ...", ("suchen",))
+        aktuell = verbunden_mit()
+        gespeichert = bekannte()
+        netze = gefunden()
+        # Verbundenes zuerst, dann Gespeichertes, dann der Rest nach Staerke.
+        netze.sort(key=lambda n: (n["ssid"] != aktuell,
+                                  n["ssid"] not in gespeichert, -n["dbm"]))
+        for n in netze:
+            ist_aktuell = n["ssid"] == aktuell
+            wort = ("verbunden" if ist_aktuell else
+                    "gespeichert" if n["ssid"] in gespeichert else "neu")
+            # Auch offene Netze bekommen ein Zeichen (aufgesprungenes Schloss),
+            # sonst rutscht ihre Zeile um eine Glyphenbreite nach links.
+            eintragen("{}{}  {:<24.24}  {}".format(
+                BALKEN[stufe(n["dbm"])], OFFEN if n["offen"] else SCHLOSS,
+                n["ssid"], wort), ("netz", n, gespeichert.get(n["ssid"]),
+                                   ist_aktuell))
+    elif funk:
+        eintragen(WLAN_AUS + "  wpa_supplicant antwortet nicht", ("nichts",))
+
+    if not (os.environ.get("DISPLAY") and shutil.which("rofi")):
+        for z in zeilen:
+            print(z)
+        return
+
+    fertig = subprocess.run(
+        ["rofi", "-dmenu", "-i", "-no-custom", "-format", "i",
+         "-p", WLAN + " Netz", "-lines", str(min(len(zeilen), 14)),
+         # Warum die drei Zustaende ausgeschrieben stehen: siehe
+         # ~/.local/bin/benachrichtigungen -- sonst streift rofi die Liste beige.
+         "-theme-str",
+         "element normal.normal    { background-color: @bg; text-color: @fg-dim; }"
+         "element alternate.normal { background-color: @bg; text-color: @fg-dim; }"
+         "element selected.normal  { background-color: @bg-sel; text-color: @fg; }"],
+        input="\n".join(zeilen), capture_output=True, text=True)
+    if fertig.returncode != 0 or not fertig.stdout.strip():
+        return                          # mit Escape abgebrochen
+
+    aktion = aktionen[int(fertig.stdout.strip())]
+    if aktion[0] == "funk":
+        ausschalten() if funk else einschalten()
+    elif aktion[0] == "suchen":
+        suchen()
+        menue()                         # mit den Funden noch einmal aufblenden
+    elif aktion[0] == "ts":
+        ts_umschalten()
+    elif aktion[0] == "netz":
+        _, n, nummer, ist_aktuell = aktion
+        if ist_aktuell:
+            trennen()
+        elif nummer is not None:
+            verbinden(n["ssid"], nummer)
+        else:
+            neues_netz(n)
+
+
+def main():
+    befehl = sys.argv[1] if len(sys.argv) > 1 else "menue"
+    if befehl == "an":
+        einschalten()
+    elif befehl == "aus":
+        ausschalten()
+    elif befehl == "um":
+        ausschalten() if not geblockt() else einschalten()
+    elif befehl == "ts-um":
+        ts_umschalten()
+    elif befehl == "ts-an":
+        ts_schalten(True)
+    elif befehl == "ts-aus":
+        ts_schalten(False)
+    elif befehl == "zustand":
+        # "keine Karte" ist etwas anderes als "aus" -- die Leiste laesst den
+        # Block in dem Fall ganz weg, statt ihn stumpf anzuzeigen.
+        if not IFACE:
+            print("keine Karte")
+            return
+        if geblockt():
+            print("aus")
+        else:
+            name = verbunden_mit()
+            print("verbunden: " + name if name else "an")
+        if ts_vorhanden():
+            print("tailscale: " + ("an" if ts_an() else "aus"))
+    elif befehl == "menue":
+        menue()
+    else:
+        print("Aufruf: netz [an|aus|um|ts-an|ts-aus|ts-um|zustand|menue]",
+              file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

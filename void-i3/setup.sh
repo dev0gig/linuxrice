@@ -467,6 +467,49 @@ sudo udevadm hwdb --update
 sudo udevadm trigger --sysname-match="event*"
 info "Tastatur-Remap F8/F12 uebersetzt und aktiv"
 
+# ------------------------------------------------- WLAN-Steuersocket fuer wheel
+
+schritt "WLAN-Steuersocket fuer die Gruppe wheel"
+# ~/.local/bin/netz sucht Netze und traegt Passwoerter ein -- beides laeuft
+# ueber den Steuersocket von wpa_supplicant in /run/wpa_supplicant. Der gehoert
+# von Haus aus root allein, und das run-Skript des Dienstes setzt das bei jedem
+# Start eigens wieder durch. Ohne diese beiden Aenderungen kaeme das Menue nicht
+# an den Socket und muesste ueber sudo gehen.
+#
+# Geoeffnet wird nur das Laufzeitverzeichnis. Die Konfigdatei mit den
+# Passwoertern bleibt root allein -- hineingeschrieben wird sie von
+# wpa_supplicant selbst (save_config), nicht vom Menue.
+if [ -f /etc/sv/wpa_supplicant/run ]; then
+    if grep -q 'chown -R root:root /run/wpa_supplicant' /etc/sv/wpa_supplicant/run; then
+        sichern_system /etc/sv/wpa_supplicant/run
+        sudo sed -i \
+            -e 's|install -m 700 -g root -o root -d /run/wpa_supplicant|install -m 750 -g wheel -o root -d /run/wpa_supplicant|' \
+            -e 's|chown -R root:root /run/wpa_supplicant|chown -R root:wheel /run/wpa_supplicant\nchmod 750 /run/wpa_supplicant|' \
+            /etc/sv/wpa_supplicant/run
+        gut "run-Skript chownt nicht mehr auf root:root"
+    else
+        info "run-Skript ist schon offen"
+    fi
+fi
+
+# Dasselbe in der Konfigdatei: ohne GROUP legt wpa_supplicant den Socket beim
+# naechsten Start wieder root:root an. Betrifft jede Konfig in dem Ordner,
+# weil das Dienst-conf auf eine davon zeigt.
+for c in /etc/wpa_supplicant/wpa_supplicant*.conf; do
+    [ -f "$c" ] || continue
+    if sudo grep -q '^ctrl_interface=/run/wpa_supplicant$' "$c"; then
+        sudo sed -i 's|^ctrl_interface=/run/wpa_supplicant$|ctrl_interface=DIR=/run/wpa_supplicant GROUP=wheel|' "$c"
+        gut "$(basename "$c"): GROUP=wheel eingetragen"
+    fi
+done
+
+# Und einmal sofort, damit es ohne Neustart des Dienstes gilt.
+if [ -d /run/wpa_supplicant ]; then
+    sudo chown -R root:wheel /run/wpa_supplicant
+    sudo chmod 750 /run/wpa_supplicant
+    info "/run/wpa_supplicant gehoert jetzt der Gruppe wheel"
+fi
+
 # sudoers braucht Modus 440 und muss fehlerfrei sein -- eine kaputte Datei
 # dort sperrt sudo komplett aus. Also erst pruefen, dann mit install ablegen
 # (cp wuerde die Rechte des Repos mitnehmen). Jede Datei einzeln, damit ein
@@ -650,14 +693,19 @@ ${FETT}Fertig.${AUS} Was jetzt noch von Hand kommt:
      findet rofi Chrome und Brave nicht.
   2. Auf tty1 anmelden: .bash_profile startet X und i3 von selbst.
      Auf anderen Konsolen passiert bewusst nichts.
-  3. WLAN: wpa_passphrase 'NETZ' | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf >/dev/null
+  3. WLAN: das erste Netz braucht noch die Konsole, weil ohne Verbindung
+     auch keine Oberflaeche laeuft:
+       wpa_passphrase 'NETZ' | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf >/dev/null
      (fragt das Passwort ab; ein ">>" hinter sudo scheitert, weil die Datei
      root gehoert und die Umleitung als Benutzer laeuft)
      danach sudo sv restart wpa_supplicant
+     Jedes weitere Netz geht dann per Rechtsklick auf den WLAN-Block in der
+     Leiste -- suchen, auswaehlen, Passwort eintippen.
   4. Tailscale anmelden: sudo tailscale up
      danach sudo tailscale set --operator=\$USER  -- sonst bleibt der
      Linksklick auf den Tailscale-Block in der Leiste wirkungslos, weil
      tailscaled Befehle nur von root oder dem eingetragenen Operator annimmt.
+     Dasselbe gilt fuer den Tailscale-Eintrag im Netz-Menue.
      Nach einer Umbenennung des Benutzers muss das erneut gesetzt werden.
   5. Sensoren einlesen: sudo sensors-detect   -- danach im Dashboard pruefen,
      ob die Temperaturen erscheinen.

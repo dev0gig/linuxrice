@@ -74,6 +74,7 @@ Es richtet ein:
 | Mauszeiger | Colloid in Weiß (`Colloid-dark-cursors`) systemweit nach `/usr/share/icons`, Größe 36, dazu `default/index.theme` als Auffangnetz für alles ohne eigene Einstellung |
 | Eingabe | deutsches Tastaturlayout in X, Touchpad mit natürlichem Scrollen und Tap-to-Click, Drei-Finger-Gesten mit Karussell-Animation beim Arbeitsflächenwechsel |
 | Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten |
+| Netz | Steuersocket von `wpa_supplicant` gehört der Gruppe `wheel`, damit das Netz-Menü ohne `sudo` suchen und verbinden kann |
 | Fingerabdruck | auf Nachfrage: libfprint-Fork mit dem Treiber `synatlsmoc` und gepatchtes fprintd nach `/usr/local`, polkit-Regel, `pam_fprintd` für sudo und Login; das Sperrmenü entsperrt auf Fingertipp (`fingerabdruck/`) |
 | Ton | PipeWire mit WirePlumber und PulseAudio-Schnittstelle, dazu `dumb_runtime_dir` (nicht in `base-system`) und `/run/user` aus `rc.local` — ohne `XDG_RUNTIME_DIR` startet PipeWire nicht |
 | Bluetooth | `bluez`; der Adapter bleibt nach dem Booten aus und geht erst auf Klick an |
@@ -285,7 +286,8 @@ dem WLAN, die Glocke des Benachrichtigungs-Verlaufs ganz rechts.
 | Block | Linksklick | Rechtsklick |
 | --- | --- | --- |
 | Bluetooth | Funk an/aus | Menü: suchen, koppeln, verbinden, trennen |
-| WLAN | Funk an/aus | — |
+| WLAN | Funk an/aus | Menü: Netze suchen, Passwort eingeben, verbinden |
+| Tailscale | Tailnet an/aus | — |
 | Ton | stumm um (Mausrad: lauter/leiser) | — |
 | Glocke | Verlauf ansehen | Verlauf leeren |
 
@@ -294,6 +296,21 @@ sobald ein Gerät verbunden ist, steht sein Name daneben. Während der Suche
 wird der Block gelb und die Punkte hinter „sucht“ wandern — der Scan dauert
 acht Sekunden und sähe sonst aus wie eingeschaltetes Bluetooth. Dieselben Schritte
 gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
+
+Das Gegenstück fürs Netz ist `~/.local/bin/netz`, gleicher Aufbau und gleiche
+Befehle (`netz an|aus|um|ts-an|ts-aus|ts-um|zustand|menue`). Im Menü stehen
+zuerst die beiden Schalter — WLAN und Tailscale —, darunter die Netze in
+Reichweite mit Signalbalken und Schloss: verbunden, gespeichert oder neu. Ein
+neues Netz fragt das Passwort in einem verdeckten rofi-Fenster ab. Gespeichert
+wird es erst, wenn die Verbindung wirklich steht; ein Tippfehler landet also
+nicht dauerhaft in der Konfig, wo ihn der Rechner bei jedem Start erneut
+probieren würde. Das Passwort selbst geht nicht im Klartext dorthin, sondern
+als der daraus gerechnete Schlüssel — dasselbe, was `wpa_passphrase` tut.
+
+Jede dieser Handlungen meldet sich kurz über dunst: „WLAN an", „Tailscale aus",
+„<Netzname> verbunden". Deshalb schaltet die Leiste auch nicht mehr selbst
+per `rfkill`, sondern ruft `netz` auf — die Meldung hängt an einer Stelle statt
+an zweien.
 
 ## Stolpersteine, die hier schon gelöst sind
 

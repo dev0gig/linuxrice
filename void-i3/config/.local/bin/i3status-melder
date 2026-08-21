@@ -16,7 +16,9 @@
 #   Ton     Linksklick -> stumm um, Mausrad -> lauter/leiser.
 #           Beides ueber ~/.local/bin/osd, nicht ueber pactl direkt: nur so
 #           laufen die LED in F5 und der OSD-Balken mit wie bei den Tasten.
-#   WLAN    Linksklick -> Funk an/aus per rfkill.
+#   WLAN    Linksklick  -> Funk an/aus, Rechtsklick -> Menue (Netze suchen,
+#           Passwort eingeben, verbinden). Beides ueber ~/.local/bin/netz,
+#           das auch im Terminal bedienbar ist.
 #
 # Ausserdem fasst es die vier Systemwerte von i3status (CPU, Temperatur, RAM,
 # Platte) zu EINEM Block ganz links zusammen: in der Leiste steht dann nur noch
@@ -37,7 +39,7 @@
 # Relay-Server (langsamer), Grau erreichbar-aber-weg, Rot "Anmeldung noetig"
 # -- der Fall, der sonst monatelang unbemerkt bleibt, bis nichts mehr geht.
 #
-#   Linksklick -> Tailnet an/aus.
+#   Linksklick -> Tailnet an/aus, ebenfalls ueber ~/.local/bin/netz.
 #   Braucht keinen sudo, weil der Benutzer bei tailscaled als Operator
 #   eingetragen ist. Welcher Rechner beobachtet wird, steht in
 #   ~/.config/i3status-melder/tailscale-peer (siehe TS_PEER_DATEI).
@@ -129,6 +131,9 @@ BT_SUCHE = "\U000f00b3"
 PULS = 0.6
 
 BLUETOOTH = os.path.expanduser("~/.local/bin/bluetooth")
+# Gegenstueck fuers Netz: schaltet WLAN und Tailnet, meldet das jeweils
+# ueber dunst und bringt das rofi-Menue mit der Netzsuche mit.
+NETZ = os.path.expanduser("~/.local/bin/netz")
 
 # Zustand des Adapters, gefuellt von bt_abfragen(): None heisst "noch nichts
 # gelesen", ein leeres dict heisst "kein Adapter da" -- dann faellt der Block weg.
@@ -275,6 +280,12 @@ def nachziehen():
 def wlan_umschalten():
     """Funk an- oder ausschalten.
 
+    Geschaltet wird nicht mehr per rfkill von hier aus, sondern ueber
+    ~/.local/bin/netz -- das ruft dasselbe rfkill auf, meldet den neuen Zustand
+    aber zusaetzlich ueber dunst (D3 in ~/desktop-ideen.md). Die Richtung steht
+    hier schon fest, darum "an"/"aus" und nicht "um": zwischen Lesen und
+    Schalten laege sonst ein zweiter Blick auf rfkill.
+
     Ohne sudo moeglich, weil /dev/rfkill per udev-Regel der Gruppe wheel
     gehoert (/etc/udev/rules.d/60-rfkill-unblock.rules). In derselben Datei
     steht auch, warum dort ACTION=="add" stehen muss: ohne den Filter hebt
@@ -282,8 +293,8 @@ def wlan_umschalten():
     """
     aus = wlan_geblockt()
     try:
-        subprocess.run(["rfkill", "unblock" if aus else "block", "wlan"],
-                       capture_output=True, timeout=5)
+        subprocess.run([NETZ, "an" if aus else "aus"],
+                       capture_output=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         return
     global wlan_verbindet
@@ -616,7 +627,11 @@ def ts_umschalten():
         return
     aus = ts["zustand"] in ("aus", "weg")
     try:
-        subprocess.Popen(["tailscale", "up" if aus else "down"],
+        # Ueber ~/.local/bin/netz statt direkt ueber tailscale: dort haengt die
+        # dunst-Meldung dran. "ts-an"/"ts-aus" statt "ts-um", weil die Richtung
+        # hier aus dem genaueren Leisten-Zustand kommt -- bei "weg" laeuft das
+        # Tailnet formal, und der Klick soll noch einmal "up" schicken.
+        subprocess.Popen([NETZ, "ts-an" if aus else "ts-aus"],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
         return
@@ -865,6 +880,8 @@ def klicks():
         if name == "wireless":
             if taste == 1:
                 nebenlaeufig(wlan_umschalten)
+            elif taste == 3:
+                subprocess.Popen([NETZ])
             continue
 
         if name == "tailscale":

@@ -209,7 +209,7 @@ bindsym Control+Mod1+t exec --no-startup-id alacritty
 
 # kill focused window
 #
-# Beide Bindungen gehen ABSICHTLICH nicht auf das Vitals-Dashboard auf
+# Alle drei Bindungen gehen ABSICHTLICH nicht auf das Vitals-Dashboard auf
 # Arbeitsflaeche 4. btop selbst laesst sich dort ganz normal bedienen --
 # nur zumachen soll es niemand koennen. Die zweite Haelfte davon steckt in
 # ~/.local/bin/vitals-btop: die Schleife dort startet btop sofort neu,
@@ -226,7 +226,19 @@ bindsym Control+Mod1+t exec --no-startup-id alacritty
 bindsym $mod+Shift+q [con_id="__focused__" class="^(?!vitals-dashboard$).*$"] kill
 # Fenster schliessen mit Strg+q (i3 faengt die Taste global ab,
 # Programme sehen sie also nicht mehr selbst)
-bindsym Control+q [con_id="__focused__" class="^(?!vitals-dashboard$).*$"] kill
+#
+# Terminalfenster sind hier ABSICHTLICH ausgenommen: sie gehen nur ueber
+# Strg+Shift+q zu, damit Strg+q dort nicht aus Versehen eine laufende
+# Sitzung wegraeumt. Alle Terminals sind Alacritty, laufen aber unter
+# eigenen Klassen (siehe die "assign"-Zeilen oben), darum die Aufzaehlung
+# im Lookahead -- eine neue Terminalklasse muss hier mit eingetragen
+# werden. Achtung: die Taste bleibt trotzdem von i3 gegriffen, im
+# Terminal kommt sie also weiterhin nicht an, sie tut dort jetzt nur
+# nichts mehr.
+bindsym Control+q [con_id="__focused__" class="^(?!Alacritty$|autostart-term$|remote-term$|vitals-dashboard$).*$"] kill
+# Strg+Shift+q schliesst zusaetzlich auch Terminalfenster -- sonst
+# dasselbe wie Strg+q, damit die Handbewegung ueberall passt.
+bindsym Control+Shift+q [con_id="__focused__" class="^(?!vitals-dashboard$).*$"] kill
 
 # start dmenu (a program launcher)
 # Bleibt bewusst die Liste mit "run" (nackte Binaernamen ohne Icon) -- im

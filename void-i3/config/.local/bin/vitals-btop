@@ -11,8 +11,9 @@
 #     gestartet. Das Fenster bleibt dabei stehen -- es haengt an dieser
 #     Schleife, nicht an btop.
 #   * Der Ausschluss in ~/.config/i3/config: die Bindungen fuer
-#     Mod+Shift+q und Strg+q lassen die Klasse vitals-dashboard aus, das
-#     Fenster laesst sich also auch nicht zuschieben.
+#     Mod+Shift+q, Strg+q und Strg+Shift+q lassen die Klasse
+#     vitals-dashboard aus, das Fenster laesst sich also auch nicht
+#     zuschieben.
 #   * Die Sperre gleich hier drunter, damit es bei genau einem Fenster
 #     bleibt.
 

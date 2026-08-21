@@ -1,0 +1,5 @@
+# Deckelschalter -> /etc/acpi/deckel.sh (sperren, dann Bereitschaft).
+# Bewusst nur dieses eine Ereignis: die Sammelregel in "anything" ist
+# abgeschaltet, siehe dort.
+event=button/lid.*
+action=/etc/acpi/deckel.sh %e

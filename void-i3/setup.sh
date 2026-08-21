@@ -112,8 +112,9 @@ PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils
 # org.freedesktop.Notifications. Fehlt er, verschwinden Meldungen von
 # Chrome & Co. spurlos -- es gibt dann schlicht niemanden, der sie anzeigt.
 # libnotify liefert notify-send, brightnessctl und playerctl bedienen die
-# F-Tasten, acpi liest Akku und Temperatur.
-PAKETE="$PAKETE dunst libnotify brightnessctl playerctl acpi"
+# F-Tasten, acpi liest Akku und Temperatur. acpid ist der Daemon dazu und
+# wird hier nur fuer den Deckelschalter gebraucht.
+PAKETE="$PAKETE dunst libnotify brightnessctl playerctl acpi acpid"
 
 # Ton. PipeWire ersetzt hier PulseAudio und JACK; wireplumber ist die
 # Geraeteverwaltung, ohne die PipeWire zwar laeuft, aber nichts verschaltet.
@@ -310,7 +311,11 @@ schritt "Dienste"
 # run-Skript), und die Meldungen von dunst laufen ebenfalls darueber.
 # alsa stellt die Mischerpegel beim Booten wieder her, rtkit vergibt die
 # Echtzeitprioritaet fuer PipeWire.
-for d in dbus dhcpcd wpa_supplicant tailscaled bluetoothd alsa rtkit; do
+# acpid horcht auf den Deckelschalter (sperren + Bereitschaft, siehe
+# etc/acpi/deckel.sh). Seine Sammelregel "anything" wird oben durch die
+# abgeschaltete Fassung ersetzt -- sonst faehrt die Einschalttaste den
+# Rechner ohne Rueckfrage herunter.
+for d in dbus dhcpcd wpa_supplicant tailscaled bluetoothd alsa rtkit acpid; do
     if [ ! -e "/etc/sv/$d" ]; then
         warn "$d gibt es nicht, uebersprungen"
     elif [ -e "/var/service/$d" ]; then
@@ -447,6 +452,9 @@ for rel in etc/X11/xorg.conf.d/00-keyboard.conf \
            etc/udev/rules.d/60-rfkill-unblock.rules \
            etc/udev/hwdb.d/61-hp-envy-fkeys.hwdb \
            etc/profile.d/claude-code.sh \
+           etc/acpi/deckel.sh \
+           etc/acpi/events/deckel \
+           etc/acpi/events/anything \
            etc/rc.local; do
     sudo mkdir -p "/$(dirname "$rel")"
     sichern_system "/$rel"
@@ -459,6 +467,17 @@ sudo fc-cache -f >/dev/null 2>&1 || true
 # Ohne das Ausfuehrrecht wird sie beim Booten stillschweigend uebersprungen --
 # und cp behaelt die Rechte einer bereits vorhandenen Zieldatei bei.
 sudo chmod 755 /etc/rc.local
+
+# Dasselbe fuer den Deckel-Handler: acpid ruft ihn direkt auf.
+sudo chmod 755 /etc/acpi/deckel.sh
+
+# Der Dienst wurde weiter oben eingeschaltet, also bevor diese Regeln hier
+# lagen -- acpid liest sie nur beim Start. Ohne den Neustart bliebe bis zum
+# naechsten Booten die Sammelregel des Pakets aktiv.
+if [ -e /var/service/acpid ]; then
+    sudo sv restart acpid >/dev/null 2>&1 || true
+    info "acpid mit der Deckel-Regel neu gestartet"
+fi
 
 # Die hwdb-Datei wirkt erst, wenn sie nach /etc/udev/hwdb.bin uebersetzt ist.
 # Der trigger zieht sie fuer die bereits angemeldeten Tastaturen nach, sodass

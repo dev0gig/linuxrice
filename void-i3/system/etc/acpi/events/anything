@@ -1,0 +1,15 @@
+# Abgeschaltet -- alle Zeilen bewusst auskommentiert.
+#
+# Die Sammelregel des Pakets schickt JEDES ACPI-Ereignis an handler.sh.
+# Das haette beim Einschalten von acpid drei Dinge nebenbei geaendert:
+#   * Einschalttaste -> sofortiges "shutdown -P now", ohne Rueckfrage
+#   * Deckel zu      -> zzz ohne vorheriges Sperren (doppelt zu deckel)
+#   * Netzteil rein/raus -> schreibt in scaling_setspeed
+# Nichts davon war gewollt, darum liegt hier nur noch der Deckelschalter
+# als eigene Regel: /etc/acpi/events/deckel.
+# Das Original liegt unveraendert in /etc/acpi/anything.original -- NICHT in
+# diesem Verzeichnis: acpid liest hier jede Datei, egal wie sie heisst, und
+# eine Sicherungskopie neben der Regel waere die Regel selbst.
+#
+# event=.*
+# action=/etc/acpi/handler.sh %e

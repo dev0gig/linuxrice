@@ -193,20 +193,21 @@ sudo flatpak install -y flathub com.google.Chrome com.brave.Browser \
      com.visualstudio.code
 gut "Chrome, Brave und VS Code installiert"
 
-# Mauszeiger: Flatpak reicht XCURSOR_THEME und XCURSOR_SIZE NICHT in den
-# Sandkasten durch, auch wenn beide in der Sitzung gesetzt sind. VS Code
-# (Electron) zeigt ohne diesen Override den Adwaita-Standardzeiger, waehrend
-# der Rest des Desktops Nordzy benutzt. Chrome faellt das nicht auf die
-# Fuesse, es liest das Thema aus den GTK-Einstellungen -- der Override gilt
-# trotzdem global fuer alle Flatpaks des Nutzers, das ist eine Sorge weniger
-# bei der naechsten App.
+# Mauszeiger in Flatpak-Fenstern. Zwei Haelften, beide noetig:
 #
-# ~/.icons kommt read-only dazu: Apps mit filesystems=host sehen den Ordner
-# ohnehin, aber ein Flatpak mit engeren Rechten faende das Thema sonst nicht.
+# 1. Flatpak reicht XCURSOR_THEME und XCURSOR_SIZE NICHT in den Sandkasten
+#    durch, auch wenn beide in der Sitzung gesetzt sind. Ohne den Override
+#    kennt die Anwendung den Namen des Themas gar nicht.
+# 2. Das Thema muss an einem Ort liegen, den der Sandkasten sieht -- darum
+#    ~/.local/share/icons statt ~/.icons, siehe der Cursor-Abschnitt weiter
+#    oben.
+#
+# Fehlt das Thema, faellt Chromium/Electron auf eingebaute Zeiger zurueck:
+# die Groesse stimmt dann, das Aussehen nicht. Der Override gilt global fuer
+# alle Flatpaks des Nutzers, nicht nur fuer eine App.
 flatpak override --user \
     --env=XCURSOR_THEME=Nordzy-cursors \
-    --env=XCURSOR_SIZE=48 \
-    --filesystem=~/.icons:ro
+    --env=XCURSOR_SIZE=48
 gut "Mauszeiger fuer Flatpaks gesetzt"
 
 # ---------------------------------------------------------------- Bluetooth
@@ -324,18 +325,28 @@ fi
 
 # ------------------------------------------------------------------- Cursor
 
+# Das Thema gehoert nach ~/.local/share/icons und NICHT nach ~/.icons --
+# beide Orte kennt libXcursor (Suchreihenfolge:
+# ~/.local/share/icons:~/.icons:/usr/share/icons:/usr/share/pixmaps), aber
+# ein Flatpak setzt XCURSOR_PATH selbst auf
+# /run/host/user-share/icons:/run/host/share/icons. Dahinter stecken
+# ~/.local/share/icons und /usr/share/icons -- ~/.icons ist dort nicht
+# vertreten. Ein Thema in ~/.icons sieht deshalb jede native Anwendung,
+# aber keine Flatpak-Anwendung.
+ZIEL_ICONS="$HOME/.local/share/icons"
+
 schritt "Mauszeiger Nordzy"
-if [ -d "$HOME/.icons/Nordzy-cursors" ]; then
-    info "liegt schon unter ~/.icons/Nordzy-cursors"
+if [ -d "$ZIEL_ICONS/Nordzy-cursors" ]; then
+    info "liegt schon unter ~/.local/share/icons/Nordzy-cursors"
 else
     TMPC=$(mktemp -d)
     xbps-fetch -o "$TMPC/nz.tar.gz" \
         "https://github.com/guillaumeboehm/Nordzy-cursors/releases/latest/download/Nordzy-cursors.tar.gz" \
         || fehler "Nordzy-cursors konnte nicht geladen werden."
-    mkdir -p "$HOME/.icons"
-    tar xzf "$TMPC/nz.tar.gz" -C "$HOME/.icons"
+    mkdir -p "$ZIEL_ICONS"
+    tar xzf "$TMPC/nz.tar.gz" -C "$ZIEL_ICONS"
     rm -rf "$TMPC"
-    gut "nach ~/.icons/Nordzy-cursors entpackt"
+    gut "nach ~/.local/share/icons/Nordzy-cursors entpackt"
 fi
 
 # ------------------------------------------------------------- Systemdateien

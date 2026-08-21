@@ -71,7 +71,7 @@ Es richtet ein:
 | Dienste | `dbus`, `dhcpcd`, `wpa_supplicant`, `tailscaled`, `bluetoothd`, `alsa`, `rtkit` |
 | Locale | `de_DE.UTF-8` erzeugen (Systemsprache bleibt `C.UTF-8`), Konsolentastatur auf `de` |
 | Schriften | Red Hat Mono nach `/usr/share/fonts`, dazu die fontconfig-Regel, die `monospace` darauf umbiegt |
-| Mauszeiger | Nordzy nach `~/.icons` |
+| Mauszeiger | Nordzy nach `~/.local/share/icons` (nicht `~/.icons` — sonst sehen Flatpaks ihn nicht) |
 | Eingabe | deutsches Tastaturlayout in X, Touchpad mit natürlichem Scrollen und Tap-to-Click, Drei-Finger-Gesten |
 | Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten |
 | Fingerabdruck | auf Nachfrage: libfprint-Fork mit dem Treiber `synatlsmoc` und gepatchtes fprintd nach `/usr/local`, polkit-Regel, `pam_fprintd` für sudo und Login; das Sperrmenü entsperrt auf Fingertipp (`fingerabdruck/`) |
@@ -275,24 +275,44 @@ gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
   Terminalprogramme aus den Paketen. Die eigenen Einträge unter
   `~/.local/share/applications/*-alacritty.desktop` rufen Alacritty deshalb
   ausdrücklich im `Exec` auf und lassen `Terminal=false`.
-* **Flatpak reicht `XCURSOR_THEME`/`XCURSOR_SIZE` nicht durch.** Beide sind
-  in der Sitzung gesetzt (`~/.xinitrc`) und stehen auch im Environment von
-  i3 — die Sandbox bekommt sie trotzdem nicht, dort sind sie leer. **VS Code
-  zeigte deshalb den Adwaita-Zeiger**, der restliche Desktop Nordzy. Chrome
-  war davon nicht betroffen: es liest das Thema über die GTK-Einstellungen
-  aus `~/.config/gtk-3.0/settings.ini`, die im Sandkasten sichtbar sind.
-  Electron geht diesen Weg nicht und ist auf `XCURSOR_*` angewiesen. Gesetzt
-  wird das mit `flatpak override --user --env=…` (global, ohne App-Name, gilt
-  für alle Flatpaks) plus `--filesystem=~/.icons:ro`.
+* **Der Mauszeiger in Flatpak-Fenstern hängt an zwei Dingen, nicht an
+  einem.** Erstens reicht Flatpak `XCURSOR_THEME`/`XCURSOR_SIZE` **nicht**
+  in den Sandkasten durch — beide sind in `~/.xinitrc` gesetzt und stehen im
+  Environment von i3, in der Sandbox sind sie trotzdem leer. Das setzt
+  `flatpak override --user --env=…` gerade (global, ohne App-Name, für alle
+  Flatpaks).
 
-  Nachmessen lässt sich der Zeiger **nicht** per Screenshot — er ist ein
-  Overlay des X-Servers und fehlt in `import` und `xwd`. `XFixesGetCursorImage`
-  über `ctypes` liefert dagegen Größe und Hotspot des Zeigers, der gerade
-  angezeigt wird. Der Hotspot allein taugt zur Unterscheidung, wenn man ihn
-  gegen die Xcursor-Dateien hält (Chunk-Typ `0xfffd0002`, Hotspot ab Byte 16
-  im Chunk): `left_ptr` liegt bei Nordzy auf 5,4 und bei Adwaita auf 6,2,
-  `xterm` bei 22,22 gegen 22,24. **Ohne diesen Abgleich vergleicht man
-  leicht Pfeil mit Textcursor** und hält den Unterschied für das Thema.
+  Zweitens — und das ist die eigentliche Falle — **setzt Flatpak
+  `XCURSOR_PATH` selbst**, auf
+  `/run/host/user-share/icons:/run/host/share/icons`. Dahinter stecken
+  `~/.local/share/icons` und `/usr/share/icons`. **`~/.icons` ist dort nicht
+  vertreten**, obwohl es im nativen Suchpfad von libXcursor an zweiter
+  Stelle steht (`~/.local/share/icons:~/.icons:/usr/share/icons:/usr/share/pixmaps`,
+  nachzulesen mit `strings /usr/lib/libXcursor.so.1`). Ein Thema in
+  `~/.icons` ist damit für jede native Anwendung sichtbar und für keine
+  Flatpak-Anwendung. Deshalb liegt Nordzy in `~/.local/share/icons` — der
+  einzige Ordner, den beide Seiten sehen, ohne dass man pro App etwas
+  einträgt.
+
+  Findet Chromium/Electron das Thema nicht, fällt es auf **eingebaute
+  Zeiger** zurück: die Größe stimmt dann (die kommt aus `XCURSOR_SIZE` bzw.
+  den GTK-Einstellungen), das Aussehen nicht. „Richtige Größe, falscher
+  Zeiger" ist also genau das Zeichen für ein Thema, das nicht gefunden wird
+  — nicht für eine falsche Größenangabe.
+
+* **Den Zeiger nachmessen geht nicht per Screenshot** — er ist ein Overlay
+  des X-Servers und fehlt in `import` und `xwd`. `XFixesGetCursorImage` über
+  `ctypes` liefert dagegen das Bild, das gerade angezeigt wird. Am
+  zuverlässigsten vergleicht man es **pixelweise** gegen die Xcursor-Dateien
+  beider Themen (Chunk-Typ `0xfffd0002`: Breite/Höhe/Hotspot ab Byte 16,
+  ARGB-Daten ab Byte 36) — dann steht da nicht „48x48", sondern
+  `Nordzy-cursors/left_ptr`. Der Hotspot allein reicht nicht: Pfeil und
+  Textcursor unterscheiden sich stärker voneinander als dasselbe Symbol in
+  zwei Themen (`left_ptr` 5,4 gegen 6,2 — `xterm` dagegen 22,22 gegen 22,24).
+* **`xdotool mousemove` allein ändert den Zeiger nicht.** Ein reiner Warp
+  lässt viele Anwendungen den Cursor nicht neu setzen — gemessen wird dann
+  der alte. Eine winzige Relativbewegung hinterher (`mousemove_relative 3 3`
+  und zurück) erzeugt das nötige Motion-Event.
 * **VS Code meldet seine Fensterklasse klein: `code`, nicht `Code`.** i3
   vergleicht `class=` mit einem regulären Ausdruck und achtet dabei auf
   Groß- und Kleinschreibung — eine Regel auf `[class="Code"]` greift

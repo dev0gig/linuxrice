@@ -180,13 +180,7 @@ def menue():
 
     fertig = subprocess.run(
         ["rofi", "-dmenu", "-i", "-no-custom", "-format", "i",
-         "-p", BT + " Bluetooth", "-lines", str(min(len(zeilen), 14)),
-         # Warum die drei Zustaende ausgeschrieben stehen: siehe
-         # ~/.local/bin/benachrichtigungen -- sonst streift rofi die Liste beige.
-         "-theme-str",
-         "element normal.normal    { background-color: @bg; text-color: @fg-dim; }"
-         "element alternate.normal { background-color: @bg; text-color: @fg-dim; }"
-         "element selected.normal  { background-color: @bg-sel; text-color: @fg; }"],
+         "-p", BT + " Bluetooth", "-lines", str(min(len(zeilen), 14))],
         input="\n".join(zeilen), capture_output=True, text=True)
     if fertig.returncode != 0 or not fertig.stdout.strip():
         return                      # mit Escape abgebrochen

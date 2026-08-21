@@ -130,20 +130,9 @@ def main():
     zeilen = ["{}  Verlauf leeren ({})".format(MUELL, len(eintraege))]
     zeilen += [zeile(e) for e in eintraege]
 
-    # -theme-str: ~/.config/rofi/config.rasi setzt bei den Zeilen nur die
-    # Schriftfarbe ("element normal { text-color: ... }"), nie den Hintergrund.
-    # Den holt sich rofi darum aus seinem mitgelieferten Standardthema und
-    # faerbt jede zweite Zeile beige -- die Liste sieht gestreift aus. Hier
-    # stehen die drei Zustaende deshalb ausgeschrieben; "normal.normal" ist
-    # noetig, weil die Regel des Standardthemas genau diesen Zustand faerbt
-    # und ein blosses "element" oder eine Variable dagegen nicht ankommt.
     fertig = subprocess.run(
         ["rofi", "-dmenu", "-i", "-no-custom", "-format", "i",
-         "-p", GLOCKE + " Verlauf", "-lines", str(min(len(zeilen), 14)),
-         "-theme-str",
-         "element normal.normal    { background-color: @bg; text-color: @fg-dim; }"
-         "element alternate.normal { background-color: @bg; text-color: @fg-dim; }"
-         "element selected.normal  { background-color: @bg-sel; text-color: @fg; }"],
+         "-p", GLOCKE + " Verlauf", "-lines", str(min(len(zeilen), 14))],
         input="\n".join(zeilen), capture_output=True, text=True)
     if fertig.returncode != 0 or not fertig.stdout.strip():
         return                      # mit Escape abgebrochen

@@ -53,7 +53,7 @@ function aktion(c) {
     gsub(/^"|"$/, "", c)
 
     if (c ~ /i3-hilfe/)                    return "Diese Uebersicht"
-    if (c ~ /i3-sitzung/)                  return "Sperren / Bereitschaft / Ausschalten"
+    if (c ~ /i3-sitzung/)                  return "Abmelden / Neustart / Herunterfahren"
     if (c ~ /osd lauter/)                  return "Lauter"
     if (c ~ /osd leiser/)                  return "Leiser"
     if (c ~ /osd stumm/)                   return "Ton stumm an/aus"

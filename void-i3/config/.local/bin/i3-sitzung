@@ -5,30 +5,37 @@
 # siehe /etc/udev/hwdb.d/61-hp-envy-fkeys.hwdb. Ohne diesen Remap sendet sie
 # KEY_SETUP, wofuer X11 gar kein Keysym kennt -- die Taste waere nicht bindbar.
 #
-# Sperren laeuft ueber i3lock, Bereitschaft/Neustart/Ausschalten ueber sudo.
-# Die dafuer noetige passwortfreie Ausnahme steht in
-# /etc/sudoers.d/10-sitzung -- ohne sie bleibt das Menue an der Passwortfrage
-# haengen, weil rofi kein Terminal fuer die Eingabe hat.
+# Das Menue ist ein Icon-Raster wie der App-Drawer auf Super+Space (Theme:
+# ~/.config/rofi/sitzung.rasi) und zeigt genau drei Kacheln: Abmelden,
+# Neustart, Herunterfahren. Alle drei koennen Arbeit vernichten, darum fragt
+# jede noch einmal nach -- die Rueckfrage bleibt bewusst eine schmale Liste.
 #
-# Die drei Punkte, die Arbeit vernichten koennen, fragen einmal nach.
-# Sperren und Bereitschaft nicht: die sind folgenlos.
+# Sperren und Bereitschaft stehen nicht mehr im Raster, die Funktionen gibt
+# es aber weiter: "i3-sitzung sperren" bzw. "i3-sitzung bereitschaft" sind
+# als eigene Tastenbelegung gedacht.
+#
+# Neustart/Ausschalten/Bereitschaft laufen ueber sudo. Die dafuer noetige
+# passwortfreie Ausnahme steht in /etc/sudoers.d/10-sitzung -- ohne sie
+# bliebe das Menue an der Passwortfrage haengen, weil rofi kein Terminal
+# fuer die Eingabe hat.
 
 LOCK_FARBE=161616          # wie client.background in der i3-Config
 
-SPERREN="󰌾  Sperren"
-BEREIT="󰒲  Bereitschaft"
-ABMELDEN="󰗽  Abmelden"
-NEUSTART="󰜉  Neustart"
-AUS="󰐥  Herunterfahren"
+RASTER="$HOME/.config/rofi/sitzung.rasi"
 
-# -no-show-icons: die rofi-Config hat show-icons an, hier tragen aber die
-# Glyphen im Text selbst das Symbol -- sonst bliebe links eine leere Spalte.
-menue() {
-    rofi -dmenu -i -no-show-icons -p "$1" -lines "$2"
+# Zeilen im dmenu-Format mit Symbol: Text, NUL, "icon", 0x1f, Symbolname.
+# Die Symbole kommen aus Papirus-Dark (icon-theme in config.rasi); rofi
+# skaliert die SVGs auf die 4em aus dem Theme hoch.
+zeilen() {
+    printf 'Abmelden\0icon\037system-log-out\n'
+    printf 'Neustart\0icon\037system-reboot\n'
+    printf 'Herunterfahren\0icon\037system-shutdown\n'
 }
 
+# Rueckfrage: schmale Liste im Standardthema. -no-show-icons, weil hier
+# keine Symbole mitgegeben werden und sonst links eine leere Spalte bliebe.
 frage_nach() {
-    [ "$(printf 'Nein\nJa\n' | menue "$1" 2)" = "Ja" ]
+    [ "$(printf 'Nein\nJa\n' | rofi -dmenu -i -no-show-icons -p "$1" -lines 2)" = "Ja" ]
 }
 
 sperren() {
@@ -72,28 +79,30 @@ finger_entsperren() {
     ) >/dev/null 2>&1 &
 }
 
-auswahl=$(printf '%s\n' "$SPERREN" "$BEREIT" "$ABMELDEN" "$NEUSTART" "$AUS" |
-          menue "Sitzung" 5)
+bereitschaft() {
+    # Erst sperren, dann schlafen -- sonst liegt der entsperrte Schirm beim
+    # Aufwachen offen da. i3lock forkt, kehrt also sofort zurueck; das kurze
+    # Warten laesst das Fenster noch sicher hochkommen.
+    sperren
+    sleep 1
+    sudo zzz
+}
+
+case "$1" in
+    sperren)      sperren;      exit 0 ;;
+    bereitschaft) bereitschaft; exit 0 ;;
+esac
+
+auswahl=$(zeilen | rofi -dmenu -i -theme "$RASTER")
 
 case "$auswahl" in
-    "$SPERREN")
-        sperren
-        ;;
-    "$BEREIT")
-        # Erst sperren, dann schlafen -- sonst liegt der entsperrte Schirm
-        # beim Aufwachen offen da. i3lock forkt, kehrt also sofort zurueck;
-        # das kurze Warten laesst das Fenster noch sicher hochkommen.
-        sperren
-        sleep 1
-        sudo zzz
-        ;;
-    "$ABMELDEN")
+    Abmelden)
         frage_nach "Abmelden?" && i3-msg exit
         ;;
-    "$NEUSTART")
+    Neustart)
         frage_nach "Neustart?" && sudo reboot
         ;;
-    "$AUS")
+    Herunterfahren)
         frage_nach "Herunterfahren?" && sudo poweroff
         ;;
     *)

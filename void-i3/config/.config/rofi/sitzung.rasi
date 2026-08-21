@@ -1,0 +1,52 @@
+/* sitzung.rasi -- Sitzungsmenue als Icon-Raster, wie der App-Drawer.
+ *
+ * Wird NUR von ~/.local/bin/i3-sitzung geladen (rofi -theme). Der Aufbau
+ * entspricht raster.rasi (Super+Space), mit zwei Unterschieden:
+ *
+ *   1. Keine Textzeile oben. mainbox listet hier nur die listview auf --
+ *      ohne inputbar gibt es weder Prompt noch Suchfeld. Gesucht wird bei
+ *      drei Kacheln ohnehin nicht, ausgewaehlt wird mit Pfeiltasten oder
+ *      Maus.
+ *   2. Eine Reihe mit genau drei Spalten statt 5x3.
+ *
+ * Die Symbole liefert das Skript pro Zeile mit (Papirus: system-log-out,
+ * system-reboot, system-shutdown), darum bleibt show-icons aus config.rasi
+ * hier absichtlich an.
+ */
+@import "config.rasi"
+
+window {
+    width: 34%;
+}
+
+/* Ohne inputbar in dieser Liste blendet rofi die Textzeile komplett aus --
+   ein blosses "inputbar { enabled: false; }" liesse stattdessen eine Luecke. */
+mainbox {
+    children: [ listview ];
+    padding:  6px;
+}
+
+listview {
+    columns: 3;
+    lines:   1;
+    padding: 8px 6px;
+    spacing: 0px;
+    flow:    horizontal;
+}
+
+/* orientation: vertical stellt Icon ueber den Namen statt daneben. */
+element {
+    orientation: vertical;
+    padding:     18px 4px;
+    spacing:     10px;
+}
+
+element-icon {
+    size:             4em;
+    horizontal-align: 0.5;
+}
+
+element-text {
+    horizontal-align: 0.5;
+    vertical-align:   0.5;
+}

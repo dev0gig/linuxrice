@@ -4,34 +4,34 @@ x-scheme-handler/https=com.google.Chrome.desktop
 text/html=com.google.Chrome.desktop
 
 # Ordner bleiben bei PCManFM, damit "Ordner oeffnen" aus den Browser-
-# Downloads weiter funktioniert. Yazi steht darunter als Alternative.
+# Downloads weiter funktioniert.
 inode/directory=pcmanfm.desktop
 
-# Text, Markdown und Code gehen zum Bearbeiten in Helix.
-text/markdown=helix-alacritty.desktop
-text/x-markdown=helix-alacritty.desktop
-text/plain=helix-alacritty.desktop
-application/x-shellscript=helix-alacritty.desktop
-text/x-shellscript=helix-alacritty.desktop
-text/x-python=helix-alacritty.desktop
-application/json=helix-alacritty.desktop
-application/toml=helix-alacritty.desktop
-text/x-toml=helix-alacritty.desktop
-application/x-yaml=helix-alacritty.desktop
-text/x-yaml=helix-alacritty.desktop
-text/x-csrc=helix-alacritty.desktop
-text/x-chdr=helix-alacritty.desktop
-text/x-c++src=helix-alacritty.desktop
-text/x-c++hdr=helix-alacritty.desktop
-text/rust=helix-alacritty.desktop
-text/x-lua=helix-alacritty.desktop
-text/javascript=helix-alacritty.desktop
-application/javascript=helix-alacritty.desktop
-text/css=helix-alacritty.desktop
-text/x-makefile=helix-alacritty.desktop
-text/x-log=helix-alacritty.desktop
-text/x-diff=helix-alacritty.desktop
-text/x-patch=helix-alacritty.desktop
+# Text, Markdown und Code gehen zum Bearbeiten in VS Code.
+text/markdown=com.visualstudio.code.desktop
+text/x-markdown=com.visualstudio.code.desktop
+text/plain=com.visualstudio.code.desktop
+application/x-shellscript=com.visualstudio.code.desktop
+text/x-shellscript=com.visualstudio.code.desktop
+text/x-python=com.visualstudio.code.desktop
+application/json=com.visualstudio.code.desktop
+application/toml=com.visualstudio.code.desktop
+text/x-toml=com.visualstudio.code.desktop
+application/x-yaml=com.visualstudio.code.desktop
+text/x-yaml=com.visualstudio.code.desktop
+text/x-csrc=com.visualstudio.code.desktop
+text/x-chdr=com.visualstudio.code.desktop
+text/x-c++src=com.visualstudio.code.desktop
+text/x-c++hdr=com.visualstudio.code.desktop
+text/rust=com.visualstudio.code.desktop
+text/x-lua=com.visualstudio.code.desktop
+text/javascript=com.visualstudio.code.desktop
+application/javascript=com.visualstudio.code.desktop
+text/css=com.visualstudio.code.desktop
+text/x-makefile=com.visualstudio.code.desktop
+text/x-log=com.visualstudio.code.desktop
+text/x-diff=com.visualstudio.code.desktop
+text/x-patch=com.visualstudio.code.desktop
 
 # Bilder im richtigen Bildbetrachter statt als ASCII im Terminal.
 image/jpeg=nsxiv.desktop
@@ -47,4 +47,3 @@ image/avif=nsxiv.desktop
 text/markdown=glow-alacritty.desktop;bat-alacritty.desktop;com.google.Chrome.desktop;
 text/x-markdown=glow-alacritty.desktop;bat-alacritty.desktop;
 text/plain=bat-alacritty.desktop;com.google.Chrome.desktop;
-inode/directory=yazi-alacritty.desktop;

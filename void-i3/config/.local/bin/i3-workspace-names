@@ -46,6 +46,7 @@ PRETTY = {
     "autostart-term": "Terminal",
     "remote-term": "Terminal",
     "pcmanfm": "Dateien",
+    "code": "Code",
     "xterm": "xterm",
     "rofi": "rofi",
     "thunderbird": "Mail",
@@ -56,18 +57,15 @@ PRETTY = {
 }
 
 
-# Feste Namen fuer die fuenf Stamm-Arbeitsflaechen.  Sie haben Vorrang vor der
+# Feste Namen fuer die vier Stamm-Arbeitsflaechen.  Sie haben Vorrang vor der
 # dynamischen Benennung nach Fensterklasse -- der Name der SSH-Flaeche soll
 # auch dann stehen bleiben, wenn die Sitzung beendet oder die Flaeche leer ist.
-# Gleiches gilt fuer 5: der Name bleibt "Dateien", auch wenn Yazi mit "q"
-# beendet wurde oder gerade ein Editor daneben liegt.
-# Ab 6 aufwaerts wird weiter nach dem laufenden Programm benannt.
+# Ab 5 aufwaerts wird nach dem laufenden Programm benannt.
 STATIC = {
     1: "Chrome",
     2: "@@WS2_NAME@@",
     3: "@@WS3_NAME@@",
     4: "Vitals",
-    5: "Dateien",
 }
 
 

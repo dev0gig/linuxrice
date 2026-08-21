@@ -40,10 +40,12 @@ font pango:Red Hat Mono 9, Symbols Nerd Font Mono 9
 # NetworkManager -- nm-applet ist gar nicht installiert.
 # exec --no-startup-id nm-applet
 
-# ---- Autostart: feste Belegung der Arbeitsflaechen 1 bis 5 ----
+# ---- Autostart: feste Belegung der Arbeitsflaechen 1 bis 4 ----
 #   1: Chrome    2: lokales Terminal
 #   3: SSH-Sitzung   4: Vitals (btop, volle Flaeche)
-#   5: Dateien (Yazi, volle Flaeche -- siehe Mod+e weiter unten)
+#
+# Ab 5 aufwaerts sind die Flaechen frei und werden nach dem laufenden
+# Programm benannt.
 #
 # Jedes Autostart-Fenster bekommt eine eigene Fensterklasse, damit nur genau
 # DIESES Fenster zugeordnet wird -- normale Alacritty-Fenster (Ctrl+Alt+t)
@@ -57,18 +59,14 @@ assign [class="(?i)google-chrome"] number 1
 assign [class="autostart-term"]   number 2
 assign [class="odin-term"]        number 3
 assign [class="vitals-dashboard"] number 4
-assign [class="yazi-term"]        number 5
 
 exec --no-startup-id ~/.local/bin/chrome
 exec --no-startup-id alacritty --class autostart-term
 exec --no-startup-id alacritty --class odin-term -e ~/.local/bin/odin-shell
 exec --no-startup-id alacritty --class vitals-dashboard -e ~/.local/bin/vitals-btop
-exec --no-startup-id alacritty --class yazi-term -e yazi
 
-# Dashboard und Dateimanager sollen die volle Flaeche haben: kein Rahmen,
-# keine Titelleiste.
+# Das Dashboard soll die volle Flaeche haben: kein Rahmen, keine Titelleiste.
 for_window [class="vitals-dashboard"] border none
-for_window [class="yazi-term"] border none
 
 exec --no-startup-id i3-msg workspace number 1
 
@@ -289,28 +287,30 @@ bindsym $mod+s layout stacking
 bindsym $mod+w layout tabbed
 bindsym $mod+t layout toggle split
 
-# Dateimanager: Yazi im Terminal auf Mod+e, PCManFM auf Ctrl+Mod+e.
-# Yazi ist der Alltagsweg -- Cursortasten reichen zur Bedienung. Enter auf
-# einer Textdatei startet Helix in einem eigenen Fenster, das i3 rechts
-# daneben kachelt; eingestellt ist das im [opener] von ~/.config/yazi/yazi.toml.
-#
-# Mod+e startet Yazi NICHT im gerade benutzten Fenster -- das wuerde die
-# Arbeitsflaeche kacheln und Yazi auf die Haelfte druecken. Stattdessen
-# springt ~/.local/bin/dateien auf Flaeche 5, wo Yazi ueber die assign-Regel
-# oben allein und ohne Rahmen liegt. Laeuft dort schon eins, wird nur
-# umgeschaltet.
-bindsym $mod+e exec --no-startup-id ~/.local/bin/dateien
-
-# PCManFM bleibt fuer die zwei Dinge, die ein TUI-Dateimanager nicht kann:
-# Dateien per Drag-and-Drop in andere Fenster ziehen und Bilder als
-# Vorschaubilder durchblaettern. Ohne --desktop, sonst legt es ein eigenes
-# Vollbild-Fenster ueber das Root-Window und verdeckt das feh-Wallpaper.
-bindsym Control+$mod+e exec --no-startup-id pcmanfm
+# Dateimanager: PCManFM auf Mod+e, als frei bewegliches Fenster.
+# Ohne --desktop, sonst legt es ein eigenes Vollbild-Fenster ueber das
+# Root-Window und verdeckt das feh-Wallpaper.
+bindsym $mod+e exec --no-startup-id pcmanfm
 
 # PCManFM immer schwebend statt gekachelt, mittig und in fester Groesse.
 # Die Kommas trennen hier bewusst drei i3-Befehle -- anders als in exec-Zeilen,
 # wo ein Komma im Kommando in Anfuehrungszeichen muss.
 for_window [class="Pcmanfm"] floating enable, resize set 1000 750, move position center
+
+# Entwicklungsumgebung: VS Code auf Mod+c, installiert als Flatpak.
+#
+# floating disable steht hier bewusst, obwohl Kacheln der Normalfall ist:
+# VS Code meldet sein Fenster beim ersten Start mit einer eigenen Wunsch-
+# groesse an, und der Willkommensbildschirm kann als Dialog durchgehen --
+# beides laesst i3 sonst gelegentlich ein schwebendes Fenster stehen.
+# Die Regel zwingt jedes Code-Fenster ins normale Tiling.
+#
+# Die Klasse ist klein geschrieben ("code", nicht "Code"), so meldet der
+# Flatpak-Build sein Fenster an. i3 vergleicht mit einem regulaeren Ausdruck
+# und achtet dabei auf Gross- und Kleinschreibung -- (?i) macht die Regel
+# unabhaengig davon, falls ein spaeterer Build das anders handhabt.
+bindsym $mod+c exec --no-startup-id flatpak run com.visualstudio.code
+for_window [class="(?i)^code$"] floating disable
 
 # toggle tiling / floating
 bindsym $mod+Shift+space floating toggle

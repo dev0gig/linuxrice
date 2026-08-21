@@ -147,13 +147,14 @@ PAKETE="$PAKETE btop lm_sensors"
 # Begruendung im Kopf von system/bin/tasten-led.c.
 PAKETE="$PAKETE gcc libcap-progs"
 
-# Dateien und Text: Yazi als Dateimanager im Terminal, Helix als Editor,
-# nano als schneller Notausgang fuer "eine Zeile aendern". glow zeigt
-# Markdown gerendert, bat ist cat mit Syntaxhervorhebung, nsxiv oeffnet
-# Bilder in einem richtigen Fenster statt als ASCII im Terminal.
+# Dateien und Text: PCManFM ist der Dateimanager (weiter oben in der Liste),
+# nano der Editor im Terminal fuer git commit und "eine Zeile aendern" --
+# das eigentliche Programmieren laeuft in VS Code, weiter unten als Flatpak.
+# glow zeigt Markdown gerendert, bat ist cat mit Syntaxhervorhebung, nsxiv
+# oeffnet Bilder in einem richtigen Fenster statt als ASCII im Terminal.
 # Kitty wurde bewusst nicht genommen: das einzige Argument waere die
 # Bildvorschau im Terminal gewesen, und dafuer ist nsxiv ohnehin besser.
-PAKETE="$PAKETE yazi helix nano glow bat nsxiv desktop-file-utils"
+PAKETE="$PAKETE nano glow bat nsxiv desktop-file-utils"
 
 # Werkzeuge, die im Alltag dazugehoeren.
 PAKETE="$PAKETE git github-cli rclone xclip ImageMagick nodejs tailscale
@@ -184,7 +185,11 @@ schritt "Browser"
 # "Video Decode".
 sudo flatpak remote-add --if-not-exists flathub \
      https://dl.flathub.org/repo/flathub.flatpakrepo
-sudo flatpak install -y flathub com.google.Chrome com.brave.Browser
+# VS Code kommt aus demselben Grund als Flatpak: die Version im Void-Repo
+# ist ein aelterer Code-OSS-Build ohne den Microsoft-Marktplatz. Der Flatpak
+# hat filesystems=host, kommt also ohne Zusatzrechte an alle Dateien.
+sudo flatpak install -y flathub com.google.Chrome com.brave.Browser \
+     com.visualstudio.code
 gut "Chrome und Brave installiert"
 
 # ---------------------------------------------------------------- Bluetooth
@@ -458,10 +463,10 @@ cp -r "$QUELLE/config/." "$HOME/"
 chmod 755 "$HOME"/.local/bin/* "$HOME/.config/i3/wallpaper.sh"
 gut "Dateien abgelegt"
 
-# Die Zuordnungen in mimeapps.list zeigen auf eigene .desktop-Eintraege in
-# ~/.local/share/applications (Helix fuer Text und Code, glow fuer Markdown,
-# yazi fuer Ordner). Ohne diesen Aufruf findet der Dateimanager sie erst
-# nach dem naechsten Login.
+# Die Zuordnungen in mimeapps.list zeigen teils auf eigene .desktop-Eintraege
+# in ~/.local/share/applications (glow fuer Markdown, bat zum Ansehen), teils
+# auf VS Code und PCManFM. Ohne diesen Aufruf findet der Dateimanager die
+# eigenen Eintraege erst nach dem naechsten Login.
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 
 # ------------------------------------------------------------- Platzhalter

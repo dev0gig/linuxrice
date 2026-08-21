@@ -12,12 +12,11 @@ export DISABLE_AUTOUPDATER=1
 
 # Editor und Pager.
 # EDITOR/VISUAL gelten fuer alles, was sich einen Editor holt: git commit,
-# crontab, visudo. Yazi geht seit dem [opener] in ~/.config/yazi/yazi.toml
-# absichtlich NICHT diesen Weg -- Enter auf einer Textdatei startet Helix dort
-# in einem eigenen Alacritty, damit der Dateimanager daneben stehen bleibt
-# statt dahinter zu verschwinden.
-export EDITOR=hx
-export VISUAL=hx
+# crontab, visudo. Das muss im Terminal laufen und darf sich nicht sofort
+# wieder verabschieden -- VS Code taugt dafuer nicht, darum nano (die
+# Einstellungen dazu stehen in ~/.nanorc).
+export EDITOR=nano
+export VISUAL=nano
 # bat als Pager: wie less, aber mit Syntaxhervorhebung. -F beendet sich bei
 # kurzen Dateien selbst, -R laesst Farben durch.
 export PAGER=less
@@ -26,4 +25,4 @@ export BAT_PAGER='less -FR'
 alias cat='bat --paging=never'
 alias catp='bat'
 alias md='glow -p'
-alias fm='yazi'
+alias fm='pcmanfm . >/dev/null 2>&1 &'

@@ -101,7 +101,10 @@ fingerabdruck/        Treiber-Build fuer den Synaptics-Sensor, eigenes README
 | 2 | lokales Terminal | `autostart-term` |
 | 3 | SSH-Sitzung, hält nach dem Ende eine lokale Shell offen | `remote-term` |
 | 4 | btop über die volle Fläche | `vitals-dashboard` |
-| 5 | Dateimanager Yazi, volle Fläche ohne Rahmen | `yazi-term` |
+
+Ab 5 sind die Flächen frei: sie entstehen beim Hinschalten, werden nach dem
+Programm darin benannt (`5: Code`) und verschwinden wieder, sobald das letzte
+Fenster zu ist.
 
 Jedes Autostart-Fenster hat eine eigene Fensterklasse — damit landet genau
 *dieses* Fenster auf seiner Fläche, während normal gestartete Terminals sich
@@ -116,8 +119,8 @@ funktionieren `workspace number N` und die `assign`-Regeln weiter.
 | `Strg+Alt+T` | Terminal |
 | `$mod+space` / `$mod+d` | rofi |
 | `$mod+Shift+d` | dmenu (Rückfallebene) |
-| `$mod+e` | Dateimanager Yazi — springt auf Fläche 5 |
-| `Strg+$mod+e` | Dateimanager PCManFM (Fenster) |
+| `$mod+e` | Dateimanager PCManFM (frei bewegliches Fenster) |
+| `$mod+c` | VS Code (kacheln, nicht schwebend) |
 | `$mod+Shift+f` | Vollbild |
 | `$mod+t` | Aufteilung umschalten |
 | `Strg+q` | Fenster schließen |
@@ -143,51 +146,45 @@ Browser — das wäre dieselbe Klasse wie der Browser selbst.
 
 ## Dateien, Text und Code
 
-Zwei Dateimanager nebeneinander, mit klarer Aufgabenteilung:
+**PCManFM** auf `$mod+e` ist der Dateimanager, als schwebendes Fenster
+(1000x750, mittig). Schwebend statt gekachelt, weil ein Dateimanager meist
+nur kurz aufgemacht wird — er soll über der Arbeit liegen und sie nicht zur
+Seite schieben. Drag-and-Drop in andere Fenster und Vorschaubilder für Bilder
+kann er von Haus aus; Ordner sind ihm auch als `inode/directory` zugeordnet,
+damit „Ordner öffnen" aus den Browser-Downloads dort landet.
 
-* **Yazi** auf `$mod+e` ist der Alltagsweg. Es läuft in Alacritty und lässt
-  sich komplett mit den Cursortasten bedienen — hoch/runter bewegen, rechts
-  in den Ordner hinein, links wieder heraus. `hjkl` liegt parallel darauf,
-  man muss es aber nicht benutzen. Maus ist über `mouse_events` in
-  `~/.config/yazi/yazi.toml` eingeschaltet.
+**VS Code** auf `$mod+c` ist die Entwicklungsumgebung, installiert als
+Flatpak (`com.visualstudio.code`). Der Flatpak statt des Void-Pakets, weil
+`vscode` aus dem Repo ein älterer Code-OSS-Build ohne den Microsoft-
+Marktplatz ist — kein Pylance, kein offizielles Remote-SSH. Der Flatpak hat
+`filesystems=host`, kommt also ohne Zusatzrechte an alle Dateien, und über
+`ssh-auth` auch an den SSH-Agenten.
 
-  Yazi hat eine feste Arbeitsfläche (5) und liegt dort allein und ohne
-  Rahmen. `$mod+e` startet deshalb kein Fenster in der gerade benutzten
-  Fläche — das würde sie kacheln und den Dateimanager auf die Hälfte
-  drücken. Stattdessen schaltet `~/.local/bin/dateien` auf 5 und startet
-  Yazi nur dann, wenn dort gerade keins läuft. Zwei Ordner nebeneinander
-  braucht kein zweites Fenster: `t` macht in Yazi einen Tab auf, `y`/`x`
-  kopiert bzw. schneidet aus, `p` fügt im anderen Tab ein.
-* **PCManFM** auf `Strg+$mod+e` bleibt für die zwei Dinge, die ein
-  TUI-Dateimanager nicht kann: Dateien per Drag-and-Drop in andere Fenster
-  ziehen und Bilder als Vorschaubilder durchblättern. Es kostet 1,4 MB, und
-  nichts im System hängt davon ab — deshalb steht es hier statt weg zu sein.
+Anders als der Dateimanager kachelt VS Code ganz normal. Die Regel
+`for_window [class="(?i)^code$"] floating disable` steht trotzdem in der
+Config: das erste Fenster meldet eine eigene Wunschgröße an und der
+Willkommensbildschirm kann als Dialog durchgehen, was i3 sonst gelegentlich
+schwebend stehen lässt.
 
-Ordner bleiben absichtlich bei PCManFM zugeordnet (`inode/directory`), damit
-„Ordner öffnen" aus den Browser-Downloads weiter funktioniert. Yazi steht
-dafür im Rechtsklick unter „Öffnen mit".
-
-Zum Ansehen und Bearbeiten:
+Zum Ansehen und Bearbeiten im Terminal:
 
 | Werkzeug | Wofür |
 | --- | --- |
-| `hx` (Helix) | Editor für Text, Markdown und Code; LSP ist eingebaut |
-| `nano` | schneller Notausgang für „eine Zeile ändern" |
+| `nano` | Editor im Terminal; `EDITOR`/`VISUAL` zeigen hierher |
 | `glow -p` | Markdown gerendert im Terminal lesen |
 | `bat` | `cat` mit Syntaxhervorhebung (als Alias auf `cat` gelegt) |
 | `nsxiv` | Bilder in einem richtigen Fenster |
 
-`Enter` auf einer Textdatei öffnet Helix — aber in einem **eigenen**
-Alacritty-Fenster, das i3 rechts neben Yazi kachelt. Yazis Vorgabe wäre
-`${EDITOR:-vi} %s` mit `block = true`; das lässt den Editor das Yazi-Fenster
-übernehmen, der Dateimanager verschwindet dahinter. Der `[opener]`-Abschnitt
-in `~/.config/yazi/yazi.toml` ersetzt das durch `orphan = true` und ein
-eigenes Fenster, damit beide nebeneinander stehen bleiben.
+`EDITOR=nano` ist bewusst nicht VS Code: `git commit` und `visudo` erwarten
+einen Editor, der im Terminal läuft und erst zurückkehrt, wenn die Datei
+gespeichert ist. Ein GUI-Fenster passt da nicht hinein.
 
-`EDITOR=hx` aus der `.bashrc` bleibt trotzdem wichtig — für alles andere,
-was einen Editor aufruft (`git commit`, `crontab`, …).
+Doppelklick auf eine Text- oder Codedatei öffnet sie in VS Code — die
+Zuordnungen in `~/.config/mimeapps.list` zeigen auf
+`com.visualstudio.code.desktop`. Markdown lässt sich im Rechtsklick unter
+„Öffnen mit" weiterhin mit `glow` oder `bat` im Terminal ansehen.
 
-**Kitty wurde bewusst nicht genommen.** Das einzige Argument wäre Yazis
+**Kitty wurde bewusst nicht genommen.** Das einzige Argument wäre eine
 Bildvorschau im Terminal gewesen — Alacritty kann kein Sixel und kein
 Kitty-Graphics-Protokoll. Dafür ist `nsxiv` aber ohnehin die bessere Lösung,
 und ein Terminalwechsel hätte `i3/config` und `rofi/config.rasi`
@@ -263,10 +260,15 @@ gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
   des Flatpak-Fensters vorher mit `i3-msg -t get_tree` nachsehen, nicht raten.
 * **`Terminal=true` in einer `.desktop`-Datei ist hier eine Falle.** libfm
   sucht sich dann selbst ein Terminal und landet bei `xterm` — falsche
-  Schrift, falsche Farben. Genau so kommen `Helix.desktop` und `yazi.desktop`
-  aus den Paketen. Die eigenen Einträge unter
+  Schrift, falsche Farben. Genau so kommen die `.desktop`-Dateien der
+  Terminalprogramme aus den Paketen. Die eigenen Einträge unter
   `~/.local/share/applications/*-alacritty.desktop` rufen Alacritty deshalb
   ausdrücklich im `Exec` auf und lassen `Terminal=false`.
+* **VS Code meldet seine Fensterklasse klein: `code`, nicht `Code`.** i3
+  vergleicht `class=` mit einem regulären Ausdruck und achtet dabei auf
+  Groß- und Kleinschreibung — eine Regel auf `[class="Code"]` greift
+  wortlos nicht. Auch hier gilt: WM_CLASS mit `i3-msg -t get_tree`
+  nachsehen, nicht raten.
 * **`xdg-mime query filetype` und der Dateimanager sind sich nicht einig.**
   Für eine `.md` liefert das Shellskript `text/plain` (es fällt auf
   `file --mime-type` zurück), `gio info` dagegen `text/markdown` — und *das*

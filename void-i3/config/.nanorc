@@ -1,5 +1,6 @@
-# nano ist hier nur der schnelle Notausgang fuer "eine Zeile aendern".
-# Der eigentliche Editor ist Helix.
+# nano ist der Editor fuers Terminal: EDITOR/VISUAL zeigen hierher, also
+# landet git commit, crontab und visudo in nano. Fuer alles Groessere gibt
+# es VS Code (Mod+c).
 
 # Syntaxhervorhebung: die Definitionen liegen im nano-Paket, muessen aber
 # ausdruecklich eingebunden werden.

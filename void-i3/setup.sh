@@ -384,6 +384,38 @@ else
     warn "gcc oder setcap fehlt -- die LEDs in F5/F8 bleiben dunkel."
 fi
 
+# ------------------------------------------------------ Fingerabdrucksensor
+# Der Synaptics 06cb:00e7 braucht einen selbst gebauten libfprint-Treiber,
+# siehe fingerabdruck/README.md. Das dauert ein paar Minuten und nimmt die
+# Void-Pakete fprintd/libfprint raus -- darum wird gefragt statt gemacht.
+schritt "Fingerabdrucksensor"
+sensor_00e7=0
+for d in /sys/bus/usb/devices/*; do
+    if [ "$(cat "$d/idVendor" 2>/dev/null)" = 06cb ] &&
+       [ "$(cat "$d/idProduct" 2>/dev/null)" = 00e7 ]; then
+        sensor_00e7=1
+    fi
+done
+if [ "$sensor_00e7" -eq 1 ]; then
+    printf '    Synaptics 06cb:00e7 gefunden. Treiber jetzt bauen (libfprint + fprintd,\n'
+    printf '    einige Minuten)? [j/N] '
+    read -r antwort
+    case "$antwort" in
+        j|J|ja|Ja)
+            if sh "$QUELLE/fingerabdruck/einrichten.sh"; then
+                gut "Fingerabdrucksensor eingerichtet -- Finger anlernen steht unten"
+            else
+                warn "einrichten.sh ist abgebrochen -- spaeter von Hand: sh fingerabdruck/einrichten.sh"
+            fi
+            ;;
+        *)
+            info "uebersprungen -- spaeter: sh fingerabdruck/einrichten.sh"
+            ;;
+    esac
+else
+    info "kein Synaptics 06cb:00e7 am USB -- uebersprungen"
+fi
+
 # --------------------------------------------------------- Benutzerdateien
 
 sichern() {   # sichern <repo-datei> <ziel>
@@ -506,6 +538,8 @@ ${FETT}Fertig.${AUS} Was jetzt noch von Hand kommt:
   6. Eigene Hintergrundbilder nach ~/Bilder/Wallpapers, dann \$mod+Shift+w.
   7. In Chrome mit dem Google-Konto anmelden -- das kann kein Skript.
      Lesezeichen, Passwoerter und Tabs kommen dann vom Handy mit.
+  8. Falls der Fingerabdrucksensor eingerichtet wurde: fprintd-enroll
+     (11 Beruehrungen), dann fprintd-verify als Gegenprobe.
 
 Tastenbelegung in Kuerze:  Strg+Alt+T Terminal, \$mod+space rofi,
 \$mod+e Dateien, Strg+q Fenster schliessen,

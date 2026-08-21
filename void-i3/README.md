@@ -24,6 +24,7 @@ allem die LED-Ansteuerung, die direkt in Register des Codecs schreibt:
 | `etc/udev/rules.d/60-rfkill-unblock.rules` | WLAN-Softblock durch `hp_wmi` beim Booten | harmlos |
 | `akku-wache`, `netz-ton`, `i3status/config` | `BAT1`, `ACAD`, `/sys/class/hwmon/hwmon4` (coretemp) | anpassen: meist `BAT0`/`AC`, und die hwmon-Nummer nachsehen (`cat /sys/class/hwmon/*/name`) |
 | `xf86-video-intel` in der Paketliste | Intel-Grafik | bei AMD/NVIDIA aus der Liste nehmen, der `modesetting`-Treiber aus `xorg-server` reicht |
+| `fingerabdruck/` (selbst gebauter libfprint-Treiber) | Synaptics `06cb:00e7` und seine Tudor-Geschwister (`00c9`, `00ff`, `00d8`, `016c`) | `setup.sh` erkennt den Sensor und fragt; bei jedem anderen Sensor reicht das Void-Paket `fprintd`. Bei Dual-Boot vorher `fingerabdruck/README.md` lesen — die Kopplung verdrängt Windows Hello. |
 
 Tastatur- und Touchpad-Konfiguration, Schriften, Ton, Bluetooth, das
 Dashboard und die i3-Config selbst sind nicht gerätespezifisch.
@@ -73,6 +74,7 @@ Es richtet ein:
 | Mauszeiger | Nordzy nach `~/.icons` |
 | Eingabe | deutsches Tastaturlayout in X, Touchpad mit natürlichem Scrollen und Tap-to-Click, Drei-Finger-Gesten |
 | Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten |
+| Fingerabdruck | auf Nachfrage: libfprint-Fork mit dem Treiber `synatlsmoc` und gepatchtes fprintd nach `/usr/local`, polkit-Regel, `pam_fprintd` für sudo und Login; das Sperrmenü entsperrt auf Fingertipp (`fingerabdruck/`) |
 | Ton | PipeWire mit WirePlumber und PulseAudio-Schnittstelle, dazu `dumb_runtime_dir` (nicht in `base-system`) und `/run/user` aus `rc.local` — ohne `XDG_RUNTIME_DIR` startet PipeWire nicht |
 | Bluetooth | `bluez`; der Adapter bleibt nach dem Booten aus und geht erst auf Klick an |
 | Browser | Chrome (Standard) und Brave als Flatpak von Flathub |
@@ -88,6 +90,7 @@ noch einmal auf.
 setup.sh              das Einrichtungsskript
 config/               wird nach $HOME kopiert
 system/               wird nach / kopiert (mit sudo)
+fingerabdruck/        Treiber-Build fuer den Synaptics-Sensor, eigenes README
 ```
 
 ## Arbeitsflächen

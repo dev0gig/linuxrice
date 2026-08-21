@@ -41,8 +41,8 @@ font pango:Red Hat Mono 9, Symbols Nerd Font Mono 9
 # exec --no-startup-id nm-applet
 
 # ---- Autostart: feste Belegung der Arbeitsflaechen 1 bis 5 ----
-#   1: Chrome    2: thor (lokales Terminal)
-#   3: odin (SSH)   4: Vitals (btop, volle Flaeche)
+#   1: Chrome    2: lokales Terminal
+#   3: SSH-Sitzung   4: Vitals (btop, volle Flaeche)
 #   5: Dateien (Yazi, volle Flaeche -- siehe Mod+e weiter unten)
 #
 # Jedes Autostart-Fenster bekommt eine eigene Fensterklasse, damit nur genau

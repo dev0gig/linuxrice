@@ -1,0 +1,49 @@
+/* raster.rasi -- App-Drawer als Raster, wie am Handy (B4).
+ *
+ * Wird NUR von der Tastenkombination Super+Space geladen (rofi -theme).
+ * Absichtlich nicht in config.rasi: die dmenu-Skripte (wallpaper, bluetooth,
+ * zwischenablage, benachrichtigungen, i3-hilfe, i3-sitzung,
+ * i3-workspace-names) erben config.rasi und muessen Liste bleiben --
+ * ein Raster aus Textzeilen waere unbrauchbar.
+ *
+ * Farben, Schrift und Rahmen kommen aus config.rasi, hier steht nur, was
+ * fuers Raster anders ist.
+ */
+@import "config.rasi"
+
+window {
+    width: 50%;
+}
+
+/* columns = Spalten, lines = sichtbare Zeilen. 5x3 = 15 Kacheln; auf diesem
+   Rechner sind 14 Programme startbar, es passt also alles ohne Scrollen.
+   rofi reserviert IMMER "lines" Zeilen, auch wenn weniger da ist -- eine
+   vierte Zeile stuende darum dauerhaft leer (dynamic/fixed-height aendern
+   daran nichts, nachgemessen). Kommen Programme dazu: hier auf 4 stellen. */
+listview {
+    columns: 5;
+    lines:   3;
+    padding: 8px 6px;
+    spacing: 0px;
+    /* flow: horizontal fuellt zeilenweise von links nach rechts. Ohne das
+       fuellt rofi spaltenweise von oben nach unten -- am Handy liest sich
+       das Raster aber zeilenweise. */
+    flow:    horizontal;
+}
+
+/* orientation: vertical stellt Icon ueber den Namen statt daneben. */
+element {
+    orientation: vertical;
+    padding:     14px 4px;
+    spacing:     8px;
+}
+
+element-icon {
+    size:             4em;
+    horizontal-align: 0.5;
+}
+
+element-text {
+    horizontal-align: 0.5;
+    vertical-align:   0.5;
+}

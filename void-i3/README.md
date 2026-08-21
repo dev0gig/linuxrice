@@ -136,7 +136,8 @@ mit `split(":")[0]` ab.
 | Taste | Wirkung |
 | --- | --- |
 | `Strg+Alt+T` | Terminal |
-| `$mod+space` / `$mod+d` | rofi |
+| `$mod+space` | rofi als App-Drawer-Raster (Icons 5 nebeneinander, Name darunter) |
+| `$mod+d` | rofi als Liste, mit `run` für Programme ohne `.desktop`-Eintrag |
 | `$mod+Shift+d` | dmenu (Rückfallebene) |
 | `$mod+e` | Dateimanager PCManFM (frei bewegliches Fenster) |
 | `$mod+c` | VS Code (kacheln, nicht schwebend) |

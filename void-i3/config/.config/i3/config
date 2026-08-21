@@ -229,6 +229,8 @@ bindsym $mod+Shift+q [con_id="__focused__" class="^(?!vitals-dashboard$).*$"] ki
 bindsym Control+q [con_id="__focused__" class="^(?!vitals-dashboard$).*$"] kill
 
 # start dmenu (a program launcher)
+# Bleibt bewusst die Liste mit "run" (nackte Binaernamen ohne Icon) -- im
+# Raster auf Super+Space waere das sinnlos, in der Liste ist es nuetzlich.
 # Kommando in "..." setzen: i3 wuerde das Komma in drun,run sonst als Befehlstrenner lesen
 bindsym $mod+d exec --no-startup-id "rofi -show combi -modes combi -combi-modes drun,run"
 # dmenu als Rueckfalloption
@@ -319,8 +321,14 @@ bindsym $mod+Shift+space floating toggle
 # Fokus zwischen Tiling und Floating (war vorher $mod+space, dort liegt jetzt rofi)
 bindsym $mod+Control+space focus mode_toggle
 
-# rofi-Programmstarter
-bindsym $mod+space exec --no-startup-id "rofi -show combi -modes combi -combi-modes drun,run"
+# rofi-Programmstarter als Raster (App-Drawer, wie am Handy).
+# Eigene Themedatei, damit die dmenu-Skripte weiter als Liste erscheinen --
+# die erben config.rasi, das Raster steht nur in raster.rasi.
+# -drun-display-format {name}: ohne das schreibt rofi den .desktop-Kommentar
+# mit ins Kaestchen ("Google Chrome (Web Browser)"), was im Raster nur den
+# Namen abschneidet. Die Klammern muss i3 nicht schuetzen, ein Komma waere
+# dagegen ein Befehlstrenner -- deshalb steht das Kommando trotzdem in "".
+bindsym $mod+space exec --no-startup-id "rofi -show drun -drun-display-format {name} -theme ~/.config/rofi/raster.rasi"
 
 # focus the parent container
 bindsym $mod+a focus parent

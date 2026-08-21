@@ -11,8 +11,8 @@
 # jede noch einmal nach -- die Rueckfrage bleibt bewusst eine schmale Liste.
 #
 # Sperren und Bereitschaft stehen nicht mehr im Raster, die Funktionen gibt
-# es aber weiter: "i3-sitzung sperren" bzw. "i3-sitzung bereitschaft" sind
-# als eigene Tastenbelegung gedacht.
+# es aber weiter: "i3-sitzung sperren" haengt an $mod+l, "i3-sitzung
+# bereitschaft" ist absichtlich ohne Taste und nur von Hand aufrufbar.
 #
 # Neustart/Ausschalten/Bereitschaft laufen ueber sudo. Die dafuer noetige
 # passwortfreie Ausnahme steht in /etc/sudoers.d/10-sitzung -- ohne sie

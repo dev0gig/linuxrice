@@ -197,6 +197,10 @@ bindsym $mod+F1 exec --no-startup-id ~/.local/bin/i3-hilfe
 # bindcode.
 bindcode 248 exec --no-startup-id ~/.local/bin/i3-sitzung
 
+# Sperren steht nicht mehr im Raster -- drei Kacheln sollten es sein.
+# Das Skript kennt den Punkt aber weiter als eigenen Aufruf.
+bindsym $mod+l exec --no-startup-id ~/.local/bin/i3-sitzung sperren
+
 # Use Mouse+$mod to drag floating windows to their wanted position
 floating_modifier $mod
 
@@ -256,7 +260,9 @@ bindsym $mod+Shift+d exec --no-startup-id dmenu_run -nb "#1c1c1c" -nf "#d0d0d0" 
 # change focus
 bindsym $mod+j focus left
 bindsym $mod+k focus down
-bindsym $mod+l focus up
+# $mod+l liegt jetzt auf der Bildschirmsperre (siehe Sitzungsmenue oben).
+# Fokus nach oben: $mod+Up. Der vim-Reihe fehlt damit die Aufwaerts-Taste.
+# bindsym $mod+l focus up
 bindsym $mod+odiaeresis focus right
 
 # alternatively, you can use the cursor keys:

@@ -177,6 +177,14 @@ PAKETE="$PAKETE nano glow bat nsxiv desktop-file-utils"
 # und brauchen keinen eigenen Dienst unter /var/service.
 PAKETE="$PAKETE gvfs"
 
+# Webcam. guvcview ist die kleinste GUI mit Vorschau, Foto und Video: GTK3,
+# zieht nur SDL2 und gsl nach. cheese kann dasselbe, bringt aber den halben
+# GNOME-Unterbau mit. Wichtig zu wissen: die Kamera haengt am Schieber ueber
+# dem Bildschirm -- ist er zu, trennt die Hardware das USB-Geraet und
+# /dev/video0 verschwindet ganz. "Keine Kamera gefunden" heisst also fast
+# immer "Schieber zu" und nicht "Treiber fehlt".
+PAKETE="$PAKETE guvcview"
+
 # Werkzeuge, die im Alltag dazugehoeren.
 PAKETE="$PAKETE git github-cli rclone xclip ImageMagick nodejs tailscale
         fonttools"

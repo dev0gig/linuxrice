@@ -404,6 +404,14 @@ PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils
 # wird hier nur fuer den Deckelschalter gebraucht.
 PAKETE="$PAKETE dunst libnotify brightnessctl playerctl acpi acpid"
 
+# xprintidle meldet, wie lange niemand Tastatur oder Maus angefasst hat. Darauf
+# stuetzt sich ~/.local/bin/akku wache, die den Bildschirm dunkel macht, sperrt
+# und in Bereitschaft schickt. Nicht xautolock: das kennt nur EINEN Zaehler,
+# seine zweite Aktion haengt am Sperren statt am Leerlauf und hat einen festen
+# Mindestabstand von 10 Minuten -- "sperren nach 10, schlafen nach 30" laesst
+# sich damit nicht bauen.
+PAKETE="$PAKETE xprintidle"
+
 # Sperrbildschirm. xsecurelock statt i3lock, weil es Hintergrundbild,
 # Anmeldemaske und Fenstergriffe in getrennte Prozesse legt -- nur so laesst
 # sich ein eigenes Bild samt Fingerabdruck-Hinweis zeigen. Das Bild baut
@@ -1006,7 +1014,7 @@ sed -i "s|@@WS2_NAME@@|$WS2_NAME|" "$HOME/.local/bin/i3-workspace-names"
 # Die im Hardware-Block gemessenen Pfade. Sie standen frueher fest in den
 # drei Dateien und waren auf jedem anderen Notebook falsch.
 sed -i "s|@@AKKU@@|$AKKU|g; s|@@NETZ@@|$NETZ|g" \
-    "$HOME/.local/bin/akku-wache" "$HOME/.local/bin/netz-ton"
+    "$HOME/.local/bin/akku-wache" "$HOME/.local/bin/netz-ton" "$HOME/.local/bin/akku"
 if [ -n "$TEMP" ]; then
     sed -i "s|@@TEMP@@|$TEMP|g" \
         "$HOME/.local/bin/akku-wache" "$HOME/.config/i3status/config"

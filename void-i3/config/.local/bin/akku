@@ -1,0 +1,534 @@
+#!/usr/bin/python3
+# akku  -- Akkuanzeige und Energie-Einstellungen (dunkel / sperren / Bereitschaft)
+#
+# Aufgerufen vom Akku-Block in der i3-Leiste (siehe ~/.local/bin/i3status-melder):
+#
+#   Linksklick  -> "akku"          (Menue per rofi)
+#   Rechtsklick -> "akku zustand"  (Kurzmeldung ueber dunst)
+#
+# Gegenstueck zu ~/.local/bin/netz und ~/.local/bin/bluetooth, gleicher Aufbau:
+# ein Befehlswort, rofi fuers Menue, dunst fuer die Rueckmeldung, und ohne
+# DISPLAY geht alles nach stdout, damit es sich auch im Terminal bedienen laesst.
+#
+# Drei Zeiten, jede getrennt fuer Netzteil und Akkubetrieb:
+#   dunkel  -- Bildschirm abschalten, macht der X-Server selbst per DPMS
+#   sperre  -- ~/.local/bin/i3-sitzung sperren (xsecurelock, Fingerabdruck)
+#   schlaf  -- ~/.local/bin/i3-sitzung bereitschaft (sperrt selbst, dann zzz)
+#
+# WARUM eine eigene Wache und nicht xautolock: xautolock kann nur EINEN
+# Untaetigkeits-Zaehler. Die zweite Aktion (-killer) haengt am Sperren dran,
+# nicht am Leerlauf, und ihr Mindestabstand betraegt fest 10 Minuten. Damit
+# waeren "sperren nach 10, schlafen nach 30" und erst recht "sperren aus,
+# schlafen nach 30" nicht abbildbar. Der Zaehler hier ist xprintidle, dieselbe
+# Quelle, die auch xautolock benutzt (XScreenSaver-Erweiterung).
+#
+# ACHTUNG, gemessener Fallstrick beim Zaehlen: sobald DPMS den Schirm
+# abschaltet, springt die Idle-Zeit auf manchen Treibern auf 0 zurueck, ohne
+# dass jemand etwas angefasst hat. Wuerde die Wache xprintidle blind glauben,
+# koennte sie nach dem Dunkelwerden nie mehr sperren. Darum wird der Wert nur
+# uebernommen, solange "xset q" den Monitor als eingeschaltet meldet; ist er
+# aus, zaehlt die Wache selbst weiter und nimmt den groesseren der beiden
+# Werte (siehe untaetig()).
+#
+# Der Akku heisst auf diesem Geraet BAT1, nicht BAT0 -- wie in akku-wache.
+
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+AKKU = "/sys/class/power_supply/@@AKKU@@"
+NETZTEIL = "/sys/class/power_supply/@@NETZ@@"
+
+EINSTELLUNGEN = os.path.expanduser("~/.config/akku/einstellungen")
+SITZUNG = os.path.expanduser("~/.local/bin/i3-sitzung")
+
+# Nerd-Font-Zeichen fuers rofi-Menue. Alle nachgesehen, indem sie aus
+# SymbolsNerdFontMono-Regular.ttf herausgerendert und angeschaut wurden --
+# die Namen in den Tabellen stimmen nicht immer mit dem Codepoint ueberein.
+# In den dunst-Meldungen stehen sie nicht, dort zeichnet dunst das Theme-Icon.
+LADEN = "\U000f0084"      # nf-md-battery_charging
+BATTERIE = "\U000f007e"   # nf-md-battery_60
+VOLL = "\U000f0079"       # nf-md-battery
+UNBEKANNT = "\U000f0091"  # nf-md-battery_unknown
+STECKER = "\U000f06a5"    # nf-md-power_plug
+SCHIRM = "\U000f0379"     # nf-md-monitor
+SCHLOSS = "\U000f033e"    # nf-md-lock
+MOND = "\U000f0904"       # nf-md-sleep
+HERZ = "\U000f05f6"       # nf-md-heart_pulse
+UHR = "\U000f051b"        # nf-md-timer
+
+# Icon-Namen fuers Meldungsfenster (Papirus-Dark, wie bei netz).
+ICON_AKKU = "battery-good"
+ICON_LADEN = "battery-good-charging"
+ICON_LEER = "battery-caution"
+ICON_ZEIT = "preferences-system-power"
+
+# Die drei Einstellungen und ihre Vorgabe in Minuten, 0 heisst "nie".
+# Am Netzteil bleibt der Rechner absichtlich wach: er haengt dann meist am
+# Schreibtisch, und Sperre wie Bereitschaft sind dort eher im Weg.
+STANDARD = {
+    "dunkel_kabel": 10, "dunkel_akku": 5,
+    "sperre_kabel": 0,  "sperre_akku": 10,
+    "schlaf_kabel": 0,  "schlaf_akku": 30,
+    # Kein Menuepunkt, absichtlich nur hier: solange ein Player laeuft, wird
+    # weder gesperrt noch geschlafen. Ohne das endet jedes laengere Video in
+    # der Bereitschaft -- der Chrome-Flatpak meldet seine Wiedergabe zwar
+    # ueber MPRIS, haelt den X-Screensaver aber nicht an.
+    "medien_halten": 1,
+}
+
+# Auswahlstufen im Menue. Erste Stufe 0 = "nie" bzw. "aus".
+STUFEN = (0, 1, 2, 5, 10, 15, 20, 30, 45, 60, 90, 120)
+
+TITEL = {"dunkel": "Bildschirm dunkel",
+         "sperre": "Sperren",
+         "schlaf": "Bereitschaft"}
+
+ZEICHEN = {"dunkel": SCHIRM, "sperre": SCHLOSS, "schlaf": MOND}
+
+# Takt der Wache. 10 s ist fein genug: die kuerzeste einstellbare Zeit ist
+# eine Minute, und ein Poll alle 10 s kostet nichts messbares.
+INTERVALL = 10
+
+
+# ------------------------------------------------------------- Kleinkram
+
+def lies(pfad, standard=None):
+    try:
+        with open(pfad) as d:
+            return d.read().strip()
+    except OSError:
+        return standard
+
+
+def zahl(pfad, standard=0):
+    wert = lies(pfad)
+    try:
+        return int(wert)
+    except (TypeError, ValueError):
+        return standard
+
+
+def grafisch():
+    return bool(os.environ.get("DISPLAY"))
+
+
+def melden(text, icon=ICON_AKKU, dringend="low"):
+    """Kurze Rueckmeldung ueber dunst -- im Terminal nach stdout."""
+    if grafisch() and shutil.which("dunstify"):
+        subprocess.run(["dunstify", "-a", "akku", "-u", dringend, "-i", icon, text],
+                       capture_output=True)
+    else:
+        print(text)
+
+
+def minuten_text(m, art="dunkel"):
+    if m <= 0:
+        return "nie" if art == "dunkel" else "aus"
+    if m < 60:
+        return "%d min" % m
+    if m % 60 == 0:
+        return "%d h" % (m // 60)
+    return "%d h %d min" % (m // 60, m % 60)
+
+
+# --------------------------------------------------------- Einstellungen
+
+def laden():
+    """Einstellungen lesen. Fehlende oder kaputte Zeilen fallen still auf den
+    Standard zurueck -- eine halb gelesene Datei darf die Wache nicht kippen."""
+    werte = dict(STANDARD)
+    text = lies(EINSTELLUNGEN)
+    if not text:
+        return werte
+    for zeile in text.splitlines():
+        zeile = zeile.strip()
+        if not zeile or zeile.startswith("#") or "=" not in zeile:
+            continue
+        name, _, wert = zeile.partition("=")
+        name = name.strip()
+        if name not in werte:
+            continue
+        try:
+            werte[name] = max(0, int(wert.strip()))
+        except ValueError:
+            pass
+    return werte
+
+
+def speichern(werte):
+    os.makedirs(os.path.dirname(EINSTELLUNGEN), exist_ok=True)
+    zeilen = [
+        "# akku -- Energie-Einstellungen, Zeiten in Minuten, 0 = nie/aus.",
+        "# Geschrieben von ~/.local/bin/akku (Linksklick auf den Akku in der",
+        "# Leiste). Von Hand aendern geht auch: ~/.local/bin/akku wache liest",
+        "# die Datei bei jedem Durchlauf neu, ein i3-Reload ist nicht noetig.",
+        "",
+    ]
+    for art in ("dunkel", "sperre", "schlaf"):
+        zeilen.append("%s_kabel=%d" % (art, werte["%s_kabel" % art]))
+        zeilen.append("%s_akku=%d" % (art, werte["%s_akku" % art]))
+    zeilen.append("")
+    zeilen.append("# 1 = nicht sperren/schlafen, solange ein Player spielt.")
+    zeilen.append("medien_halten=%d" % werte["medien_halten"])
+    zeilen.append("")
+    with open(EINSTELLUNGEN, "w") as d:
+        d.write("\n".join(zeilen))
+
+
+# ------------------------------------------------------------- Akkuwerte
+
+def am_netz():
+    return zahl(NETZTEIL + "/online", 1) == 1
+
+
+def quelle():
+    return "kabel" if am_netz() else "akku"
+
+
+def prozent():
+    return zahl(AKKU + "/capacity", -1)
+
+
+def status():
+    return lies(AKKU + "/status", "Unknown")
+
+
+def gesundheit():
+    """Verhaeltnis der heutigen Ladung zum Neuzustand, in Prozent.
+    energy_full sinkt mit dem Alter, energy_full_design nie."""
+    voll = zahl(AKKU + "/energy_full")
+    neu = zahl(AKKU + "/energy_full_design")
+    if voll <= 0 or neu <= 0:
+        return None
+    return round(voll * 100.0 / neu)
+
+
+def restzeit():
+    """Sekunden bis leer bzw. bis voll. None, wenn gerade kein Strom fliesst
+    (power_now = 0, etwa direkt nach dem Anstecken oder bei vollem Akku)."""
+    leistung = zahl(AKKU + "/power_now")
+    if leistung <= 0:
+        return None
+    jetzt = zahl(AKKU + "/energy_now")
+    if status() == "Charging":
+        offen = zahl(AKKU + "/energy_full") - jetzt
+    else:
+        offen = jetzt
+    if offen <= 0:
+        return None
+    return int(offen * 3600.0 / leistung)
+
+
+def dauer_text(sekunden):
+    stunden, rest = divmod(int(sekunden), 3600)
+    if stunden:
+        return "%d h %02d min" % (stunden, rest // 60)
+    return "%d min" % (rest // 60)
+
+
+def kopfzeile():
+    """Eine Zeile Zustand: Icon, Prozent, was gerade passiert, Restzeit."""
+    p = prozent()
+    zu = status()
+    if zu == "Charging":
+        icon, wort = LADEN, "laedt"
+    elif zu == "Full" or (am_netz() and p >= 99):
+        icon, wort = VOLL, "voll"
+    elif zu == "Discharging":
+        icon, wort = BATTERIE, "Akkubetrieb"
+    elif am_netz():
+        icon, wort = STECKER, "am Netzteil"
+    else:
+        icon, wort = UNBEKANNT, zu
+    teile = ["%d %%" % p if p >= 0 else "?", wort]
+    rest = restzeit()
+    if rest:
+        teile.append(("noch " if zu != "Charging" else "voll in ") + dauer_text(rest))
+    return icon + "  " + "  ·  ".join(teile)
+
+
+# ------------------------------------------------------- X-Seite: Schirm
+
+def xset(*argumente):
+    if not grafisch() or not shutil.which("xset"):
+        return
+    try:
+        subprocess.run(["xset"] + list(argumente), capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def anwenden():
+    """Die Dunkelzeit der aktuellen Stromquelle in den X-Server schreiben.
+
+    Nur die dritte DPMS-Stufe ("off") wird gesetzt, Standby und Suspend
+    bleiben auf 0: sonst dimmt der Schirm in zwei Vorstufen, und die erste
+    davon kaeme frueher als der eingestellte Wert. Das alte Blanking des
+    Screensavers wird abgeschaltet -- es ist ein zweiter Timer fuer dieselbe
+    Sache und stand hier auf 10 Minuten, ohne dass es jemand eingestellt hat.
+    """
+    minuten = laden()["dunkel_" + quelle()]
+    xset("s", "off")
+    if minuten <= 0:
+        xset("-dpms")
+    else:
+        xset("+dpms")
+        xset("dpms", "0", "0", str(minuten * 60))
+
+
+def monitor_an():
+    """True, wenn der Schirm laut X-Server eingeschaltet ist. Bei
+    abgeschaltetem DPMS gibt es die Zeile gar nicht -- dann gilt "an"."""
+    if not grafisch() or not shutil.which("xset"):
+        return True
+    try:
+        aus = subprocess.run(["xset", "q"], capture_output=True, text=True,
+                             timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return True
+    for zeile in aus.splitlines():
+        if "Monitor is" in zeile:
+            return zeile.strip().endswith("On")
+    return True
+
+
+def idle_sekunden():
+    """Untaetigkeit laut X-Server. None, wenn xprintidle nicht antwortet."""
+    if not grafisch() or not shutil.which("xprintidle"):
+        return None
+    try:
+        aus = subprocess.run(["xprintidle"], capture_output=True, text=True,
+                             timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    try:
+        return int(aus.stdout.strip()) / 1000.0
+    except ValueError:
+        return None
+
+
+def spielt():
+    """True, wenn ein MPRIS-Player gerade wiedergibt."""
+    if not shutil.which("playerctl"):
+        return False
+    try:
+        aus = subprocess.run(["playerctl", "status"], capture_output=True,
+                             text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return aus.stdout.strip() == "Playing"
+
+
+# ------------------------------------------------------------- Die Wache
+
+def wache():
+    """Untaetigkeit messen und zur rechten Zeit sperren oder schlafen legen.
+
+    Laeuft aus der i3-Config heraus (exec_always). Nur eine Instanz: i3
+    startet sie bei jedem Neuladen erneut, ohne die alte zu beenden -- darum
+    dieselbe PID-Datei-Loesung wie in ~/.local/bin/akku-wache.
+    """
+    laufdir = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+    piddatei = os.path.join(laufdir, "akku-idle.pid")
+    alt = lies(piddatei)
+    if alt and alt != str(os.getpid()):
+        try:
+            os.kill(int(alt), 15)
+        except (ValueError, OSError):
+            pass
+    try:
+        with open(piddatei, "w") as d:
+            d.write(str(os.getpid()))
+    except OSError:
+        pass
+
+    # Beim ersten Lauf die Datei mit den Vorgaben anlegen -- sonst gibt es
+    # nichts zum Nachschauen und Nachbessern von Hand.
+    if not os.path.exists(EINSTELLUNGEN):
+        speichern(laden())
+
+    letzter_stand = None
+    zaehler = 0.0
+    letzte_zeit = time.monotonic()
+    schon_gesperrt = False
+
+    while True:
+        jetzt = time.monotonic()
+        verstrichen = max(0.0, jetzt - letzte_zeit)
+        letzte_zeit = jetzt
+
+        werte = laden()
+        q = quelle()
+        # Dunkelzeit nur neu setzen, wenn sich wirklich etwas geaendert hat --
+        # sonst laeuft alle 10 Sekunden ein xset gegen den X-Server.
+        stand = (q, werte["dunkel_kabel"], werte["dunkel_akku"])
+        if stand != letzter_stand:
+            anwenden()
+            letzter_stand = stand
+
+        roh = idle_sekunden()
+        if roh is not None and monitor_an():
+            zaehler = roh                      # der X-Server ist die Wahrheit
+        else:
+            # Schirm dunkel: xprintidle darf zurueckspringen, unsere eigene
+            # Rechnung nicht. Der groessere der beiden Werte gilt.
+            zaehler = max(roh or 0.0, zaehler + verstrichen)
+
+        if zaehler < INTERVALL * 2:
+            schon_gesperrt = False             # jemand war da
+
+        halten = werte["medien_halten"] and spielt()
+        schlaf = werte["schlaf_" + q] * 60
+        sperre = werte["sperre_" + q] * 60
+
+        if not halten and schlaf and zaehler >= schlaf:
+            # Kehrt erst nach dem Aufwachen zurueck -- danach faengt die
+            # Zaehlung von vorn an, sonst schliefe der Rechner sofort wieder.
+            subprocess.run([SITZUNG, "bereitschaft"], capture_output=True)
+            zaehler = 0.0
+            letzte_zeit = time.monotonic()
+            schon_gesperrt = False
+        elif not halten and sperre and zaehler >= sperre and not schon_gesperrt:
+            # i3-sitzung merkt selbst, wenn die Sperre schon steht; der Merker
+            # hier spart nur den Prozessstart alle 10 Sekunden.
+            subprocess.run([SITZUNG, "sperren"], capture_output=True)
+            schon_gesperrt = True
+
+        time.sleep(INTERVALL)
+
+
+# ---------------------------------------------------------------- Menues
+
+def rofi_waehlen(zeilen, prompt):
+    """Liste in rofi zeigen, Index zurueckgeben. None = abgebrochen."""
+    if not (grafisch() and shutil.which("rofi")):
+        for i, z in enumerate(zeilen):
+            print("%2d  %s" % (i, z))
+        return None
+    fertig = subprocess.run(
+        ["rofi", "-dmenu", "-i", "-no-custom", "-format", "i",
+         "-p", prompt, "-lines", str(min(len(zeilen), 14))],
+        input="\n".join(zeilen), capture_output=True, text=True)
+    if fertig.returncode != 0 or not fertig.stdout.strip():
+        return None
+    try:
+        return int(fertig.stdout.strip())
+    except ValueError:
+        return None
+
+
+def wert_waehlen(art, q):
+    """Dritte Ebene: die Minutenzahl fuer eine Einstellung und eine Quelle."""
+    werte = laden()
+    name = "%s_%s" % (art, q)
+    zeilen = [(UHR if s else SCHIRM if art == "dunkel" else ZEICHEN[art]) +
+              "  " + minuten_text(s, art) +
+              ("   ← jetzt" if s == werte[name] else "")
+              for s in STUFEN]
+    wohin = "am Netzteil" if q == "kabel" else "im Akkubetrieb"
+    wahl = rofi_waehlen(zeilen, ZEICHEN[art] + " " + TITEL[art] + " " + wohin)
+    if wahl is None:
+        return False
+    werte[name] = STUFEN[wahl]
+    speichern(werte)
+    if art == "dunkel":
+        anwenden()          # sofort wirksam, nicht erst beim naechsten Takt
+    melden("%s %s: %s" % (TITEL[art], wohin, minuten_text(STUFEN[wahl], art)),
+           ICON_ZEIT)
+    return True
+
+
+def quelle_waehlen(art):
+    """Zweite Ebene: gilt der neue Wert am Netzteil oder im Akkubetrieb?"""
+    werte = laden()
+    jetzt = quelle()
+    zeilen = []
+    for q, zeichen, wort in (("kabel", STECKER, "Am Netzteil"),
+                             ("akku", BATTERIE, "Im Akkubetrieb")):
+        zeilen.append("%s  %-16s %s%s" % (
+            zeichen, wort, minuten_text(werte["%s_%s" % (art, q)], art),
+            "   ← gerade aktiv" if q == jetzt else ""))
+    wahl = rofi_waehlen(zeilen, ZEICHEN[art] + " " + TITEL[art])
+    if wahl is None:
+        return False
+    return wert_waehlen(art, ("kabel", "akku")[wahl])
+
+
+def menue():
+    werte = laden()
+    zeilen, aktionen = [], []
+
+    def eintragen(text, aktion):
+        zeilen.append(text)
+        aktionen.append(aktion)
+
+    eintragen(kopfzeile(), ("nichts",))
+
+    # Beide Werte in einer Zeile. Der Stecker und die Batterie davor sind
+    # noetig: "10 min  ·  5 min" allein liess sich nicht lesen, ohne die
+    # Zeile erst anzuklicken. Welcher der beiden Werte gerade gilt, steht in
+    # der Kopfzeile -- das hier noch einmal zu markieren macht es unruhig.
+    for art in ("dunkel", "sperre", "schlaf"):
+        eintragen("%s  %-18s %s %-8s  %s %s" % (
+            ZEICHEN[art], TITEL[art],
+            STECKER, minuten_text(werte["%s_kabel" % art], art),
+            BATTERIE, minuten_text(werte["%s_akku" % art], art)),
+            ("zeit", art))
+
+    eintragen(SCHLOSS + "  Jetzt sperren", ("sperren",))
+    eintragen(MOND + "  Jetzt in Bereitschaft", ("schlafen",))
+
+    g = gesundheit()
+    if g is not None:
+        eintragen("%s  Akkugesundheit  %d %%" % (HERZ, g), ("nichts",))
+
+    wahl = rofi_waehlen(zeilen, LADEN if am_netz() else BATTERIE)
+    if wahl is None:
+        return
+    aktion = aktionen[wahl]
+    if aktion[0] == "zeit":
+        if quelle_waehlen(aktion[1]):
+            menue()                 # mit dem neuen Wert noch einmal aufblenden
+    elif aktion[0] == "sperren":
+        subprocess.Popen([SITZUNG, "sperren"])
+    elif aktion[0] == "schlafen":
+        subprocess.Popen([SITZUNG, "bereitschaft"])
+
+
+def zustand():
+    """Kurzfassung fuer den Rechtsklick und fuers Terminal."""
+    werte = laden()
+    q = quelle()
+    zeilen = [kopfzeile().split("  ", 1)[1]]
+    for art in ("dunkel", "sperre", "schlaf"):
+        zeilen.append("%s: %s" % (TITEL[art], minuten_text(werte["%s_%s" % (art, q)], art)))
+    text = "\n".join(zeilen)
+    if grafisch() and shutil.which("dunstify"):
+        icon = ICON_LADEN if status() == "Charging" else (
+            ICON_LEER if prozent() < 20 else ICON_AKKU)
+        subprocess.run(["dunstify", "-a", "akku", "-u", "low", "-i", icon,
+                        "Akku", text], capture_output=True)
+    else:
+        print(text)
+
+
+def main():
+    befehl = sys.argv[1] if len(sys.argv) > 1 else "menue"
+    if befehl == "menue":
+        menue()
+    elif befehl == "zustand":
+        zustand()
+    elif befehl == "anwenden":
+        anwenden()
+    elif befehl == "wache":
+        wache()
+    else:
+        print("Aufruf: akku [menue|zustand|anwenden|wache]", file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

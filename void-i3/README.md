@@ -195,6 +195,54 @@ Das ist kein Wischen, das am Finger klebt — libinput-gestures meldet erst
 das Ende der Geste. Ein echtes Finger-Karussell gäbe es unter X11 nicht,
 dafür bräuchte es einen Wayland-Compositor wie Hyprland oder niri.
 
+## Titelleiste an Terminals, die etwas zu sagen haben
+
+Fenster haben hier keinen Rahmen und keine Titelleiste (`default_border
+none`) — bis auf eine Ausnahme: ein **Alacritty-Fenster, dessen Titel nicht
+mehr der Standardtitel ist**, bekommt eine. Der Fall aus dem Alltag sind
+mehrere gleichzeitig laufende **Claude-Code-Sitzungen** nebeneinander auf
+einer Fläche. Die sehen alle gleich aus, und worum es in welcher geht, steht
+nur weiter oben im Verlauf. Claude setzt aber den Fenstertitel auf das Thema
+der Sitzung, mit einem Zustandszeichen davor: `✳` wartet auf Eingabe, `◐`/`◑`
+arbeitet gerade. In der Titelleiste steht damit beides — das Thema und ob
+gerade gerechnet wird.
+
+Erkannt wird bewusst **nicht das Zeichen**, sondern „der Titel ist nicht mehr
+`Alacritty`":
+
+```
+for_window [class="^Alacritty$" title="^(?!Alacritty$).*$"] border normal 0
+for_window [class="^Alacritty$" title="^Alacritty$"] border none
+```
+
+Die Shell setzt hier gar keinen Titel, ein abweichender kommt also immer von
+einem laufenden Programm — das hält auch dann, wenn Claude sein Zeichen mal
+ändert, und nimmt `vim` und `ssh` gleich mit. `border normal 0` heißt
+Titelleiste ja, Rahmen an den Seiten nein. Die zweite Zeile räumt sie wieder
+weg, sobald der Titel zurückfällt; i3 wertet `title`-Kriterien bei **jeder**
+Titeländerung neu aus, beides greift also im laufenden Betrieb. Die anderen
+Terminals (`remote-term`, `vitals-dashboard`) laufen unter eigenen Klassen und
+sind nicht betroffen.
+
+Damit die Leiste nicht als Balken auffällt, sondern wie ein Stück Terminal
+aussieht, ist sie **`#1d1d1d`** — nicht `#1e1e1e` wie der Terminalhintergrund
+in `alacritty.toml`. Grund ist `opacity = 0.95`: das dunkle Wallpaper zieht
+den Hintergrund eine Stufe herunter. Am Schirm nachgemessen mit `import` und
+`magick ... histogram:` — Terminal `#1d1d1d`, Titelleiste mit `#1e1e1e` eben
+`#1e1e1e`. Fokussiert und unfokussiert unterscheidet nur noch die Schriftfarbe.
+
+Der Titel steht **mittig** (`title_align center`) — linksbündig klebt er in
+der Ecke über dem Text, in der Mitte liest er sich wie eine Überschrift. Eine
+eigene Höhe für Titelleisten kennt i3 nicht, sie ergibt sich aus der globalen
+`font`. Nachgemessen über `deco_rect.height` in `i3-msg -t get_tree`:
+
+| `font`-Größe | 11 | 12 | 13 | 14 |
+|---|---|---|---|---|
+| Titelleiste | 24 px | 26 px | 28 px | 30 px |
+
+Eingestellt ist **11** — 24 px, und zugleich die Größe der Statusleiste, Leiste
+oben und Titelleiste darunter passen also zusammen.
+
 ## Benachrichtigungen
 
 ### Wie eine Meldung aussieht

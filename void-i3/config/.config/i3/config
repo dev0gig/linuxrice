@@ -13,7 +13,15 @@ set $mod Mod4
 
 # Font for window titles. Will also be used by the bar unless a different font
 # is used in the bar {} block below.
-font pango:Red Hat Mono 9, Symbols Nerd Font Mono 9
+#
+# Groesse 11 statt 9: die einzigen Titelleisten hier sind die der
+# Claude-Sitzungen (siehe die for_window-Regeln weiter unten), und die sollen
+# gut lesbar sein. Nachgemessen ueber deco_rect.height in "i3-msg -t get_tree":
+# 11 -> 24 px, 12 -> 26, 13 -> 28, 14 -> 30. 11 ist zugleich die Groesse der
+# Statusleiste, Leiste oben und Titelleiste darunter passen also zusammen.
+# Pango-Syntax: die Groesse steht EINMAL am Ende hinter der Familienliste --
+# "Red Hat Mono 9, Symbols Nerd Font Mono 9" war falsch geschrieben.
+font pango:Red Hat Mono, Symbols Nerd Font Mono 11
 
 # This font is widely installed, provides lots of unicode glyphs, right-to-left
 # text rendering and scalability on retina/hidpi displays (thanks to pango).
@@ -447,12 +455,48 @@ default_border none
 default_floating_border none
 hide_edge_borders both
 
+# ---- Titelleiste nur fuer Terminals mit eigenem Titel (= Claude-Sitzungen) ----
+# Ausgangspunkt: laufen mehrere Claude-Sitzungen nebeneinander auf einer
+# Flaeche, sehen sie alle gleich aus -- worum es in welcher geht, steht nur
+# weiter oben im Verlauf.  Claude Code setzt aber den Fenstertitel auf das
+# Thema der Sitzung ("◐ Lockscreen Fingerprint-Symbol Platzierung"), mit einem
+# Spinner davor, der zwischen ◐ und ◑ wechselt, solange es arbeitet.
+#
+# Erkannt wird NICHT der Spinner, sondern "Titel ist nicht mehr der
+# Alacritty-Standardtitel": die Shell hier setzt gar keinen Titel, ein
+# abweichender Titel kommt also immer von einem Programm, das etwas zu sagen
+# hat (claude, vim, ssh).  Das haelt auch dann, wenn Claude sein
+# Spinner-Zeichen mal aendert.
+#
+# i3 wertet title-Kriterien bei JEDER Titelaenderung neu aus -- die Leiste
+# erscheint also, sobald claude startet, und die zweite Regel nimmt sie wieder
+# weg, sobald der Titel auf "Alacritty" zurueckfaellt.  "border normal 0"
+# heisst: Titelleiste ja, Rahmen an den Seiten nein.
+#
+# Die anderen Terminals (odin-term, vitals-dashboard) laufen unter eigenen
+# Klassen und sind darum nicht betroffen.
+# Titel mittig -- linksbuendig klebt er sonst in der Ecke ueber dem Text,
+# in der Mitte liest er sich wie eine Ueberschrift der Sitzung.
+title_align center
+
+for_window [class="^Alacritty$" title="^(?!Alacritty$).*$"] border normal 0
+for_window [class="^Alacritty$" title="^Alacritty$"] border none
+
 # Farben greifen nur noch dort, wo i3 doch Flaechen zeichnet
-# (z. B. Titelleisten im stacking/tabbed-Layout).
+# (z. B. Titelleisten im stacking/tabbed-Layout und an den Claude-Fenstern).
+#
+# Die Titelleiste soll nicht als Balken auffallen, sondern wie ein Stueck
+# Terminal aussehen: Hintergrund darum exakt der Terminal-Hintergrund
+# #1e1e1e aus alacritty.toml, nicht das hellere #2a2a2a von frueher.
+# Fokussiert/unfokussiert unterscheidet nur noch die Schriftfarbe.
+# Nicht #1e1e1e, sondern #1d1d1d: das Terminal ist per opacity 0.95 minimal
+# durchsichtig, das dunkle Wallpaper zieht seinen Hintergrund dadurch eine
+# Stufe herunter.  Am Schirm nachgemessen (import + magick histogram): Terminal
+# #1d1d1d, Titelleiste mit #1e1e1e #1e1e1e -- mit #1d1d1d treffen sie sich exakt.
 # class                 border  backgr. text    indicator child_border
-client.focused          #2a2a2a #2a2a2a #e8e8e8 #2a2a2a   #2a2a2a
-client.focused_inactive #1e1e1e #1e1e1e #9a9a9a #1e1e1e   #1e1e1e
-client.unfocused        #161616 #161616 #555555 #161616   #161616
+client.focused          #1d1d1d #1d1d1d #e8e8e8 #1d1d1d   #1d1d1d
+client.focused_inactive #1d1d1d #1d1d1d #6a6a6a #1d1d1d   #1d1d1d
+client.unfocused        #1d1d1d #1d1d1d #6a6a6a #1d1d1d   #1d1d1d
 client.urgent           #fb4934 #161616 #fb4934 #161616   #fb4934
 client.placeholder      #161616 #161616 #9a9a9a #161616   #161616
 client.background       #1e1e1e

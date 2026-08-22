@@ -683,17 +683,55 @@ Das widerspricht dem Versprechen im Kopf des Skripts (`setup.sh:17-18`):
 oder vorher eine Anmeldung auffrischen und offen halten. Das Einfachste ist die Umsortierung: die
 Regeln werden erst nach dem nächsten Login gebraucht, nicht während der Installation.
 
-### W8 — Kein `trap` für `TMPF` und `TMPC`
+### W8 — Der `INT`-Trap räumt das Quellverzeichnis weg, beendet das Skript aber nicht
 
-**nice-to-have**
-
-`setup.sh:755` (`TMPF`) und `setup.sh:790` (`TMPC`) legen `mktemp -d`-Verzeichnisse ohne `trap` an.
-Bei Ctrl-C oder einem Fehler bleiben sie liegen — bei `TMPC` immerhin ein Git-Clone. Der `trap` in
-Zeile 56 deckt nur das Bootstrap-Verzeichnis ab.
+**wichtig**
 
 ```sh
+# setup.sh:55-56
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT INT TERM
+```
+
+**Problem.** Der Handler löscht `$TMP` und ruft **kein `exit`** auf. POSIX sh setzt die Ausführung
+nach einem Signal-Handler hinter dem unterbrochenen Befehl fort. `$TMP` ist im Bootstrap-Fall aber
+genau das Verzeichnis, in dem `$QUELLE` liegt — das Skript arbeitet danach gegen einen gelöschten
+Quellbaum weiter.
+
+Gegengetestet, weil die Semantik gern falsch angenommen wird:
+
+```
+$ sh t5.sh &   # danach kill -INT
+quelle liegt in /tmp/tmp.bSHx3rqDmx
+  [trap] raeume /tmp/tmp.bSHx3rqDmx weg
+  WEITER: Skript laeuft nach Strg+C weiter
+  QUELLE noch da? NEIN
+exit=0
+```
+
+**Risiko.** Meist fängt `set -e` das eine Zeile später ab, weil der nächste Zugriff auf `$QUELLE`
+scheitert. An den Stellen, an denen der Rückgabewert maskiert ist, greift das aber nicht — allen
+voran `setup.sh:498` (`sudo xbps-install -Syu || true`). Ein Ctrl-C während des minutenlangen
+Paketdownloads löscht dort den Quellbaum, `|| true` schluckt den Abbruch, und das Skript läuft mit
+`$QUELLE` ins Leere weiter — bis irgendwann eine Meldung kommt, die mit der Ursache nichts mehr zu
+tun hat. Am Ende steht `exit=0`: ein abgebrochener Lauf meldet Erfolg.
+
+**Fix.** Abbruchsignale müssen beenden, und die beiden anderen `mktemp`-Verzeichnisse brauchen
+denselben Schutz (`setup.sh:755` für `TMPF`, `790` für `TMPC` haben gar keinen `trap` — beim
+Aufruf aus einem geklonten Repo ist damit überhaupt keiner aktiv, und bei `TMPC` bleibt ein
+Git-Clone liegen):
+
+```sh
+# Eine Liste, ein Handler -- Abbruchsignale beenden das Skript, EXIT nur aufraeumen.
+TEMPORAER=""
+aufraeumen() { [ -z "$TEMPORAER" ] || rm -rf $TEMPORAER; }
+trap aufraeumen EXIT
+trap 'aufraeumen; exit 130' INT     # 128 + SIGINT
+trap 'aufraeumen; exit 143' TERM    # 128 + SIGTERM
+
+# und an jeder mktemp-Stelle:
 TMPF=$(mktemp -d) || fehler "kein temporaeres Verzeichnis"
-trap 'rm -rf "$TMPF"' EXIT INT TERM
+TEMPORAER="$TEMPORAER $TMPF"
 ```
 
 ### Was hier **nicht** steht
@@ -1115,6 +1153,7 @@ und zugleich der billigste Fix im ganzen Bericht. Er gehört zuerst behoben.
 | W5 | `sed -i` meldet Erfolg ohne Treffer (6 Stellen, Bluetooth am kritischsten) | `setup.sh:615-617` u. a. |
 | W6 | Kein Rollback beim Fingerabdruck-Build (Pakete weg vor dem Build) | `einrichten.sh:80-85` |
 | W7 | `timestamp_timeout=0` mitten im Lauf → Passwortfragen im „unattended"-Modus | `setup.sh:944-947` |
+| W8 | `INT`-Trap löscht den Quellbaum, beendet aber nicht — abgebrochener Lauf meldet Erfolg | `setup.sh:55-56`, `755`, `790` |
 | W9 | Wallpaper mit Leerzeichen zerlegt den Sperrbildschirm | `sperrbild:160` |
 | W10 | `chmod 755` auf alle Fremddateien in `~/.local/bin` | `setup.sh:1053` |
 | W11 | Rechte im Home hängen von der umask ab | `setup.sh:1052`, `761-762` |
@@ -1125,7 +1164,6 @@ und zugleich der billigste Fix im ganzen Bericht. Er gehört zuerst behoben.
 
 | # | Befund | Stelle |
 |---|---|---|
-| W8 | Kein `trap` für `TMPF`/`TMPC` | `setup.sh:755`, `790` |
 | N1 | Endkontrolle prüft 3 von ~25 Skripten und schweigt im Fehlerfall | `setup.sh:1131-1133` |
 | N2 | Zeilenumbruch überlebt `name_saeubern` | `setup.sh:246` |
 | N3 | Kein `pipefail`-Ersatz an den Stellen, wo es zählt | `setup.sh:761` |
@@ -1179,10 +1217,10 @@ Vier Dinge trennen es von „production-grade":
 Keiner der Befunde ist strukturell. Es gibt keinen Umbau, keine Architekturfrage, nichts, das ein
 Neuschreiben nötig machte. K3 sind acht Zeilen. K1 und K2 zusammen etwa fünfunddreißig. Die
 wichtige Kategorie ist größtenteils Umsortieren (W1, W7) und Fehlerprüfung nachziehen (W2, W5,
-W-C). Danach würde das Skript ein Review in einem professionellen Umfeld bestehen — mit
+W8, W-C). Danach würde das Skript ein Review in einem professionellen Umfeld bestehen — mit
 Anmerkungen zum Stil, nicht zur Sicherheit.
 
-**Einschätzung: 7/10 heute, 9/10 nach den drei kritischen und den fünfzehn wichtigen Punkten.**
+**Einschätzung: 7/10 heute, 9/10 nach den drei kritischen und den sechzehn wichtigen Punkten.**
 Gefunden wurde viel, weil überall genau nachgesehen wurde — nicht, weil viel kaputt wäre.
 
 ---

@@ -3,7 +3,7 @@
 #
 # xsecurelock zeichnet selbst nur eine Farbflaeche und startet fuer alles
 # Weitere ein Saver-Modul. Dieses hier baut mit ~/.local/bin/sperrbild die
-# beiden Zustandsbilder (Wallpaper, Name, Rechnername, Symbol, Text) und
+# drei Zustandsbilder (Wallpaper, Name, Rechnername, Symbol, Text) und
 # uebergibt sie an /usr/local/bin/sperrsaver, der sie ins Fenster zeichnet.
 #
 # Warum die Bilder hier gebaut werden und nicht beim Sperren: sperrbild
@@ -20,5 +20,6 @@ mkdir -p "$HOME/.cache/sperrbild"
 
 finger=$("$HOME/.local/bin/sperrbild" finger)
 nochmal=$("$HOME/.local/bin/sperrbild" nochmal)
+aufwachen=$("$HOME/.local/bin/sperrbild" aufwachen)
 
-exec /usr/local/bin/sperrsaver "$finger" "$nochmal" "$zustandsdatei"
+exec /usr/local/bin/sperrsaver "$finger" "$nochmal" "$aufwachen" "$zustandsdatei"

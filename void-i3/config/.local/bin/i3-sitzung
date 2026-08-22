@@ -189,6 +189,21 @@ finger_entsperren() {
             pruefer=$!
             notiere "Versuch $pruefer gestartet"
 
+            # Lief der Ladekreis schon, als dieser Versuch begann? Nur dann
+            # darf er ihn weiter unten abschalten.
+            #
+            # Angeschaltet wird der Kreis nach dem Aufwachen von
+            # /etc/zzz.d/resume/10-fingerabdruck, und derselbe Hook beendet
+            # davor den Pruefer, der noch von vor der Bereitschaft stammt.
+            # Ein Versuch, der den Kreis hier stehen sieht, ist also immer
+            # einer, der den Sensor wirklich neu greift -- und nur so einer
+            # kann bezeugen, dass der Leser wieder kann.
+            if [ "$(cat "$ZUSTAND" 2>/dev/null)" = aufwachen ]; then
+                kreis=1
+            else
+                kreis=0
+            fi
+
             # Auf das Ergebnis warten -- und zwar beliebig lange. Hier stand
             # eine Zeitschranke, die einen "haengenden" Pruefer abbrechen
             # sollte; das war ein Denkfehler. fprintd-verify wartet auf einen
@@ -198,12 +213,28 @@ finger_entsperren() {
             # abriss und den Sensor neu greifen liess.
             #
             # Abgebrochen wird nur noch aus einem Grund: die Sperre ist weg.
+            takte=0
             while kill -0 "$pruefer" 2>/dev/null; do
                 if ! pgrep -u "$uid" -x xsecurelock >/dev/null; then
                     kill "$pruefer" 2>/dev/null
                     rm -f "$ausgabe"
                     notiere "Sperre weg -- Waechter beendet"
                     exit 0
+                fi
+
+                # Haelt der Versuch ein paar Takte durch, steht der Sensor
+                # wieder -- dann hat der Ladekreis seinen Zweck erfuellt und
+                # das Bild darf wieder nach dem Finger fragen. Ein
+                # verlaesslicheres Zeichen gibt es nicht: ein Geraet, das
+                # noch nicht ansprechbar ist, laesst fprintd-verify sofort
+                # scheitern. Drei Takte sind eine reichliche Dreiviertel-
+                # sekunde -- lang genug, dass kein Fehlschlag mehr kommt, und
+                # kurz genug, dass der Kreis nicht nachhaengt.
+                takte=$((takte + 1))
+                if [ "$kreis" = 1 ] && [ "$takte" -ge 3 ]; then
+                    : > "$ZUSTAND"
+                    kreis=0
+                    notiere "Leser antwortet wieder -- Ladekreis aus"
                 fi
                 sleep "$TAKT"
             done

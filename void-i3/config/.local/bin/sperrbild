@@ -1,16 +1,19 @@
 #!/bin/sh
-# sperrbild [finger|nochmal]  -- baut den Hintergrund des Sperrbildschirms und
-# gibt den Pfad des fertigen PNG aus.
+# sperrbild [finger|nochmal|aufwachen]  -- baut den Hintergrund des
+# Sperrbildschirms und gibt den Pfad des fertigen PNG aus.
 #
 # xsecurelock zeichnet selbst nur eine Farbflaeche; alles Bildliche kommt vom
 # Saver-Modul (/usr/libexec/xsecurelock/saver_ehwaz), und das zeigt genau
 # dieses PNG an. Der Text steht also im Bild, nicht im Programm -- deshalb
-# gibt es zwei Zustaende:
+# gibt es drei Zustaende:
 #
 #   finger   -- Ausgangsbild: Fingerabdruck-Symbol und "Unlock with
 #               fingerprint"
 #   nochmal  -- nach einem misslungenen Fingerversuch: "Try again" in Rot.
 #               Das Passwortfeld darunter zeichnet xsecurelock selbst.
+#   aufwachen -- der Rechner kommt gerade aus der Bereitschaft: "Waking up"
+#               und KEIN Symbol, denn an dessen Stelle laesst sperrsaver den
+#               Ladekreis laufen.
 #
 # Gebaut wird nur, wenn noetig: liegt das Bild schon passend zu Wallpaper und
 # Aufloesung im Cache, wird es wiederverwendet. Das Sperren soll nicht auf
@@ -66,9 +69,14 @@ fi
 benutzer=$(id -un)
 rechner=$(uname -n)
 
+# Im Zustand "aufwachen" bleibt der Symbolplatz leer: dort zeichnet
+# sperrsaver den laufenden Ladekreis, und beides uebereinander waere Matsch.
+# Die beiden -annotate laufen trotzdem mit -- mit leerem Text setzen sie
+# nichts, und der Aufruf unten bleibt fuer alle drei Zustaende derselbe.
 case "$zustand" in
-    nochmal) meldung="Try again";               farbe="$WARNUNG" ;;
-    *)       meldung="Unlock with fingerprint"; farbe="$HELL"    ;;
+    nochmal)   meldung="Try again";               farbe="$WARNUNG"; symbol="$GLYPHE" ;;
+    aufwachen) meldung="Waking up";               farbe="$GEDIMMT"; symbol=""        ;;
+    *)         meldung="Unlock with fingerprint"; farbe="$HELL";    symbol="$GLYPHE" ;;
 esac
 
 # ---- Aussehen
@@ -152,8 +160,8 @@ fi
 magick $grundlage \
     -gravity north \
     -font "$SYMBOLSCHRIFT" -pointsize "$gr_symbol" \
-        -fill "$SCHATTEN" -annotate +"$versatz"+"$y_symbol_s" "$GLYPHE" \
-        -fill "$farbe"    -annotate +0+"$y_symbol"            "$GLYPHE" \
+        -fill "$SCHATTEN" -annotate +"$versatz"+"$y_symbol_s" "$symbol" \
+        -fill "$farbe"    -annotate +0+"$y_symbol"            "$symbol" \
     -font "$TEXTSCHRIFT" -pointsize "$gr_meldung" \
         -fill "$SCHATTEN" -annotate +"$versatz"+"$y_meldung_s" "$meldung" \
         -fill "$farbe"    -annotate +0+"$y_meldung"            "$meldung" \

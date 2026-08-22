@@ -39,6 +39,53 @@ notiere() {
 
 notiere "aufgewacht"
 
+# ---------------------------------------------------------------------------
+# Wer ist die laufende X-Sitzung?
+#
+# Der Benutzer wird am laufenden i3 abgelesen statt fest verdrahtet -- diese
+# Datei liegt in einem oeffentlichen Repo. DISPLAY und XAUTHORITY kommen aus
+# seiner Prozessumgebung, feste Werte waeren hier falsch: die X-Cookies
+# haengen am Rechnernamen.
+i3pid=$(pgrep -x i3 | head -n1)
+benutzer=""
+heim=""
+anzeige=""
+cookie=""
+if [ -n "$i3pid" ]; then
+    benutzer=$(ps -o user= -p "$i3pid" | tr -d ' ')
+    heim=$(getent passwd "$benutzer" | cut -d: -f6)
+    umgebung=$(tr '\0' '\n' < "/proc/$i3pid/environ" 2>/dev/null)
+    anzeige=$(printf '%s\n' "$umgebung" | sed -n 's/^DISPLAY=//p'    | head -n1)
+    cookie=$( printf '%s\n' "$umgebung" | sed -n 's/^XAUTHORITY=//p' | head -n1)
+fi
+
+# ---------------------------------------------------------------------------
+# Den Ladekreis anschalten.
+#
+# Der Sperrbildschirm fragt sonst ab dem ersten Augenblick nach dem Finger --
+# und der Leser kann in diesem Augenblick noch gar nichts. Genau darum geht
+# es hier: solange "aufwachen" in der Zustandsdatei steht, zeigt sperrsaver
+# an der Stelle des Fingerabdruck-Symbols einen laufenden Kreis. Abgeschaltet
+# wird er vom Waechter in ~/.local/bin/i3-sitzung, sobald ein Pruefer den
+# Sensor wirklich greift.
+#
+# Warum hier und nicht schon vor dem Schlafenlegen: dort liefe der Waechter
+# noch mit einem gesunden Pruefer, und der wuerde den Kreis binnen einer
+# Sekunde wieder abschalten. An dieser Stelle dagegen ist die Reihenfolge
+# sicher -- der alte Pruefer faellt gleich darunter, und bis der Waechter
+# einen neuen aufsetzt, vergeht mehr als eine Sekunde.
+#
+# Geschrieben wird als root in eine Datei des Benutzers. Der Besitz wird
+# danach zurechtgerueckt: gehoerte sie root, koennte der Waechter den Kreis
+# nicht mehr abschalten.
+if [ -n "$heim" ] && pgrep -x xsecurelock >/dev/null 2>&1; then
+    zustandsdatei="$heim/.cache/sperrbild/zustand"
+    if [ -f "$zustandsdatei" ] && echo aufwachen > "$zustandsdatei" 2>/dev/null; then
+        chown "$benutzer" "$zustandsdatei" 2>/dev/null
+        notiere "Ladekreis an"
+    fi
+fi
+
 # Erst die Klienten los, damit niemand den alten Griff festhaelt.
 pkill -x fprintd-verify && notiere "wartenden fprintd-verify beendet"
 pkill -x fprintd        && notiere "fprintd beendet"
@@ -90,34 +137,24 @@ done
 # kommt: der Hook laeuft direkt beim Aufwachen, die Maske geht manchmal erst
 # einen Wimpernschlag spaeter auf.
 #
-# Anzeige und Cookie kommen aus dem laufenden i3, genau wie in
-# /etc/acpi/deckel.sh -- feste Werte waeren falsch, die X-Cookies haengen am
-# Rechnernamen.
-i3pid=$(pgrep -x i3 | head -n1)
-if [ -n "$i3pid" ] && pgrep -x xsecurelock >/dev/null 2>&1; then
-    benutzer=$(ps -o user= -p "$i3pid" | tr -d ' ')
-    umgebung=$(tr '\0' '\n' < "/proc/$i3pid/environ" 2>/dev/null)
-    anzeige=$(printf '%s\n' "$umgebung" | sed -n 's/^DISPLAY=//p'    | head -n1)
-    cookie=$( printf '%s\n' "$umgebung" | sed -n 's/^XAUTHORITY=//p' | head -n1)
-
+# Anzeige und Cookie stehen schon oben fest.
+if [ -n "$benutzer" ] && [ -n "$anzeige" ] && pgrep -x xsecurelock >/dev/null 2>&1; then
     # Im Hintergrund, und das ist wichtig: /usr/bin/zzz arbeitet die Hooks
     # der Reihe nach ab. Zwei Sekunden Warten hier wuerden 20-funk genauso
     # lange aufhalten -- und damit das WLAN nach dem Aufwachen.
-    if [ -n "$benutzer" ] && [ -n "$anzeige" ]; then
-        (
-            n=0
-            while [ "$n" -lt 12 ]; do
-                if pgrep -x auth_x11 >/dev/null 2>&1; then
-                    su "$benutzer" -c \
-                       "DISPLAY='$anzeige' XAUTHORITY='$cookie' xdotool key Escape" \
-                       >/dev/null 2>&1
-                    notiere "Anmeldemaske mit Escape geschlossen"
-                fi
-                sleep 0.2
-                n=$((n + 1))
-            done
-        ) >/dev/null 2>&1 &
-    fi
+    (
+        n=0
+        while [ "$n" -lt 12 ]; do
+            if pgrep -x auth_x11 >/dev/null 2>&1; then
+                su "$benutzer" -c \
+                   "DISPLAY='$anzeige' XAUTHORITY='$cookie' xdotool key Escape" \
+                   >/dev/null 2>&1
+                notiere "Anmeldemaske mit Escape geschlossen"
+            fi
+            sleep 0.2
+            n=$((n + 1))
+        done
+    ) >/dev/null 2>&1 &
 fi
 
 exit 0

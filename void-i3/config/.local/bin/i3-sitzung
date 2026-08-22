@@ -222,11 +222,23 @@ finger_entsperren() {
             if grep -q 'no-match' "$ausgabe" 2>/dev/null; then
                 echo nochmal > "$ZUSTAND"
                 pkill -u "$uid" -USR2 -x xsecurelock
+                # Gleich wieder scharf schalten. Die Pause ist bewusst kurz:
+                # in ihr ist der Sensor blind, und wer den Finger nach einem
+                # Fehlversuch sofort wieder auflegt, soll nicht ins Leere
+                # fassen.
+                sleep "$TAKT"
+            else
+                # Kein no-match, sondern ein Fehler: kein Geraet, Sensor
+                # belegt, Dienst weg. Der haeufigste Fall ist das Aufwachen
+                # -- /etc/zzz.d/resume/10-fingerabdruck meldet den Leser dann
+                # gerade am USB ab und wieder an, und solange scheitert jeder
+                # Versuch sofort. Mit dem kurzen Takt wuerden hier Dutzende
+                # Pruefer je Sekunde starten und fprintd immer wieder ueber
+                # D-Bus wecken. Darum hier laenger warten: es eilt nichts,
+                # ein Geraet, das gerade nicht da ist, kommt vom Fragen nicht
+                # schneller wieder.
+                sleep 1
             fi
-            # Gleich wieder scharf schalten. Die Pause ist bewusst kurz: in
-            # ihr ist der Sensor blind, und wer den Finger nach einem
-            # Fehlversuch sofort wieder auflegt, soll nicht ins Leere fassen.
-            sleep "$TAKT"
         done
         notiere "Sperre weg -- Waechter beendet"
         rm -f "$ausgabe"

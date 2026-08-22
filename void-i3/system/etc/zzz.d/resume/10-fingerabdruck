@@ -38,7 +38,86 @@ notiere() {
 }
 
 notiere "aufgewacht"
+
+# Erst die Klienten los, damit niemand den alten Griff festhaelt.
 pkill -x fprintd-verify && notiere "wartenden fprintd-verify beendet"
 pkill -x fprintd        && notiere "fprintd beendet"
+
+# Dann den Leser wirklich neu anmelden. fprintd allein neu zu starten hat
+# nicht gereicht -- gemessen am 22.08.2026: der frisch gestartete Pruefer
+# lief zwar, erkannte den aufgelegten Finger aber nicht. Der Sensor ist ein
+# Match-in-Sensor (Synaptics Tudor) und braucht nach dem Stromsparen offenbar
+# seinen Anmelde-Handschlag von vorn.
+#
+# Die Kennung wird gesucht statt fest hingeschrieben: an welchem Port der
+# Leser haengt, kann sich nach einem Neustart aendern.
+for geraet in /sys/bus/usb/devices/*/; do
+    [ -r "$geraet/idVendor" ] || continue
+    [ "$(cat "$geraet/idVendor")$(cat "$geraet/idProduct")" = "06cb00e7" ] || continue
+    kennung=$(basename "$geraet")
+    printf '%s' "$kennung" > /sys/bus/usb/drivers/usb/unbind 2>/dev/null
+    printf '%s' "$kennung" > /sys/bus/usb/drivers/usb/bind   2>/dev/null
+    notiere "Leser $kennung neu angemeldet"
+    break
+done
+
+# Kurz warten, bis das Geraet wieder ansprechbar ist. Ohne das laufen die
+# Versuche des Waechters in den ersten Augenblicken ins Leere -- das heilt
+# zwar von selbst, fuellt aber die Mitschrift mit Fehlern.
+n=0
+while [ "$n" -lt 30 ]; do
+    [ -e "/sys/bus/usb/devices/$kennung/idVendor" ] && break
+    sleep 0.1
+    n=$((n + 1))
+done
+
+# ---------------------------------------------------------------------------
+# Die Anmeldemaske gleich wieder zumachen.
+#
+# Beim Aufklappen kommt irgendeine Eingabe herein -- Deckelschalter, ein
+# gestreiftes Touchpad, ein Tastendruck beim Aufwachen. xsecurelock startet
+# auf jede Eingabe hin auth_x11, und dann steht sofort das Passwortfeld da,
+# obwohl der Finger genuegt haette. Einen Schalter dagegen gibt es nicht:
+# unter "strings /usr/bin/xsecurelock" findet sich keine Variable, mit der
+# sich das Aufgehen unterdruecken liesse.
+#
+# Also dasselbe, was von Hand hilft: Escape. Geschickt wird es mit xdotool
+# ueber XTEST -- das kommt auch an einem Tastaturgriff vorbei. Nur wenn
+# wirklich gesperrt ist UND die Maske offensteht, sonst landete das Escape
+# im Schreibtisch.
+#
+# Ueber gut zwei Sekunden hinweg, weil die Eingabe nicht auf einen Schlag
+# kommt: der Hook laeuft direkt beim Aufwachen, die Maske geht manchmal erst
+# einen Wimpernschlag spaeter auf.
+#
+# Anzeige und Cookie kommen aus dem laufenden i3, genau wie in
+# /etc/acpi/deckel.sh -- feste Werte waeren falsch, die X-Cookies haengen am
+# Rechnernamen.
+i3pid=$(pgrep -x i3 | head -n1)
+if [ -n "$i3pid" ] && pgrep -x xsecurelock >/dev/null 2>&1; then
+    benutzer=$(ps -o user= -p "$i3pid" | tr -d ' ')
+    umgebung=$(tr '\0' '\n' < "/proc/$i3pid/environ" 2>/dev/null)
+    anzeige=$(printf '%s\n' "$umgebung" | sed -n 's/^DISPLAY=//p'    | head -n1)
+    cookie=$( printf '%s\n' "$umgebung" | sed -n 's/^XAUTHORITY=//p' | head -n1)
+
+    # Im Hintergrund, und das ist wichtig: /usr/bin/zzz arbeitet die Hooks
+    # der Reihe nach ab. Zwei Sekunden Warten hier wuerden 20-funk genauso
+    # lange aufhalten -- und damit das WLAN nach dem Aufwachen.
+    if [ -n "$benutzer" ] && [ -n "$anzeige" ]; then
+        (
+            n=0
+            while [ "$n" -lt 12 ]; do
+                if pgrep -x auth_x11 >/dev/null 2>&1; then
+                    su "$benutzer" -c \
+                       "DISPLAY='$anzeige' XAUTHORITY='$cookie' xdotool key Escape" \
+                       >/dev/null 2>&1
+                    notiere "Anmeldemaske mit Escape geschlossen"
+                fi
+                sleep 0.2
+                n=$((n + 1))
+            done
+        ) >/dev/null 2>&1 &
+    fi
+fi
 
 exit 0

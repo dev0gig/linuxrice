@@ -87,36 +87,36 @@ esac
 ABDUNKLUNG=45
 SCHATTEN='#000000'
 
-# ---- Senkrechte Anordnung, alles aus der Bildhoehe abgeleitet, damit es auf
-#      jeder Aufloesung gleich aussieht.
+# ---- Senkrechte Anordnung
 #
-# xsecurelock zeichnet die Anmeldemaske mittig an eine feste Stelle, die sich
-# nicht verschieben laesst -- auth_x11 kennt keine Umgebungsvariable dafuer.
-# Auf einem 1920x1080-Testschirm nachgemessen (Differenz zweier Aufnahmen,
-# mit und ohne Maske) liegt sie bei y 480..569, also 44,4 % bis 52,7 %.
+# Die Anmeldemaske von xsecurelock sitzt fest in der Bildmitte und laesst
+# sich nicht verschieben -- auth_x11 kennt keine Variable dafuer (nachgesehen
+# mit "strings /usr/libexec/xsecurelock/auth_x11 | grep XSECURELOCK"). Auf
+# einem 1920x1080-Testschirm nachgemessen (Differenz zweier Aufnahmen, mit
+# und ohne Maske) liegt sie bei y 480..569, also 44,4 % bis 52,7 %.
 #
-# Darum stehen Symbol und Hinweis dicht DARUEBER, Name und Rechnername
-# DARUNTER: die Maske gehoert mitten in die Gruppe hinein statt an ihr
-# unteres Ende, und nur so liegt das Ganze um die Bildmitte. Die
-# naheliegende Reihenfolge mit dem Namen ganz oben draengt alles ins obere
-# Drittel, weil unterhalb der Maske dann nichts mehr steht.
+# Daraus folgt die Reihenfolge hier: Symbol und Meldung dicht UEBER der
+# Maske, Name und Rechnername DARUNTER. Alles zusammen -- Symbol, Hinweis,
+# Passwortfeld, Name -- liegt damit als eine Spalte um die Bildmitte. Stuende
+# der Name wie ueblich oben, muesste die ganze Gruppe ueber die Maske passen
+# und saesse sichtbar zu hoch im oberen Drittel.
 #
-# Zwei Stolpersteine beim Nachstellen:
+# Zwei Dinge, ueber die man beim Nachstellen stolpert:
 #
 # Erstens ist die y-Angabe von -annotate bei -gravity north die OBERKANTE der
 # Tinte, nicht die Grundlinie. Nachgemessen mit -trim: "-pointsize 130
 # -annotate +0+200" auf leerer Flaeche liefert Tinte ab genau y 200.
 #
 # Zweitens fuellt die Fingerabdruck-Glyphe ihr Geviert fast ganz aus -- 130
-# Punkt sind hier rund 130 Pixel hoch, viel mehr als die 36 Punkt des Namens
-# (32 Pixel). Wer das verwechselt, setzt das Symbol in die Maske hinein.
+# Punkt sind hier rund 131 Pixel hoch, viel mehr als bei den 36 Punkt des
+# Namens (32 Pixel). Wer das verwechselt, setzt das Symbol in die Maske.
 #
-# Kanten bei 1080 Zeilen: Symbol 300..431, Meldung 445..470, dann die Maske
-# 480..569, darunter Name 600..632 und Rechner 645..661.
-gr_symbol=$(( hoehe * 100 / 830  ))   # 1080 -> 130
-gr_meldung=$((hoehe * 100 / 4000 ))   # 1080 -> 27
+# Unterkanten bei 1080 Zeilen: Symbol 431, Meldung 470 -- dann die Maske
+# 480..569 -- danach Name 632, Rechner 661.
 gr_name=$((   hoehe * 100 / 3000 ))   # 1080 -> 36
 gr_rechner=$((hoehe * 100 / 4500 ))   # 1080 -> 24
+gr_symbol=$(( hoehe * 100 / 830  ))   # 1080 -> 130
+gr_meldung=$((hoehe * 100 / 4000 ))   # 1080 -> 27
 
 y_symbol=$((  hoehe * 278  / 1000 ))
 y_meldung=$(( hoehe * 412  / 1000 ))

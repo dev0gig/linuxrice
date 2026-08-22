@@ -57,6 +57,164 @@ if [ -z "$QUELLE" ] || [ ! -d "$QUELLE/config" ]; then
     gut "nach $QUELLE entpackt"
 fi
 
+# ----------------------------------------------------------------- Hardware
+# Vor der ersten Frage und lange vor dem ersten Paket: passt der Rechner
+# ueberhaupt? Jeder Punkt hat einen von drei Ausgaengen:
+#
+#   Blocker   Abbruch mit Begruendung. Veraendert wurde dann noch nichts --
+#             darum steht dieser Block ganz vorne und nicht mittendrin.
+#   messbar   Der Wert wird ermittelt und weiter unten per sed in die
+#             Vorlagen gesetzt (Akku, Netzteil, Temperatur, Grafiktreiber).
+#   gebunden  Der Teil haengt an genau diesem Notebook und wird
+#             uebersprungen; der Grund landet in $UEBERSPRUNGEN und steht in
+#             der Uebersicht und am Ende noch einmal.
+#
+# Frueher stand all das fest in den Vorlagen -- BAT1, ACAD, hwmon4,
+# xf86-video-intel -- und war auf jedem anderen Notebook stillschweigend
+# falsch: die Leiste zeigte keine Temperatur, akku-wache warnte nie, und
+# Xorg fiel wortlos auf modesetting zurueck.
+
+schritt "Hardware"
+
+# Uebersprungene Teile sammeln, je Zeile "Teil|Grund".
+UEBERSPRUNGEN=""
+ueberspringen() {
+    UEBERSPRUNGEN="${UEBERSPRUNGEN}$1|$2
+"
+}
+
+# --- Blocker ---------------------------------------------------------------
+
+if [ "$(uname -m)" != x86_64 ]; then
+    fehler "Dieser Rechner meldet sich als $(uname -m), die Einrichtung ist auf
+       x86_64 zugeschnitten: die Paketliste, die beiden C-Programme in
+       system/bin und die Zugriffe auf /proc/asound und /sys/class/dmi."
+fi
+
+AKKU=""
+for b in /sys/class/power_supply/BAT*; do
+    if [ -r "$b/capacity" ]; then AKKU=${b##*/}; break; fi
+done
+if [ -z "$AKKU" ]; then
+    fehler "Kein Akku unter /sys/class/power_supply/BAT* gefunden.
+       Das hier ist ein Notebook-Setup: Akkuwarnung, Ton beim An- und
+       Abstecken, Deckelschalter, Helligkeitstasten, Touchpad-Gesten und der
+       Akkublock in der Leiste haengen alle daran. Auf einem Rechner ohne
+       Akku bliebe davon die Haelfte totes Gewicht -- darum hier der
+       Abbruch statt einer halb eingerichteten Oberflaeche."
+fi
+
+# --- Messbares -------------------------------------------------------------
+
+# Das Netzteil heisst je nach Geraet ACAD, AC oder AC0. Statt zu raten wird
+# der Anschluss vom Typ "Mains" gesucht -- den gibt es genau einmal.
+NETZ=""
+for a in /sys/class/power_supply/*; do
+    if [ -r "$a/type" ] && [ "$(cat "$a/type")" = Mains ]; then
+        NETZ=${a##*/}; break
+    fi
+done
+if [ -z "$NETZ" ]; then
+    NETZ=AC
+    ueberspringen "Ton beim An- und Abstecken" \
+        "kein Anschluss vom Typ Mains unter /sys/class/power_supply -- akku-wache und netz-ton koennen das Netzteil nicht erkennen"
+fi
+
+# Die Package-Temperatur. Die hwmon-Nummer ist NICHT stabil: sie haengt an
+# der Reihenfolge, in der die Module geladen wurden, und kann sich nach
+# einem Kernel-Update verschieben. Darum wird nach dem Namen gesucht --
+# einmal hier, und das Ergebnis dann fest in i3status/config geschrieben,
+# weil i3status nur einen fertigen Pfad annimmt. Verschiebt sich die Nummer
+# spaeter doch, hilft ein erneuter Lauf dieses Skripts.
+TEMP=""
+for h in /sys/class/hwmon/hwmon*; do
+    if [ -r "$h/name" ] && [ -r "$h/temp1_input" ]; then
+        case "$(cat "$h/name")" in
+            coretemp|k10temp|zenpower) TEMP="$h/temp1_input"; break ;;
+        esac
+    fi
+done
+if [ -z "$TEMP" ]; then
+    for h in /sys/class/hwmon/hwmon*; do
+        if [ -r "$h/name" ] && [ -r "$h/temp1_input" ] &&
+           [ "$(cat "$h/name")" = acpitz ]; then
+            TEMP="$h/temp1_input"; break
+        fi
+    done
+fi
+if [ -z "$TEMP" ]; then
+    ueberspringen "Temperatur in der Leiste" \
+        "keine Quelle gefunden (weder coretemp/k10temp noch acpitz mit temp1_input) -- der Block entfaellt, sudo sensors-detect kann helfen"
+fi
+
+# Der Grafiktreiber. lspci waere bequemer, aber pciutils gehoert nicht zu
+# base-system -- auf einem frischen Void ist es nicht da. Die Klasse 0x0300
+# ist "VGA compatible controller", 0x0302 ist "3D controller".
+GPU_PAKET=""
+GPU_TEXT="unbekannt -- modesetting aus xorg-server"
+for d in /sys/bus/pci/devices/*; do
+    if [ -r "$d/class" ] && [ -r "$d/vendor" ]; then
+        case "$(cat "$d/class")" in 0x0300*|0x0302*) ;; *) continue ;; esac
+        case "$(cat "$d/vendor")" in
+            0x8086) GPU_PAKET="xf86-video-intel"
+                    GPU_TEXT="Intel -- xf86-video-intel" ;;
+            0x1002) GPU_PAKET="xf86-video-amdgpu"
+                    GPU_TEXT="AMD -- xf86-video-amdgpu" ;;
+            0x10de) GPU_TEXT="NVIDIA -- modesetting aus xorg-server (der nonfree-Treiber bleibt deine Sache)" ;;
+        esac
+        break
+    fi
+done
+
+# --- Geraetegebundenes -----------------------------------------------------
+
+# Die LEDs in F5 und F8. tasten-led schreibt GPIO-Pin 2 und COEF-Register
+# 0x0b des ALC245 -- Werte, die auf genau diesem Notebook ausprobiert wurden.
+# Das Programm selbst prueft nur die Codec-ID, nicht das Subsystem; auf einem
+# fremden Geraet mit demselben Codec schriebe es dieselben Register blind.
+# Darum wird hier das HP-Subsystem geprueft und nicht dort.
+LED_OK=0
+LED_GRUND=""
+CODEC_TEXT="kein Realtek ALC245 gefunden"
+for c in /proc/asound/card*/codec#*; do
+    if [ -r "$c" ] && grep -q 'Codec: Realtek ALC245' "$c"; then
+        sub=$(sed -n 's/^Subsystem Id: *//p' "$c" | head -1)
+        if [ "$sub" = 0x103c8824 ]; then
+            LED_OK=1
+            CODEC_TEXT="ALC245, HP-Subsystem $sub"
+        else
+            CODEC_TEXT="ALC245, aber Subsystem ${sub:-unbekannt}"
+            LED_GRUND="Subsystem ${sub:-unbekannt} statt 0x103c8824 (HP ENVY x360 13-bd0xxx) -- tasten-led schreibt feste GPIO- und COEF-Register, die auf einem anderen Geraet mit demselben Codec ganz anders belegt sein koennen"
+        fi
+        break
+    fi
+done
+if [ "$LED_OK" -eq 0 ]; then
+    [ -n "$LED_GRUND" ] || LED_GRUND="kein Realtek ALC245 am HDA-Bus"
+    ueberspringen "LEDs in F5 und F8" "$LED_GRUND"
+fi
+
+# Die hwdb-Regel und das F12-Zahnrad greifen per DMI-Match nur auf diesem
+# Modell. Abgelegt werden sie trotzdem -- sie sind woanders wirkungslos,
+# nicht schaedlich -- aber gesagt werden soll es.
+DMI=$(cat /sys/class/dmi/id/product_name 2>/dev/null || echo unbekannt)
+case "$DMI" in
+    "HP ENVY x360 Convertible 13-bd0xxx") ;;
+    *) ueberspringen "F-Tasten-Zuordnung und F12-Zahnrad" \
+           "die hwdb-Regel passt per DMI-Match nur auf den HP ENVY x360 13-bd0xxx; sie wird abgelegt, bleibt hier aber wirkungslos -- das Sitzungsmenue erreichst du weiter ueber \$mod+Shift+e" ;;
+esac
+
+# Der Fingerabdrucksensor. Nur erkennen, gefragt wird weiter unten.
+SENSOR_00E7=0
+for d in /sys/bus/usb/devices/*; do
+    if [ "$(cat "$d/idVendor" 2>/dev/null || echo)" = 06cb ] &&
+       [ "$(cat "$d/idProduct" 2>/dev/null || echo)" = 00e7 ]; then
+        SENSOR_00E7=1
+    fi
+done
+
+gut "geprueft -- $DMI"
+
 # ------------------------------------------------------------------- Fragen
 
 schritt "Ein paar Angaben"
@@ -101,7 +259,7 @@ schritt "Pakete"
 
 # Grundlage: Xorg ohne Display-Manager, i3, Terminal, Browser.
 PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils
-        mesa-dri xf86-video-intel
+        mesa-dri $GPU_PAKET
         i3 i3status i3lock rofi dmenu picom feh clipmenu
         alacritty xterm pcmanfm flatpak
         xdg-desktop-portal xdg-desktop-portal-gtk
@@ -616,7 +774,10 @@ gut "abgelegt, Schriftcache erneuert"
 # Skript tragen. Rechte 750 root:audio, damit es nicht jeder Benutzer aufrufen
 # kann.
 schritt "LEDs in F5 und F8"
-if command -v gcc >/dev/null 2>&1 && command -v setcap >/dev/null 2>&1; then
+if [ "$LED_OK" -eq 0 ]; then
+    warn "uebersprungen: $LED_GRUND"
+    warn "mikro-led und ton-led laufen weiter, nur ohne Licht in der Taste."
+elif command -v gcc >/dev/null 2>&1 && command -v setcap >/dev/null 2>&1; then
     if gcc -O2 -o "/tmp/tasten-led.$$" "$QUELLE/system/bin/tasten-led.c" 2>/dev/null; then
         sudo install -m 750 -o root -g audio "/tmp/tasten-led.$$" /usr/local/bin/tasten-led
         rm -f "/tmp/tasten-led.$$"

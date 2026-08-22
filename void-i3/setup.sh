@@ -482,6 +482,7 @@ for rel in etc/X11/xorg.conf.d/00-keyboard.conf \
            etc/pam.d/xsecurelock \
            usr/libexec/xsecurelock/saver_ehwaz \
            etc/zzz.d/resume/10-fingerabdruck \
+           etc/zzz.d/resume/20-funk \
            etc/rc.local; do
     sudo mkdir -p "/$(dirname "$rel")"
     sichern_system "/$rel"
@@ -502,6 +503,7 @@ sudo chmod 755 /etc/acpi/deckel.sh
 # /etc/zzz.d/suspend und /etc/zzz.d/resume durch und ruft daraus nur auf, was
 # ausfuehrbar ist -- eine Datei ohne das Recht wird wortlos uebergangen.
 sudo chmod 755 /etc/zzz.d/resume/10-fingerabdruck
+sudo chmod 755 /etc/zzz.d/resume/20-funk
 
 # Und fuer das Saver-Modul: xsecurelock startet es als Programm. Es muss neben
 # den mitgelieferten Modulen liegen -- xsecurelock sucht seine Module nur in

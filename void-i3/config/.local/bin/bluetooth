@@ -9,6 +9,11 @@
 # Ohne DISPLAY oder ohne rofi geht die Liste nach stdout, damit sich Bluetooth
 # auch im Terminal bedienen laesst (wie bei ~/.local/bin/benachrichtigungen).
 #
+# Der Adapter merkt sich seinen Zustand ueber Neustart und Bereitschaft hinweg:
+# jedes An und Aus wird in ~/.local/state/bluetooth-zustand notiert, und
+# "bluetooth wiederherstellen" stellt ihn wieder her -- beim Sitzungsstart aus
+# der i3-Config, nach dem Aufwachen aus /etc/zzz.d/resume/20-funk.
+#
 # WARUM bluetoothctl und nicht D-Bus direkt: python-dbus ist hier nicht
 # installiert, und org.bluez ueber "gdbus call" anzusprechen hiesse
 # GetManagedObjects-Ausgabe von Hand zu zerlegen. bluetoothctl ist Teil von
@@ -23,6 +28,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 BT = "\U000f00af"        # nf-md-bluetooth
 BT_AUS = "\U000f00b2"    # nf-md-bluetooth_off
@@ -36,6 +42,30 @@ ICON = "bluetooth-active"
 ICON_AUS = "bluetooth-disabled"
 ICON_VERB = "bluetooth-paired"
 ICON_SUCHE = "edit-find"
+
+# Zuletzt gewollter Zustand. bluez merkt sich das NICHT: in
+# /etc/bluetooth/main.conf steht "AutoEnable=false", nach jedem Neustart ist
+# der Adapter also aus, egal wie er vorher stand. Und /var/lib/bluetooth/<mac>/
+# settings bleibt leer -- die Powered-Eigenschaft landet dort nicht.
+# Darum wird der Zustand hier selbst festgehalten und beim Sitzungsstart
+# ueber "bluetooth wiederherstellen" nachgestellt (siehe ~/.config/i3/config).
+#
+# Geschrieben wird NUR beim absichtlichen Schalten (an/aus/um), ausdruecklich
+# nicht bei "zustand". Das war erst andersherum gebaut, damit auch ein
+# "bluetoothctl power off" im Terminal mitgeschrieben wird -- und war falsch:
+# die Leiste ruft "zustand" bei jeder Meldung von bluez auf, also auch dann,
+# wenn bluetoothd gerade erst hochkommt und den Adapter noch aus hat.
+# Nachgemessen beim Neustart des Dienstes: die Notiz kippte in dem Moment von
+# "an" auf "aus", und zwar bevor das wiederherstellen sie lesen konnte. Beim
+# Booten waere es dasselbe Rennen -- Leiste und Wiederherstellung starten
+# beide aus der i3-Config. Der Preis ist, dass ein von Hand getipptes
+# "bluetoothctl power off" nicht in der Notiz landet.
+ZUSTANDSDATEI = os.path.expanduser("~/.local/state/bluetooth-zustand")
+
+# So lange wartet "wiederherstellen" beim Sitzungsstart auf bluetoothd. X ist
+# meist schneller oben als der Dienst -- ohne die Wartezeit faende der Aufruf
+# keinen Adapter und der gemerkte Zustand ginge still verloren.
+WARTEN_AUF_ADAPTER = 20
 
 # bluetoothctl faerbt seine Ausgabe auch dann, wenn sie in eine Pipe geht.
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -86,12 +116,51 @@ def geraete(art=None):
     return GERAET.findall(ausgabe)
 
 
+def merken(zustand):
+    """"an" oder "aus" festhalten -- ueberlebt Neustart und Bereitschaft."""
+    try:
+        os.makedirs(os.path.dirname(ZUSTANDSDATEI), exist_ok=True)
+        with open(ZUSTANDSDATEI, "w") as f:
+            f.write(zustand + "\n")
+    except OSError:
+        pass                        # Merken ist Beiwerk, nie ein Grund zu scheitern
+
+
+def gemerkt():
+    """Zuletzt gemerkter Zustand, oder None wenn noch nie etwas notiert wurde."""
+    try:
+        with open(ZUSTANDSDATEI) as f:
+            wert = f.read().strip()
+    except OSError:
+        return None
+    return wert if wert in ("an", "aus") else None
+
+
+def wiederherstellen():
+    """Den gemerkten Zustand nachstellen. Aufgerufen beim Sitzungsstart.
+
+    Ohne Notiz wird nichts getan -- dann gilt weiter der bluez-Default aus.
+    """
+    if gemerkt() != "an":
+        return
+    # Auf bluetoothd warten: beim Boot startet X gern vor dem Dienst.
+    for _ in range(WARTEN_AUF_ADAPTER):
+        if vorhanden():
+            break
+        time.sleep(1)
+    else:
+        return
+    if not an():
+        einschalten()
+
+
 def einschalten():
     # rfkill zuerst: bei gesetztem Softblock scheitert "power on" mit
     # org.bluez.Error.Blocked. Braucht kein sudo, weil /dev/rfkill per
     # udev-Regel der Gruppe wheel gehoert (siehe 60-rfkill-unblock.rules).
     subprocess.run(["rfkill", "unblock", "bluetooth"], capture_output=True)
     ctl("power", "on")
+    merken("an")
 
 
 def ausschalten():
@@ -99,6 +168,7 @@ def ausschalten():
     # aber der Adapter bleibt fuer bluetoothd sichtbar und laesst sich ohne
     # Umweg ueber rfkill wieder einschalten.
     ctl("power", "off")
+    merken("aus")
 
 
 def melden(text, icon=ICON):
@@ -225,10 +295,13 @@ def main():
             print("sucht")
         for mac, name in geraete("Connected"):
             print("verbunden: {}  {}".format(mac, name))
+    elif befehl == "wiederherstellen":
+        wiederherstellen()
     elif befehl == "menue":
         menue()
     else:
-        print("Aufruf: bluetooth [an|aus|um|zustand|menue]", file=sys.stderr)
+        print("Aufruf: bluetooth [an|aus|um|zustand|wiederherstellen|menue]",
+              file=sys.stderr)
         sys.exit(2)
 
 

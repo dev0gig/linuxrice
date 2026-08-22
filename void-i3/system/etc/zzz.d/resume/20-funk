@@ -1,0 +1,44 @@
+#!/bin/sh
+# 20-funk -- nach dem Aufwachen den Funk wieder in den gewollten Zustand bringen.
+#
+#   WLAN      -> immer an. Ausnahmslos, so gewuenscht.
+#   Bluetooth -> so, wie es zuletzt geschaltet war.
+#
+# WLAN: den Softblock hebt beim Boot die udev-Regel
+# /etc/udev/rules.d/60-rfkill-unblock.rules auf, die aber bewusst nur auf
+# ACTION=="add" hoert -- sonst liesse sich WLAN nie ausschalten (siehe den
+# Kommentar in der Regel). Aus der Bereitschaft kommt kein "add": das
+# rfkill-Geraet verschwindet nie, es wird nur eingefroren. Diese eine Zeile
+# ist also der einzige Ort, an dem WLAN nach dem Aufwachen wieder aufgeht.
+#
+# Bluetooth: der gewollte Zustand steht in ~/.local/state/bluetooth-zustand,
+# geschrieben von ~/.local/bin/bluetooth bei jedem absichtlichen Schalten.
+# Stand er auf "aus", tut das wiederherstellen nichts. Der Aufruf ist auch
+# dann richtig, wenn die Bereitschaft den Adapter gar nicht angeruehrt hat:
+# geschaltet wird nur, wenn der Ist-Zustand abweicht.
+#
+# Warum ueber das Skript des Benutzers und nicht mit einem eigenen
+# bluetoothctl-Aufruf: so gilt hier dieselbe Logik wie beim Klick in der
+# Leiste (rfkill-Unblock vor "power on"), und die Notiz bleibt richtig.
+# Kein DISPLAY noetig, das Skript meldet ohne X nach stdout.
+#
+# Der Benutzer wird wie in /etc/acpi/deckel.sh am laufenden i3 abgelesen statt
+# fest verdrahtet -- diese Datei liegt in einem oeffentlichen Repo.
+#
+# Laeuft als root aus /usr/bin/zzz heraus.
+
+rfkill unblock wlan
+
+i3pid=$(pgrep -x i3 | head -n1)
+if [ -n "$i3pid" ]; then
+    benutzer=$(ps -o user= -p "$i3pid" | tr -d ' ')
+    heim=$(getent passwd "$benutzer" | cut -d: -f6)
+    if [ -x "$heim/.local/bin/bluetooth" ]; then
+        # Im Hintergrund: das Skript wartet notfalls auf bluetoothd, und so
+        # lange darf das Aufwachen nicht stehenbleiben.
+        su "$benutzer" -c "$heim/.local/bin/bluetooth wiederherstellen" \
+            >/dev/null 2>&1 &
+    fi
+fi
+
+exit 0

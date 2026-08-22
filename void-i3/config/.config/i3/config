@@ -114,6 +114,18 @@ exec_always --no-startup-id ~/.local/bin/meldung-klick
 exec_always --no-startup-id ~/.local/bin/mikro-led auto
 exec_always --no-startup-id ~/.local/bin/ton-led auto
 
+# Bluetooth so hochkommen lassen, wie es zuletzt stand. bluez tut das nicht
+# von sich aus: "AutoEnable=false" in /etc/bluetooth/main.conf laesst den
+# Adapter nach jedem Neustart aus, ganz gleich wie er vorher war. Das Skript
+# merkt sich jedes An und Aus in ~/.local/state/bluetooth-zustand und stellt
+# es hier nach -- war es aus, passiert nichts. Dasselbe nach der Bereitschaft
+# ueber /etc/zzz.d/resume/20-funk.
+#
+# WLAN braucht kein Gegenstueck: das ist ausnahmslos an, dafuer sorgen die
+# udev-Regel /etc/udev/rules.d/60-rfkill-unblock.rules beim Boot und derselbe
+# Aufwach-Hook.
+exec_always --no-startup-id ~/.local/bin/bluetooth wiederherstellen
+
 # ---- Hintergrundbild ----
 # exec_always: laeuft auch bei "i3 reload/restart" wieder, damit das Bild
 # nach einem Neustart des WM sofort wieder steht.

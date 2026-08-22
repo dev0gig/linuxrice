@@ -22,6 +22,7 @@ allem die LED-Ansteuerung, die direkt in Register des Codecs schreibt:
 | `etc/udev/hwdb.d/61-hp-envy-fkeys.hwdb` | DMI-Match auf genau dieses Modell | greift schlicht nicht, harmlos |
 | `bindcode 248` (F12-Zahnrad) in der i3-Config | `KEY_UNKNOWN` des `hp-wmi`-Treibers | ohne Wirkung; Sitzungsmenü bleibt über `$mod+Shift+e` erreichbar |
 | `etc/udev/rules.d/60-rfkill-unblock.rules` | WLAN-Softblock durch `hp_wmi` beim Booten | harmlos |
+| `etc/zzz.d/resume/20-funk` (WLAN-Teil) | demselben Softblock, nur nach dem Aufwachen | harmlos; der Bluetooth-Teil ist geräteunabhängig |
 | `akku-wache`, `netz-ton`, `i3status/config` | `BAT1`, `ACAD`, `/sys/class/hwmon/hwmon4` (coretemp) | anpassen: meist `BAT0`/`AC`, und die hwmon-Nummer nachsehen (`cat /sys/class/hwmon/*/name`) |
 | `xf86-video-intel` in der Paketliste | Intel-Grafik | bei AMD/NVIDIA aus der Liste nehmen, der `modesetting`-Treiber aus `xorg-server` reicht |
 | `fingerabdruck/` (selbst gebauter libfprint-Treiber) | Synaptics `06cb:00e7` und seine Tudor-Geschwister (`00c9`, `00ff`, `00d8`, `016c`) | `setup.sh` erkennt den Sensor und fragt; bei jedem anderen Sensor reicht das Void-Paket `fprintd`. Bei Dual-Boot vorher `fingerabdruck/README.md` lesen — die Kopplung verdrängt Windows Hello. |
@@ -73,11 +74,11 @@ Es richtet ein:
 | Schriften | Red Hat Mono nach `/usr/share/fonts`, dazu die fontconfig-Regel, die `monospace` darauf umbiegt |
 | Mauszeiger | Colloid in Weiß (`Colloid-dark-cursors`) systemweit nach `/usr/share/icons`, Größe 36, dazu `default/index.theme` als Auffangnetz für alles ohne eigene Einstellung |
 | Eingabe | deutsches Tastaturlayout in X, Touchpad mit natürlichem Scrollen und Tap-to-Click, Drei-Finger-Gesten mit Karussell-Animation beim Arbeitsflächenwechsel |
-| Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten |
+| Hardware | udev-Regel gegen den WLAN-Softblock von `hp_wmi` beim Booten, dazu `etc/zzz.d/resume/20-funk`: nach der Bereitschaft geht WLAN ausnahmslos wieder an, Bluetooth in seinen letzten Zustand |
 | Netz | Steuersocket von `wpa_supplicant` gehört der Gruppe `wheel`, damit das Netz-Menü ohne `sudo` suchen und verbinden kann |
 | Fingerabdruck | auf Nachfrage: libfprint-Fork mit dem Treiber `synatlsmoc` und gepatchtes fprintd nach `/usr/local`, polkit-Regel, `pam_fprintd` für sudo und Login; das Sperrmenü entsperrt auf Fingertipp (`fingerabdruck/`) |
 | Ton | PipeWire mit WirePlumber und PulseAudio-Schnittstelle, dazu `dumb_runtime_dir` (nicht in `base-system`) und `/run/user` aus `rc.local` — ohne `XDG_RUNTIME_DIR` startet PipeWire nicht |
-| Bluetooth | `bluez`; der Adapter bleibt nach dem Booten aus und geht erst auf Klick an |
+| Bluetooth | `bluez`; der Adapter kommt so hoch, wie er zuletzt geschaltet war — `bluetooth` notiert jedes An und Aus in `~/.local/state/bluetooth-zustand`, die i3-Config stellt es beim Sitzungsstart nach. `AutoEnable` in `/etc/bluetooth/main.conf` bleibt dafür auf `false`: bluez selbst kennt nur *immer an* oder *immer aus*, keinen letzten Zustand |
 | Browser | Chrome (Standard) und Brave als Flatpak von Flathub |
 | Systemmonitor | btop über die volle Arbeitsfläche 4, unschließbar (`config/.local/bin/vitals-btop`) |
 

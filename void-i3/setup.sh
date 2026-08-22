@@ -12,7 +12,13 @@
 # Das Skript holt sich das Repo dann selbst.
 #
 # Es ist mehrfach ausfuehrbar: bestehende Dateien werden vor dem
-# Ueberschreiben nach <datei>.vor-void-i3 gesichert.
+# Ueberschreiben nach <datei>.vor-void-i3 gesichert. Die Antworten aus der
+# Uebersicht merkt es sich in ~/.config/void-i3/antworten.conf und legt sie
+# beim naechsten Lauf wieder vor; mit VOID_I3_UNATTENDED=1 laeuft es ohne
+# jede Rueckfrage durch.
+#
+# Passt die Hardware nicht, bricht es ganz am Anfang ab -- bevor irgendein
+# Paket installiert oder eine Datei angefasst wurde.
 #
 # Was das Skript NICHT tut, weil es ohne dich nicht geht:
 #   * WLAN verbinden (wpa_supplicant), Tailscale anmelden
@@ -216,6 +222,16 @@ done
 gut "geprueft -- $DMI"
 
 # ------------------------------------------------------------------- Fragen
+# Alle Fragen stehen hier vorne. Frueher kam die nach dem Fingerabdruck erst
+# nach der Paketinstallation, also einige Minuten spaeter -- bis dahin
+# konnte niemand weggehen.
+#
+# Die Antworten landen in ~/.config/void-i3/antworten.conf und werden beim
+# naechsten Lauf wieder vorgelegt: das Skript ist mehrfach ausfuehrbar, und
+# ohne diese Datei tippt man jedes Mal dasselbe neu. Ueberschreiben laesst
+# sich alles per Umgebungsvariable (VOID_I3_WS2, VOID_I3_SSH, VOID_I3_WS3,
+# VOID_I3_FINGER), und mit VOID_I3_UNATTENDED=1 laeuft es ohne Rueckfrage
+# durch.
 
 schritt "Ein paar Angaben"
 
@@ -225,33 +241,146 @@ schritt "Ein paar Angaben"
 # zerlegt den sed-Ausdruck oder die Zieldatei -- und das Fehlerbild haette
 # mit der Ursache nichts mehr zu tun (alle Arbeitsflaechen hiessen dann nur
 # noch "1" bis "4"). Darum werden genau diese Zeichen entfernt; Umlaute und
-# alles andere bleiben.
+# alles andere bleiben. Dieselbe Saeuberung schuetzt nebenbei die
+# Antwortdatei, die weiter unten mit Hochkommata geschrieben wird.
 name_saeubern() { printf '%s' "$1" | tr -d '|&\\"'"'"; }
 # Ein SSH-Ziel besteht aus benutzer@rechner, Rechner auch als IP oder mit
 # Port-Doppelpunkt -- mehr Zeichen braucht es nicht.
 ziel_saeubern() { printf '%s' "$1" | tr -cd 'A-Za-z0-9@._:-'; }
 
-info "Arbeitsflaeche 2 traegt ein lokales Terminal, Arbeitsflaeche 3 eine"
-info "SSH-Sitzung. Die Namen stehen spaeter in der Leiste."
-printf '    Name fuer Arbeitsflaeche 2 [lokal]: '
-read -r WS2_NAME || WS2_NAME=""
-WS2_NAME=$(name_saeubern "$WS2_NAME")
-[ -n "$WS2_NAME" ] || WS2_NAME="lokal"
-
-printf '    SSH-Ziel fuer Arbeitsflaeche 3, z.B. benutzer@rechner\n'
-printf '    (leer lassen, dann bleibt Arbeitsflaeche 3 frei): '
-read -r SSH_TARGET || SSH_TARGET=""
-SSH_TARGET=$(ziel_saeubern "$SSH_TARGET")
-
-WS3_NAME=""
-if [ -n "$SSH_TARGET" ]; then
-    # Vorschlag: der Rechnername aus benutzer@rechner
-    VORGABE=${SSH_TARGET#*@}
-    printf '    Name fuer Arbeitsflaeche 3 [%s]: ' "$VORGABE"
-    read -r WS3_NAME || WS3_NAME=""
-    WS3_NAME=$(name_saeubern "$WS3_NAME")
-    [ -n "$WS3_NAME" ] || WS3_NAME="$VORGABE"
+ANTWORTEN="${XDG_CONFIG_HOME:-$HOME/.config}/void-i3/antworten.conf"
+# Der Ordner void-i3 liegt bewusst nicht in config/ im Repo -- sonst wuerde
+# der Kopierschritt weiter unten die eigenen Antworten ueberbuegeln.
+if [ -r "$ANTWORTEN" ]; then
+    . "$ANTWORTEN"
+    info "fruehere Antworten aus $ANTWORTEN"
 fi
+
+# Reihenfolge: Umgebungsvariable schlaegt Antwortdatei schlaegt Vorgabe.
+WS2_NAME=$(name_saeubern "${VOID_I3_WS2:-${WS2_NAME:-lokal}}")
+SSH_TARGET=$(ziel_saeubern "${VOID_I3_SSH:-${SSH_TARGET:-}}")
+WS3_NAME=$(name_saeubern "${VOID_I3_WS3:-${WS3_NAME:-}}")
+FINGER=${VOID_I3_FINGER:-${FINGER:-n}}
+case "$FINGER" in j|J|ja|Ja) FINGER=j ;; *) FINGER=n ;; esac
+if [ -n "$SSH_TARGET" ] && [ -z "$WS3_NAME" ]; then WS3_NAME=${SSH_TARGET#*@}; fi
+if [ "$SENSOR_00E7" -eq 0 ]; then FINGER=n; fi
+
+frage_ws2() {
+    printf '    Arbeitsflaeche 2 traegt ein lokales Terminal. Der Name steht\n'
+    printf '    spaeter in der Leiste.\n'
+    printf '    Name fuer Arbeitsflaeche 2 [%s]: ' "$WS2_NAME"
+    read -r a || a=""
+    a=$(name_saeubern "$a")
+    if [ -n "$a" ]; then WS2_NAME="$a"; fi
+}
+
+frage_ssh() {
+    printf '    Arbeitsflaeche 3 traegt eine SSH-Sitzung, z.B. benutzer@rechner.\n'
+    printf '    Ein einzelner Bindestrich loescht das Ziel, dann bleibt die\n'
+    printf '    Flaeche frei.\n'
+    printf '    SSH-Ziel [%s]: ' "${SSH_TARGET:-keins}"
+    read -r a || a=""
+    case "$a" in
+        "")  ;;
+        -)   SSH_TARGET=""; WS3_NAME="" ;;
+        *)   SSH_TARGET=$(ziel_saeubern "$a"); WS3_NAME="" ;;
+    esac
+    if [ -n "$SSH_TARGET" ]; then
+        vorgabe=${WS3_NAME:-${SSH_TARGET#*@}}
+        printf '    Name fuer Arbeitsflaeche 3 [%s]: ' "$vorgabe"
+        read -r a || a=""
+        a=$(name_saeubern "$a")
+        WS3_NAME=${a:-$vorgabe}
+    fi
+}
+
+frage_finger() {
+    if [ "$SENSOR_00E7" -eq 0 ]; then
+        warn "Kein Synaptics 06cb:00e7 am USB -- hier gibt es nichts zu waehlen."
+        return 0
+    fi
+    printf '    Der Sensor braucht einen selbst gebauten libfprint-Treiber; das\n'
+    printf '    dauert einige Minuten und nimmt die Void-Pakete fprintd und\n'
+    printf '    libfprint heraus. Bei Dual-Boot vorher fingerabdruck/README.md\n'
+    printf '    lesen -- die Kopplung verdraengt Windows Hello.\n'
+    printf '    Treiber jetzt bauen? [j/N] '
+    read -r a || a=""
+    case "$a" in j|J|ja|Ja) FINGER=j ;; *) FINGER=n ;; esac
+}
+
+uebersicht() {
+    printf '\n%s  So wird eingerichtet:%s\n\n' "$FETT" "$AUS"
+    printf '    1  Arbeitsflaeche 2   %s\n' "$WS2_NAME"
+    if [ -n "$SSH_TARGET" ]; then
+        printf '    2  Arbeitsflaeche 3   %s  (Name: %s)\n' "$SSH_TARGET" "$WS3_NAME"
+    else
+        printf '    2  Arbeitsflaeche 3   bleibt frei\n'
+    fi
+    if [ "$SENSOR_00E7" -eq 0 ]; then
+        printf '    3  Fingerabdruck      kein Sensor 06cb:00e7 gefunden\n'
+    elif [ "$FINGER" = j ]; then
+        printf '    3  Fingerabdruck      06cb:00e7 -- Treiber wird gebaut\n'
+    else
+        printf '    3  Fingerabdruck      06cb:00e7 -- uebersprungen\n'
+    fi
+    printf '\n       Gemessen:\n'
+    printf '       Geraet           %s\n' "$DMI"
+    printf '       Akku / Netzteil  %s / %s\n' "$AKKU" "$NETZ"
+    printf '       Temperatur       %s\n' "${TEMP:-keine Quelle -- Block entfaellt}"
+    printf '       Grafik           %s\n' "$GPU_TEXT"
+    printf '       Audio-Codec      %s\n' "$CODEC_TEXT"
+    if [ -n "$UEBERSPRUNGEN" ]; then
+        printf '\n%s       Wird uebersprungen:%s\n' "$GELB" "$AUS"
+        printf '%s' "$UEBERSPRUNGEN" | while IFS='|' read -r teil grund; do
+            if [ -n "$teil" ]; then
+                printf '       %s%s%s\n' "$GELB" "$teil" "$AUS"
+                printf '%s\n' "$grund" | fold -s -w 60 | sed 's/^/         /'
+            fi
+        done
+    fi
+    printf '\n'
+}
+
+antworten_sichern() {
+    mkdir -p "$(dirname "$ANTWORTEN")"
+    cat > "$ANTWORTEN" <<ENDE
+# Von void-i3/setup.sh angelegt und beim naechsten Lauf wieder vorgelegt.
+# Loeschen, um alles neu gefragt zu bekommen.
+WS2_NAME='$WS2_NAME'
+SSH_TARGET='$SSH_TARGET'
+WS3_NAME='$WS3_NAME'
+FINGER='$FINGER'
+ENDE
+}
+
+# Ohne Terminal an der Eingabe -- etwa aus einem anderen Skript heraus --
+# gaebe read sofort auf und die Schleife liefe leer durch. Dann lieber gleich
+# ohne Rueckfragen.
+UNATTENDED=${VOID_I3_UNATTENDED:-0}
+[ -t 0 ] || UNATTENDED=1
+
+if [ "$UNATTENDED" = 1 ]; then
+    uebersicht
+    info "ohne Rueckfrage (VOID_I3_UNATTENDED oder keine Eingabe am Terminal)"
+else
+    while :; do
+        uebersicht
+        printf '    [Enter] starten   [1-3] aendern   [q] abbrechen: '
+        read -r wahl || wahl=""
+        case "$wahl" in
+            "")   break ;;
+            1)    frage_ws2 ;;
+            2)    frage_ssh ;;
+            3)    frage_finger ;;
+            q|Q)  printf '\n    Abgebrochen -- veraendert wurde nichts.\n'; exit 0 ;;
+            *)    warn "Bitte Enter, 1, 2, 3 oder q." ;;
+        esac
+    done
+fi
+
+if [ "$SENSOR_00E7" -eq 0 ]; then FINGER=n; fi
+antworten_sichern
+gut "Antworten in $ANTWORTEN gemerkt"
 
 # ------------------------------------------------------------------- Pakete
 
@@ -812,32 +941,17 @@ fi
 
 # ------------------------------------------------------ Fingerabdrucksensor
 # Der Synaptics 06cb:00e7 braucht einen selbst gebauten libfprint-Treiber,
-# siehe fingerabdruck/README.md. Das dauert ein paar Minuten und nimmt die
-# Void-Pakete fprintd/libfprint raus -- darum wird gefragt statt gemacht.
+# siehe fingerabdruck/README.md. Erkannt wird der Sensor im Hardware-Block,
+# gefragt wurde in der Uebersicht -- hier wird nur noch ausgefuehrt.
 schritt "Fingerabdrucksensor"
-sensor_00e7=0
-for d in /sys/bus/usb/devices/*; do
-    if [ "$(cat "$d/idVendor" 2>/dev/null)" = 06cb ] &&
-       [ "$(cat "$d/idProduct" 2>/dev/null)" = 00e7 ]; then
-        sensor_00e7=1
+if [ "$FINGER" = j ]; then
+    if sh "$QUELLE/fingerabdruck/einrichten.sh"; then
+        gut "Fingerabdrucksensor eingerichtet -- Finger anlernen steht unten"
+    else
+        warn "einrichten.sh ist abgebrochen -- spaeter von Hand: sh fingerabdruck/einrichten.sh"
     fi
-done
-if [ "$sensor_00e7" -eq 1 ]; then
-    printf '    Synaptics 06cb:00e7 gefunden. Treiber jetzt bauen (libfprint + fprintd,\n'
-    printf '    einige Minuten)? [j/N] '
-    read -r antwort
-    case "$antwort" in
-        j|J|ja|Ja)
-            if sh "$QUELLE/fingerabdruck/einrichten.sh"; then
-                gut "Fingerabdrucksensor eingerichtet -- Finger anlernen steht unten"
-            else
-                warn "einrichten.sh ist abgebrochen -- spaeter von Hand: sh fingerabdruck/einrichten.sh"
-            fi
-            ;;
-        *)
-            info "uebersprungen -- spaeter: sh fingerabdruck/einrichten.sh"
-            ;;
-    esac
+elif [ "$SENSOR_00E7" -eq 1 ]; then
+    info "abgewaehlt -- spaeter: sh fingerabdruck/einrichten.sh"
 else
     info "kein Synaptics 06cb:00e7 am USB -- uebersprungen"
 fi

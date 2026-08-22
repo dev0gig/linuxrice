@@ -1,0 +1,341 @@
+#!/usr/bin/python3
+# medien -- was gibt gerade Ton aus, und die Steuerung dazu
+#
+# Gegenstueck zu ~/.local/bin/bluetooth und ~/.local/bin/netz: die ganze
+# Logik steht hier, ~/.local/bin/i3status-melder ruft nur auf. So gibt es
+# den Medien-Block der Leiste auch im Terminal ("medien", "medien um") und
+# die Erkennung steht nur an einer Stelle.
+#
+# ZWEI QUELLEN, weil eine nicht reicht:
+#
+#   MPRIS (ueber playerctl)   Browser, mpv, VLC, Spotify ... melden ueber
+#                             D-Bus, was laeuft, und lassen sich steuern.
+#                             Nur hier gibt es Play/Pause.
+#   PipeWire (ueber pactl)    sieht JEDEN Ton, auch von Programmen ohne
+#                             MPRIS (Spiele, Discord, Telegram). Dafuer
+#                             gibt es dort nichts zu steuern -- ein
+#                             sink-input laesst sich nur stummschalten,
+#                             nicht pausieren.
+#
+# Vorrang hat immer ein MPRIS-Player, der wirklich spielt. Erst wenn keiner
+# spielt, wird nach fremdem Ton gesucht -- sonst zeigte die Leiste den
+# pausierten Browser, waehrend nebenan ein Spiel laeuft.
+#
+# NOTIFICATIONS BLEIBEN DRAUSSEN: die eigenen Signaltoene (melde-ton,
+# netz-ton, akku-wache, osd) laufen alle ueber pw-play und tauchen als
+# sink-input mit application.name = "pw-play" auf. Ohne den Filter blitzte
+# bei jeder Meldung fuer eine Sekunde ein Medien-Block auf.
+#
+# ABSICHTLICH NICHT GEMERKT wird hier, ob ein Player schon einmal gespielt
+# hat -- das entscheidet ueber die Sichtbarkeit in der Leiste und gehoert
+# darum in den langlebigen Prozess (i3status-melder). Dieses Skript sagt
+# nur, was JETZT ist, und ist damit bei jedem Aufruf gleich.
+
+import os
+import subprocess
+import sys
+
+# Welcher Player zuletzt dran war. Ohne dieses Gedaechtnis greift bei
+# mehreren Playern immer der erste, den playerctl nennt -- und der ist
+# alphabetisch gewaehlt, nicht der, den man gerade bedient hat. Zweimal
+# auf denselben Knopf zu klicken haette dann zwei verschiedene Programme
+# getroffen: der erste Klick haelt den laufenden an, der zweite startet
+# irgendeinen anderen, der auch noch offen ist. Genau so ist es beim
+# Testen passiert.
+#
+# Im Laufverzeichnis und nicht in der Konfiguration: die Notiz gilt fuer
+# diese Sitzung und soll den Neustart nicht ueberleben.
+ZULETZT = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "medien.player")
+
+# Werkzeuge, deren Ton nicht "Medienwiedergabe" ist, sondern Signal:
+# Benachrichtigungen, OSD-Quittungen, Warnungen der akku-wache.
+EIGENE_TOENE = {
+    "pw-play", "pw-cat", "paplay", "pacat", "aplay",
+    "canberra-gtk-play", "speaker-test",
+}
+
+# Programmnamen, wie MPRIS sie meldet, gegen die Fensterklasse im i3-Baum.
+# Gebraucht fuer "medien fenster": eine PID hilft nicht weiter, weil die
+# Browser als Flatpak laufen -- ueber D-Bus kommt dort nur die PID des
+# xdg-dbus-proxy zurueck, und der i3-Baum fuehrt auf dieser i3-Fassung
+# ohnehin kein "pid"-Feld.
+KLASSEN = {
+    "chrome": "google-chrome",
+    "chromium": "google-chrome",
+    "brave": "brave-browser",
+    "firefox": "firefox",
+    "mpv": "mpv",
+    "vlc": "vlc",
+}
+
+
+def zuletzt_lesen():
+    """Der Player, der zuletzt dran war -- oder "" wenn keiner vermerkt ist."""
+    try:
+        with open(ZULETZT, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def zuletzt_merken(player):
+    """Nur schreiben, wenn sich etwas geaendert hat: die Leiste fragt oft."""
+    if not player or player == zuletzt_lesen():
+        return
+    try:
+        with open(ZULETZT, "w", encoding="utf-8") as f:
+            f.write(player + "\n")
+    except OSError:
+        pass
+
+
+def lauf(befehl, zeit=5):
+    """Einen Befehl ausfuehren und die Ausgabe holen, oder "" wenn er fehlt."""
+    try:
+        fertig = subprocess.run(befehl, capture_output=True, text=True,
+                                timeout=zeit)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return fertig.stdout
+
+
+def identitaet(player):
+    """Den Namen holen, den das Programm SELBST angibt.
+
+    playerctl kennt nur {{playerName}}, und das ist der Busname -- bei allen
+    Chromium-Abkoemmlingen also "chromium", egal ob Chrome oder Brave davor
+    steht. Die MPRIS-Eigenschaft Identity dagegen liefert "Chrome" bzw.
+    "Brave", also genau das, was in der Leiste stehen soll.
+    """
+    ausgabe = lauf(["gdbus", "call", "--session",
+                    "--dest", "org.mpris.MediaPlayer2." + player,
+                    "--object-path", "/org/mpris/MediaPlayer2",
+                    "--method", "org.freedesktop.DBus.Properties.Get",
+                    "org.mpris.MediaPlayer2", "Identity"])
+    # Antwortform: (<'Chrome'>,)
+    anfang = ausgabe.find("'")
+    ende = ausgabe.rfind("'")
+    if anfang != -1 and ende > anfang:
+        name = ausgabe[anfang + 1:ende].strip()
+        if name:
+            return name
+    # Kein Identity (manche Player lassen die Eigenschaft weg): dann der
+    # Busname ohne die Instanznummer, wenigstens grob richtig.
+    return player.split(".")[0].capitalize()
+
+
+def spieler():
+    """Alle MPRIS-Player als Liste von dicts, in der Reihenfolge von playerctl."""
+    ausgabe = lauf(["playerctl", "-a", "metadata", "--format",
+                    "{{playerInstance}}\t{{status}}\t{{position}}\t{{title}}"])
+    liste = []
+    for zeile in ausgabe.splitlines():
+        teile = zeile.split("\t")
+        if len(teile) < 2 or not teile[0]:
+            continue
+        name, status = teile[0], teile[1].strip().lower()
+        try:
+            # In MIKROSEKUNDEN -- {{position}} im Format-String liefert den
+            # rohen MPRIS-Wert, nicht die Sekunden, die "playerctl position"
+            # ausgibt. Verglichen wird hier ohnehin nur gegen 0: fehlt die
+            # Position (nicht jeder Player fuehrt sie), gilt der Player als
+            # "noch nicht gelaufen".
+            stelle = float(teile[2]) if len(teile) > 2 and teile[2] else 0.0
+        except ValueError:
+            stelle = 0.0
+        liste.append({
+            "player": name,
+            "status": status,                       # playing / paused / stopped
+            "position": stelle,
+            "titel": teile[3] if len(teile) > 3 else "",
+        })
+    return liste
+
+
+def fremdton():
+    """Laufende PipeWire-Streams, die zu keinem eigenen Signalton gehoeren.
+
+    "Corked: no" heisst: der Stream laeuft wirklich. Pausierte Programme
+    lassen ihren sink-input oft stehen, aber corked -- ohne die Pruefung
+    stuende in der Leiste dauerhaft ein Ton, der gar nicht kommt.
+    """
+    ausgabe = lauf(["pactl", "list", "sink-inputs"])
+    gefunden = []
+    name, corked, stumm = "", False, False
+    for zeile in ausgabe.splitlines():
+        blank = zeile.strip()
+        if blank.startswith("Sink Input #"):
+            name, corked, stumm = "", False, False
+        elif blank.startswith("Corked:"):
+            corked = blank.split(":", 1)[1].strip() == "yes"
+        elif blank.startswith("Mute:"):
+            stumm = blank.split(":", 1)[1].strip() == "yes"
+        elif blank.startswith("application.name = "):
+            name = blank.split("=", 1)[1].strip().strip('"')
+            # Der Name kommt als letzte der drei Angaben; hier steht der
+            # Eintrag also vollstaendig fest und kann bewertet werden.
+            if name and not corked and not stumm and name not in EIGENE_TOENE:
+                gefunden.append(name)
+    return gefunden
+
+
+def passt_zu_player(tonname, spieler_liste):
+    """Gehoert dieser Stream schon zu einem MPRIS-Player?
+
+    Grober Vergleich ueber Teilzeichenketten, mehr geht nicht: PipeWire
+    kennt "Chromium", MPRIS meldet "Chrome" -- eine PID zum Abgleichen
+    gibt es wegen Flatpak nicht (siehe KLASSEN). Der Vergleich muss auch
+    gar nicht scharf sein: er greift nur in dem seltenen Fall, dass ein
+    Player Ton macht, ohne "Playing" zu melden.
+    """
+    klein = tonname.lower()
+    for s in spieler_liste:
+        for kandidat in (s["player"].split(".")[0].lower(), s.get("name", "").lower()):
+            if not kandidat:
+                continue
+            if kandidat in klein or klein in kandidat:
+                return True
+            # "chrome" und "chromium" sind auseinander nicht zu halten und
+            # meinen hier dasselbe Programm.
+            if kandidat.startswith("chrom") and klein.startswith("chrom"):
+                return True
+    return False
+
+
+def waehle(kandidaten):
+    """Aus mehreren Playern den nehmen, der zuletzt dran war.
+
+    playerctl sortiert nach Busnamen, also alphabetisch -- "chromium" kaeme
+    immer vor "spotify", egal was man gerade hoert. Der Vermerk in ZULETZT
+    dreht das um: bedient wird der Player, den man auch bedient hat.
+    """
+    gemerkt = zuletzt_lesen()
+    for s in kandidaten:
+        if s["player"] == gemerkt:
+            return s
+    return kandidaten[0]
+
+
+def zustand():
+    """Was laeuft gerade -- ein dict, das auch "nichts" sein kann."""
+    liste = spieler()
+    for s in liste:
+        s["name"] = identitaet(s["player"])
+
+    spielend = [s for s in liste if s["status"] == "playing"]
+    if spielend:
+        s = waehle(spielend)
+        # Was spielt, ist ab jetzt der aktuelle Player -- auch fuer den
+        # Klick, der ihn gleich anhaelt und den danach, der ihn fortsetzt.
+        zuletzt_merken(s["player"])
+        return {"quelle": "mpris", "programm": s["name"], "status": "spielt",
+                "titel": s["titel"], "player": s["player"], "position": s["position"]}
+
+    for tonname in fremdton():
+        if not passt_zu_player(tonname, liste):
+            # Kein Play/Pause moeglich -- deshalb "laeuft" und nicht "spielt".
+            return {"quelle": "ton", "programm": tonname, "status": "laeuft",
+                    "titel": "", "player": "", "position": 0.0}
+
+    pausiert = [s for s in liste if s["status"] == "paused"]
+    if pausiert:
+        s = waehle(pausiert)
+        return {"quelle": "mpris", "programm": s["name"], "status": "pausiert",
+                "titel": s["titel"], "player": s["player"], "position": s["position"]}
+
+    return {"quelle": "nichts", "programm": "", "status": "", "titel": "",
+            "player": "", "position": 0.0}
+
+
+def steuern(was):
+    """Play/Pause, vor, zurueck -- immer an den Player, der gerade dran ist.
+
+    Nicht an "playerctl --all-players": bei zwei offenen Browsern traefe das
+    beide, und der stumme im Hintergrund finge an zu spielen.
+    """
+    z = zustand()
+    if not z["player"]:
+        return 1
+    # Auch beim Steuern vermerken: wer angehalten wird, bleibt der aktuelle
+    # Player, sonst traefe der naechste Klick wieder einen anderen.
+    zuletzt_merken(z["player"])
+    befehl = {"um": "play-pause", "vor": "next", "zurueck": "previous"}[was]
+    subprocess.run(["playerctl", "-p", z["player"], befehl], capture_output=True)
+    return 0
+
+
+def fenster():
+    """Zum Fenster des Players springen.
+
+    Zuerst ueber den Titel: der Fenstertitel des Browsers traegt den
+    laufenden Titel mit ("Left Right - YouTube - Google Chrome"), das trifft
+    auch den richtigen von mehreren Fenstern. Erst wenn das nichts findet,
+    ueber die Fensterklasse aus KLASSEN -- die trifft das Programm, aber
+    nicht unbedingt das Fenster, in dem der Ton laeuft.
+    """
+    z = zustand()
+    if z["quelle"] == "nichts":
+        return 1
+    titel = z["titel"].strip()
+    if titel:
+        # Anfuehrungszeichen im Titel wuerden das i3-Kriterium zerreissen.
+        sicher = titel.replace("\\", "").replace('"', "")[:40]
+        if sicher:
+            ausgabe = lauf(["i3-msg", '[title="%s"] focus' % sicher])
+            if '"success": true' in ausgabe or '"success":true' in ausgabe:
+                return 0
+    klasse = KLASSEN.get(z["programm"].split()[0].lower())
+    if not klasse:
+        klasse = z["programm"].split()[0].lower()
+    lauf(["i3-msg", '[class="(?i)%s"] focus' % klasse])
+    return 0
+
+
+def main():
+    befehl = sys.argv[1] if len(sys.argv) > 1 else ""
+
+    if befehl == "zustand":
+        # Maschinenlesbar fuer ~/.local/bin/i3status-melder: eine Angabe je
+        # Zeile, gleiche Bauart wie "bluetooth zustand".
+        z = zustand()
+        print("quelle: " + z["quelle"])
+        print("programm: " + z["programm"])
+        print("status: " + z["status"])
+        print("titel: " + z["titel"])
+        print("player: " + z["player"])
+        print("position: %.0f" % z["position"])   # Mikrosekunden
+        return 0
+
+    if befehl in ("um", "vor", "zurueck"):
+        return steuern(befehl)
+
+    if befehl == "fenster":
+        return fenster()
+
+    if befehl in ("", "-h", "--help", "hilfe"):
+        z = zustand()
+        if z["quelle"] == "nichts":
+            print("Es laeuft gerade nichts.")
+        elif z["quelle"] == "ton":
+            print("%s gibt Ton aus (nicht steuerbar)." % z["programm"])
+        else:
+            wort = "spielt" if z["status"] == "spielt" else "pausiert"
+            zeile = "%s %s" % (z["programm"], wort)
+            if z["titel"]:
+                zeile += ": " + z["titel"]
+            print(zeile)
+        if befehl:
+            print()
+            print("medien um        Play/Pause")
+            print("medien vor       naechster Titel")
+            print("medien zurueck   vorheriger Titel")
+            print("medien fenster   zum Fenster springen")
+            print("medien zustand   maschinenlesbar (fuer die Leiste)")
+        return 0
+
+    print("medien: unbekannt: %s (siehe 'medien hilfe')" % befehl, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

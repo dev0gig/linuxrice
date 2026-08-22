@@ -440,14 +440,16 @@ angefasst.
 
 `i3status` kann keine Mausklicks entgegennehmen, darum läuft die Leiste über
 `~/.local/bin/i3status-melder`: der Wrapper reicht `i3status` durch, macht
-einzelne Blöcke anklickbar und hängt zwei eigene an — Bluetooth links neben
-dem WLAN, die Glocke des Benachrichtigungs-Verlaufs ganz rechts.
+einzelne Blöcke anklickbar und hängt drei eigene an — Bluetooth links neben
+dem WLAN, den Medien-Block links neben dem Ton, die Glocke des
+Benachrichtigungs-Verlaufs ganz rechts.
 
 | Block | Linksklick | Rechtsklick |
 | --- | --- | --- |
 | Bluetooth | Funk an/aus | Menü: suchen, koppeln, verbinden, trennen |
 | WLAN | Funk an/aus | Menü: Netze suchen, Passwort eingeben, verbinden |
 | Tailscale | Tailnet an/aus | — |
+| Medien | Play/Pause (Mausrad: Titel vor/zurück) | zum Fenster springen |
 | Ton | stumm um (Mausrad: lauter/leiser) | — |
 | Glocke | Verlauf ansehen | Verlauf leeren |
 
@@ -456,6 +458,33 @@ sobald ein Gerät verbunden ist, steht sein Name daneben. Während der Suche
 wird der Block gelb und die Punkte hinter „sucht“ wandern — der Scan dauert
 acht Sekunden und sähe sonst aus wie eingeschaltetes Bluetooth. Dieselben Schritte
 gehen auch im Terminal — `bluetooth an|aus|um|zustand|menue`.
+
+Der Medien-Block zeigt, **was gerade Ton ausgibt**, und hält es an: Musiknote,
+Programmname, Play/Pause-Zeichen. Er erscheint erst, wenn wirklich etwas
+gespielt hat — ein Browser mit einem geladenen, nie gestarteten Video belegt
+die Leiste also nicht. Danach bleibt er stehen, solange es den Player gibt,
+damit der Play-Knopf erreichbar ist; lila heißt „läuft", stumpf heißt
+„angehalten".
+
+Erkannt wird über zwei Wege, weil einer nicht reicht. **MPRIS** (über
+`playerctl`) deckt Browser, mpv, VLC und Spotify ab und ist der einzige Weg,
+auf dem sich etwas steuern lässt. **PipeWire** (über `pactl`) sieht dagegen
+*jeden* Ton, auch von Programmen ganz ohne MPRIS — Spiele, Chat-Programme.
+Für die steht statt der Note eine Sinuswelle und kein Knopf: ein
+PipeWire-Stream lässt sich nicht pausieren, nur stummschalten. Vorrang hat
+immer ein MPRIS-Player, der wirklich spielt.
+
+**Benachrichtigungen bleiben draußen.** Die eigenen Signaltöne (`melde-ton`,
+`netz-ton`, `akku-wache`, `osd`) laufen alle über `pw-play` und tauchen als
+Stream mit `application.name = "pw-play"` auf — ohne diesen Filter blitzte bei
+jeder Meldung für eine Sekunde ein Medien-Block auf.
+
+Die Logik steht in `~/.local/bin/medien` und ist wie bei Bluetooth und Netz
+auch im Terminal bedienbar: `medien um|vor|zurueck|fenster|zustand`. Welcher
+Player gemeint ist, wenn mehrere offen sind, merkt sich das Skript in
+`$XDG_RUNTIME_DIR/medien.player` — ohne diese Notiz greift `playerctl` immer
+den alphabetisch ersten, und der zweite Klick auf denselben Knopf träfe ein
+anderes Programm als der erste.
 
 Das Gegenstück fürs Netz ist `~/.local/bin/netz`, gleicher Aufbau und gleiche
 Befehle (`netz an|aus|um|ts-an|ts-aus|ts-um|zustand|menue`). Im Menü stehen

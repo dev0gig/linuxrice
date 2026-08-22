@@ -44,6 +44,19 @@
 #   eingetragen ist. Welcher Rechner beobachtet wird, steht in
 #   ~/.config/i3status-melder/tailscale-peer (siehe TS_PEER_DATEI).
 #
+# Links vom Ton steht der Medien-Block: er zeigt, WAS gerade Ton ausgibt,
+# und schaltet es an und aus. Er taucht erst auf, wenn wirklich etwas
+# gespielt hat -- ein Browser mit einem geladenen, nie gestarteten Video
+# belegt die Leiste also nicht. Danach bleibt er stehen, solange es den
+# Player gibt, damit der Play-Knopf erreichbar ist.
+#
+#   Linksklick  -> Play/Pause,  Rechtsklick -> zum Fenster springen,
+#   Mausrad     -> Titel vor/zurueck. Alles ueber ~/.local/bin/medien,
+#   wo auch die Erkennung steht (MPRIS ueber playerctl, plus PipeWire fuer
+#   Quellen ganz ohne MPRIS). Die eigenen Signaltoene sind dort
+#   ausgenommen -- sonst blitzte bei jeder Benachrichtigung ein
+#   Medien-Block auf.
+#
 # WARUM ein Wrapper: i3status kann selbst keine Mausklicks entgegennehmen.
 # Klickbare Bloecke gibt es nur ueber das i3bar-Protokoll, und dafuer muss
 # im Kopf "click_events": true stehen -- das setzt hier dieses Skript, und
@@ -179,6 +192,55 @@ TS_MOBIL = ("android", "iOS", "ios")
 # genau wie der Bluetooth-Block ohne Adapter.
 ts = None
 ts_zaehler = 0
+
+# Medien-Block: was gibt gerade Ton aus. Die ganze Erkennung steht in
+# ~/.local/bin/medien -- hier wird nur gezeichnet und geklickt, genau wie
+# beim Bluetooth- und beim Netz-Block.
+MEDIEN = os.path.expanduser("~/.local/bin/medien")
+
+# Lila ist in dieser Leiste sonst nur die CPU-Temperatur, und die ist im
+# zusammengefassten System-Block praktisch nie zu sehen (sichtbar wird sie
+# erst ueber der Warnschwelle -- und dann rot). Die Farbe ist hier also frei.
+LILA = "#d3869b"
+
+MD_NOTE = "\U000f075a"    # nf-md-music     -- steuerbarer Player
+# Die Welle steht fuer "hier kommt Ton her, steuern laesst er sich nicht".
+# NICHT nf-md-waveform (U+F1954), obwohl die Icon-Liste das nahelegt: in der
+# hier installierten Schriftfassung sitzt an der Stelle ein durchgestrichener
+# Kreis, und der liest sich in einer Leiste als "gesperrt". Glyphen vor dem
+# Einbau ansehen, nicht aus der Tabelle uebernehmen -- derselbe Fallstrick
+# wie bei den Scancodes der F-Tasten.
+MD_WELLE = "\U000f095b"   # nf-md-sine_wave -- Ton ohne Steuerung
+MD_PAUSE = "\U000f03e4"   # nf-md-pause     -- laeuft, Klick haelt an
+MD_PLAY = "\U000f040a"    # nf-md-play      -- haelt, Klick spielt weiter
+
+# Wie lang ein Programmname hoechstens sein darf. Ohne Grenze schoebe ein
+# langer Name ("Brave Web Browser") die halbe Leiste nach links.
+MD_BREITE = 16
+
+# Wie beim Bluetooth-Block: die Monitore melden viel mehr, als gebraucht
+# wird. "pactl subscribe" feuert bei JEDEM Signalton mit, "playerctl -F"
+# bei jeder Sekunde Spielzeit -- ohne Drosselung liefe fuer jede dieser
+# Meldungen ein Prozess an.
+MD_DROSSEL = 0.3
+
+# Wie oft ohne Meldung nachgefragt wird: jede vierte i3status-Zeile, bei
+# 5 s Takt also alle 20 Sekunden. Ein Netz gegen verpasste Ereignisse --
+# im Normalfall kommt alles ueber die beiden Monitore.
+MD_TAKT = 4
+
+# None heisst "noch nichts gelesen". Ein dict mit quelle "nichts" heisst
+# "es laeuft nichts" -- dann faellt der Block weg.
+medien = None
+medien_gelesen = 0.0
+medien_uhr = None
+# Wer in dieser Sitzung schon gespielt hat. Ohne dieses Gedaechtnis waere
+# nicht zu unterscheiden, ob ein pausierter Player gerade angehalten wurde
+# oder nur ein geladenes Video ist, das nie lief.
+medien_gespielt = set()
+medien_monitor_laeuft = False
+medien_ton_laeuft = False
+medien_zaehler = 0
 
 anzahl = 0
 letzte_zeile = []
@@ -638,6 +700,235 @@ def ts_umschalten():
     threading.Thread(target=ts_nachziehen, daemon=True).start()
 
 
+def medien_abfragen():
+    """Den Zustand von ~/.local/bin/medien holen (siehe dort).
+
+    Wie bt_abfragen ueber ein eigenes Skript statt ueber playerctl direkt:
+    die Erkennung -- MPRIS, PipeWire, der Filter gegen die eigenen
+    Signaltoene -- steht damit an einer Stelle und ist im Terminal
+    nachvollziehbar. Kostet rund 35 ms, laeuft aber nicht im Takt, sondern
+    nur wenn ein Monitor etwas meldet.
+    """
+    global medien, medien_gelesen
+    medien_gelesen = time.monotonic()
+    try:
+        fertig = subprocess.run([MEDIEN, "zustand"],
+                                capture_output=True, text=True, timeout=8)
+    except (OSError, subprocess.SubprocessError):
+        medien = None               # kein playerctl, kein pactl -- Block weg
+        return
+    werte = {}
+    for zeile in fertig.stdout.splitlines():
+        schluessel, trenner, wert = zeile.partition(":")
+        if trenner:
+            werte[schluessel.strip()] = wert.strip()
+    if not werte.get("quelle"):
+        medien = None
+        return
+    medien = werte
+    player = werte.get("player", "")
+    if werte.get("status") == "spielt" and player:
+        medien_gespielt.add(player)
+    elif werte.get("quelle") == "nichts":
+        # Kein Player mehr da: das Gedaechtnis kann weg, sonst sammelt es
+        # ueber Tage die Instanznamen geschlossener Browser-Tabs.
+        medien_gespielt.clear()
+
+
+def medien_lief_schon():
+    """Hat dieser pausierte Player ueberhaupt schon einmal gespielt?
+
+    Zwei Wege, weil keiner allein reicht: das Gedaechtnis medien_gespielt
+    vergisst alles beim Neustart der Leiste, und nicht jeder Player fuehrt
+    eine Position. Zusammen decken sie beide Faelle ab -- nach einem
+    "i3 restart" bleibt der angehaltene Titel sichtbar, weil seine Position
+    nicht mehr null ist.
+    """
+    if not medien:
+        return False
+    if medien.get("player") in medien_gespielt:
+        return True
+    try:
+        return float(medien.get("position", "0")) > 0
+    except ValueError:
+        return False
+
+
+def medien_block():
+    """Der Medien-Block, oder None wenn gerade nichts zu zeigen ist."""
+    if not medien:
+        return None
+    quelle = medien.get("quelle")
+    name = html.escape(medien.get("programm", "")[:MD_BREITE])
+    if not name:
+        return None
+
+    if quelle == "ton":
+        # Ton ohne MPRIS: das Programm laesst sich nicht anhalten, also
+        # steht hier auch kein Knopf, der etwas verspraeche. Die Wellenform
+        # sagt "von hier kommt der Ton", mehr kann diese Quelle nicht.
+        text = "  <span foreground='{}'>{}</span> <span foreground='{}'>{}</span>  ".format(
+            LILA, MD_WELLE, GRAU, name)
+        return {"name": "medien", "full_text": text, "markup": "pango"}
+
+    if quelle != "mpris":
+        return None
+
+    if medien.get("status") == "spielt":
+        farbe, knopf = LILA, MD_PAUSE
+        namensfarbe = GRAU
+    else:
+        if not medien_lief_schon():
+            return None             # geladen, aber nie gelaufen -- kein Block
+        # Stumpf wie das ausgeschaltete WLAN und das ausgeschaltete
+        # Bluetooth: der Block ist da, aber er ruht.
+        farbe, knopf = STUMPF, MD_PLAY
+        namensfarbe = STUMPF
+
+    text = ("  <span foreground='{0}'>{1}</span> <span foreground='{2}'>{3}</span>"
+            " <span foreground='{0}'>{4}</span>  ").format(
+        farbe, MD_NOTE, namensfarbe, name, knopf)
+    return {"name": "medien", "full_text": text, "markup": "pango"}
+
+
+def medien_einfuegen(bloecke):
+    """Links neben den Ton-Block haengen -- beides betrifft den Lautsprecher,
+    und der Weg von "was spielt" zu "wie laut" ist dann einer. Ohne
+    Ton-Block ans Ende der i3status-Bloecke."""
+    block = medien_block()
+    if block is None:
+        return bloecke
+    stelle = len(bloecke)
+    for i, b in enumerate(bloecke):
+        if b.get("name") == "volume":
+            stelle = i
+            break
+    return bloecke[:stelle] + [block] + bloecke[stelle:]
+
+
+def medien_uhr_stellen():
+    """Eine gedrosselte Meldung gleich nachholen -- wie bt_uhr_stellen.
+
+    Ohne das ginge ausgerechnet die letzte Meldung einer Salve verloren,
+    und das ist meist die entscheidende: beim Pausieren schickt ein Browser
+    mehrere Aenderungen dicht hintereinander, die letzte traegt den neuen
+    Status.
+    """
+    global medien_uhr
+    if medien_uhr is not None and medien_uhr.is_alive():
+        return
+    medien_uhr = threading.Timer(MD_DROSSEL,
+                                 lambda: (medien_abfragen(), neu_zeichnen()))
+    medien_uhr.daemon = True
+    medien_uhr.start()
+
+
+def medien_gemeldet():
+    """Ein Monitor hat etwas gesehen: nachlesen, aber hoechstens alle
+    MD_DROSSEL Sekunden."""
+    if time.monotonic() - medien_gelesen < MD_DROSSEL:
+        medien_uhr_stellen()
+        return
+    medien_abfragen()
+    neu_zeichnen()
+
+
+def medien_monitor():
+    """Auf MPRIS lauschen: "playerctl -F" meldet jeden Wechsel von Player,
+    Status und Titel -- auch das Auftauchen und Verschwinden von Playern.
+
+    Der Inhalt der Zeilen wird nicht gelesen, nur ihr Eintreffen: was gilt,
+    holt medien_abfragen ueber ~/.local/bin/medien, damit die Auswertung
+    nicht zweimal leicht verschieden dasteht.
+
+    stdbuf -oL aus demselben Grund wie bei monitor(): ohne Zeilenpuffer
+    kaeme die erste Meldung erst nach ein paar Kilobyte.
+    """
+    global medien_monitor_laeuft
+    if not shutil.which("stdbuf") or not shutil.which("playerctl"):
+        return
+    befehl = ["stdbuf", "-oL", "playerctl", "-a", "-F", "status"]
+    while True:
+        try:
+            lauscher = subprocess.Popen(
+                befehl, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                encoding="utf-8", errors="replace")
+        except OSError:
+            return
+        medien_monitor_laeuft = True
+        for _zeile in lauscher.stdout:
+            medien_gemeldet()
+        medien_monitor_laeuft = False
+        # Ohne einen einzigen Player beendet sich playerctl -F sofort. Dann
+        # ist Warten richtig: erscheint spaeter einer, faengt ihn der
+        # naechste Durchlauf -- laengstens nach drei Sekunden.
+        time.sleep(3)
+
+
+def medien_ton_monitor():
+    """Auf PipeWire lauschen -- fuer alles, was kein MPRIS spricht.
+
+    "pactl subscribe" meldet jedes Kommen und Gehen eines Streams. Das ist
+    reichlich (jeder Signalton steht mit drin), darum die Drosselung in
+    medien_gemeldet; herausgefiltert werden die eigenen Toene erst in
+    ~/.local/bin/medien.
+    """
+    global medien_ton_laeuft
+    if not shutil.which("stdbuf") or not shutil.which("pactl"):
+        return
+    befehl = ["stdbuf", "-oL", "pactl", "subscribe"]
+    while True:
+        try:
+            lauscher = subprocess.Popen(
+                befehl, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                encoding="utf-8", errors="replace")
+        except OSError:
+            return
+        medien_ton_laeuft = True
+        for zeile in lauscher.stdout:
+            if "sink-input" in zeile:
+                medien_gemeldet()
+        medien_ton_laeuft = False
+        time.sleep(5)               # pipewire-pulse neu gestartet oder weg
+
+
+def medien_nachziehen():
+    """Nach einem Klick den wirklichen Stand nachlesen.
+
+    Ein Browser bestaetigt Play/Pause nicht sofort -- bei Chrome liegen
+    zwischen Klick und neuer MPRIS-Meldung gut zwei Zehntel. Bis dahin
+    steht in der Leiste der vorweggenommene Stand aus medien_klick.
+    """
+    for _ in range(8):
+        time.sleep(0.25)
+        medien_abfragen()
+        neu_zeichnen()
+
+
+def medien_klick(taste):
+    """Linksklick Play/Pause, Rechtsklick zum Fenster, Mausrad vor/zurueck."""
+    if not medien or medien.get("quelle") == "nichts":
+        return
+    if taste == 1:
+        if medien.get("quelle") != "mpris":
+            return                  # ein PipeWire-Stream laesst sich nicht halten
+        # Rueckmeldung im selben Moment wie der Klick: den erwarteten Stand
+        # sofort zeichnen, statt bis zur Antwort des Players auf dem alten
+        # stehen zu bleiben. medien_nachziehen holt danach den echten.
+        medien["status"] = "pausiert" if medien.get("status") == "spielt" else "spielt"
+        neu_zeichnen()
+        subprocess.run([MEDIEN, "um"], capture_output=True)
+        medien_nachziehen()
+    elif taste == 3:
+        subprocess.run([MEDIEN, "fenster"], capture_output=True)
+    elif taste in (4, 5):
+        if medien.get("quelle") != "mpris":
+            return
+        subprocess.run([MEDIEN, "vor" if taste == 4 else "zurueck"],
+                       capture_output=True)
+        medien_nachziehen()
+
+
 def vitals_zeigen():
     """Auf die Vitals-Flaeche wechseln.
 
@@ -755,12 +1046,12 @@ def ausgeben(bloecke):
     Block links und den letzten rechts; die Reihenfolge rechts aussen wird
     darum hier festgelegt und nicht ueber "order" in der i3status-Konfiguration:
 
-        ... System, Bluetooth, WLAN, Tailscale, Ton | Datum+Uhr | Glocke | Akku
+        ... System, Bluetooth, WLAN, Tailscale, Medien, Ton | Datum+Uhr | Glocke | Akku
 
     ensure_ascii=False: die Icons sollen als echtes UTF-8 rausgehen wie bei
     i3status auch, nicht als \\uXXXX-Ersatzpaare."""
-    bloecke = zeit_zusammenfassen(ts_einfuegen(bt_einfuegen(wlan_block_ersetzen(
-        system_zusammenfassen(bloecke)))))
+    bloecke = zeit_zusammenfassen(medien_einfuegen(ts_einfuegen(bt_einfuegen(
+        wlan_block_ersetzen(system_zusammenfassen(bloecke))))))
     rest, akku = akku_abtrennen(bloecke)
     zeile = rest + [glocken_block()] + akku
     with schloss:
@@ -893,12 +1184,16 @@ def klicks():
             nebenlaeufig(lambda: bluetooth_klick(taste))
             continue
 
+        if name == "medien":
+            nebenlaeufig(lambda: medien_klick(taste))
+            continue
+
         if name == "dunst":
             nebenlaeufig(lambda: dunst_klick(taste))
 
 
 def main():
-    global anzahl, letzte_zeile, ts_zaehler
+    global anzahl, letzte_zeile, ts_zaehler, medien_zaehler
     # Ein- und Ausgabe fest auf UTF-8: die Icons sind Nerd-Font-Zeichen, und
     # welche Locale i3bar dem Skript vererbt, ist nicht garantiert.
     sys.stdout.reconfigure(encoding="utf-8")
@@ -908,6 +1203,7 @@ def main():
     anzahl = verlauf_laenge()
     bt_abfragen()
     ts_abfragen()
+    medien_abfragen()
 
     # Kopfzeile von i3status uebernehmen und um click_events ergaenzen
     kopf = json.loads(i3status.stdout.readline())
@@ -918,6 +1214,8 @@ def main():
     threading.Thread(target=klicks, daemon=True).start()
     threading.Thread(target=monitor, daemon=True).start()
     threading.Thread(target=bt_monitor, daemon=True).start()
+    threading.Thread(target=medien_monitor, daemon=True).start()
+    threading.Thread(target=medien_ton_monitor, daemon=True).start()
 
     for zeile in i3status.stdout:
         zeile = zeile.strip().lstrip(",")
@@ -935,6 +1233,11 @@ def main():
         ts_zaehler += 1                 # gedrosselt, siehe TS_TAKT
         if ts_zaehler % TS_TAKT == 0:
             ts_abfragen()
+        medien_zaehler += 1
+        if not (medien_monitor_laeuft and medien_ton_laeuft):
+            medien_abfragen()           # Notnagel, falls ein Monitor fehlt
+        elif medien_zaehler % MD_TAKT == 0:
+            medien_abfragen()           # Netz gegen verpasste Meldungen
         ausgeben(bloecke)
 
 

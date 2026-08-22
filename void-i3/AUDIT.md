@@ -96,7 +96,7 @@ rm -f "$tmp"
 
 ### K2 — Kein Integritätsnachweis auf dem gesamten Download-Pfad
 
-**kritisch**
+**wichtig** — *herabgestuft, Begründung am Ende des Abschnitts*
 
 ```sh
 # setup.sh:57-62 -- der Self-Bootstrap
@@ -157,6 +157,24 @@ Für Colloid genügt `git -C "$TMPC/colloid" checkout -q <commit>` nach dem Clon
 ein `sha256sum -c`. Untergrenze, falls kein Release-Prozess gewünscht ist: wenigstens die
 Prüfsumme des Archivs ausgeben und im README hinterlegen, damit ein Abweichen auffällt.
 
+**Warum „wichtig" und nicht „kritisch" — und warum der Fix oben unvollständig ist.**
+Dieser Punkt stand zuerst als kritisch in der Liste. Die Gegenprüfung hat zwei Einwände
+hervorgebracht, die beide zutreffen:
+
+1. `xbps-fetch` geht über TLS gegen `codeload.github.com`. Transportintegrität und
+   Serverauthentizität sind also vorhanden; was fehlt, ist allein das Pinnen gegen eine
+   Übernahme des Repos selbst.
+2. Der Vertrauensanker ist dasselbe Repo, dessen `setup.sh` der Nutzer ohnehin freiwillig mit
+   `sudo` ausführt. Wer dort pushen kann, kann auch Tags verschieben **und den Hash im README
+   ändern** — die oben vorgeschlagene Prüfsumme ist damit teilweise selbstbezüglich. Sie schließt
+   real nur das Fenster zwischen „`setup.sh` geladen und gelesen" und „`setup.sh` gestartet".
+
+Was unstrittig bleibt und den Aufwand trägt, ist deshalb weniger Sicherheit als
+**Reproduzierbarkeit**: der Nutzer bekommt immer den letzten, womöglich halbfertigen Commit eines
+Skripts, das `/etc/sudoers.d`, `/etc/rc.local` und den PAM-Stack anfasst. Ein Tag statt `main`
+kostet nichts und behebt genau das. Ein signierter Tag (`git tag -s`) plus der `sha256` von
+`setup.sh` selbst im README wäre die Fassung, die auch den Selbstbezug auflöst.
+
 ### K3 — Root schreibt und `chown`t in einen benutzerkontrollierten Pfad (Symlink-Angriff)
 
 **kritisch** · CWE-59 (Link Following) · umgeht die Passwortpflicht des Systems
@@ -211,6 +229,99 @@ fi
 
 Dieselbe Prüfung lohnt für `system/etc/acpi/deckel.sh:45-47` und
 `system/etc/zzz.d/resume/20-funk:39` — siehe N7.
+
+### K4 — Die Sicherungskopie reaktiviert genau das, was das Skript entschärft
+
+**kritisch** · trifft jeden Erstinstallierer · hebt die Deckel-Sperre und die Einschalttasten-Sperre auf
+
+```sh
+# setup.sh:826-828 und 848-851
+sichern_system() {
+    [ -e "$1" ] && [ ! -e "$1.vor-void-i3" ] && sudo cp -a "$1" "$1.vor-void-i3" || true
+}
+...
+    sudo mkdir -p "/$(dirname "$rel")"
+    sichern_system "/$rel"                      # legt die Sicherung DANEBEN
+    sudo cp "$QUELLE/system/$rel" "/$rel"
+```
+
+**Problem.** Die Sicherung landet im selben Verzeichnis wie das Original. Für die meisten Ziele
+ist das harmlos — sie lesen nur bestimmte Endungen. Für genau zwei nicht:
+
+| Zielverzeichnis | liest | Sicherung wirksam? |
+|---|---|---|
+| `/etc/udev/rules.d/`, `/etc/X11/xorg.conf.d/`, `/etc/fonts/conf.d/` | nur `*.rules` / `*.conf` | nein |
+| `/etc/profile.d/`, `/etc/runit/shutdown.d/` | nur `*.sh` | nein |
+| **`/etc/acpi/events/`** | **jede Datei, egal wie sie heißt** | **ja** |
+| **`/etc/zzz.d/resume/`** | **jede ausführbare Datei** | **ja** |
+
+Beide Male steht die Begründung im Repo selbst. Für acpid, in
+`system/etc/acpi/events/anything:10-12` — vom Autor geschrieben:
+
+> „Das Original liegt unveraendert in `/etc/acpi/anything.original` — **NICHT in diesem
+> Verzeichnis**: acpid liest hier jede Datei, egal wie sie heisst, und eine Sicherungskopie neben
+> der Regel waere die Regel selbst."
+
+Für zzz, in `setup.sh:872-873`:
+
+> „`/usr/bin/zzz` laeuft die Verzeichnisse `/etc/zzz.d/suspend` und `/etc/zzz.d/resume` durch und
+> ruft daraus **nur auf, was ausfuehrbar ist**"
+
+Die Gefahr ist also erkannt und exakt beschrieben — und `sichern_system` tut in beiden
+Verzeichnissen genau das, wovor der Kommentar warnt.
+
+**Risiko 1 — `/etc/acpi/events/`, ab dem ersten Lauf.** `acpid` kommt aus der Paketliste, also
+existiert `/etc/acpi/events/anything` (die Sammelregel des Pakets) bereits, wenn Zeile 849
+darüberläuft. `sichern_system` kopiert sie nach `anything.vor-void-i3` — **im selben
+Verzeichnis** — und Zeile 850 ersetzt danach `anything` durch die entschärfte Fassung. acpid liest
+beide. Die Sammelregel bleibt damit dauerhaft aktiv, und mit ihr die drei Dinge, die das Repo
+ausdrücklich abstellen wollte:
+
+```
+#   * Einschalttaste -> sofortiges "shutdown -P now", ohne Rueckfrage
+#   * Deckel zu      -> zzz ohne vorheriges Sperren (doppelt zu deckel)
+#   * Netzteil rein/raus -> schreibt in scaling_setspeed
+```
+
+Der Deckel-Fall ist der ernste: ein Deckelereignis löst jetzt **beide** Regeln aus —
+`deckel.sh` (sperren, dann schlafen) und `handler.sh` (schlafen, ohne zu sperren). Wer zuerst bei
+`zzz` ist, gewinnt. Kommt `handler.sh` durch, schläft der Rechner, bevor `xsecurelock` steht, und
+wacht **entsperrt** auf. Die gesamte Sperre-beim-Zuklappen-Konstruktion — der Grund für
+`deckel.sh`, `events/deckel` und den Aufwach-Hook — ist damit ein Münzwurf. Und die
+Einschalttaste fährt den Rechner wieder ohne Rückfrage herunter.
+
+**Risiko 2 — `/etc/zzz.d/resume/`, ab dem zweiten Lauf.** In Lauf 1 gibt es die Hooks noch nicht,
+`sichern_system` tut nichts. In Lauf 2 existieren sie — mit Modus 755 aus Zeile 874-875 — und
+`cp -a` **erhält den Modus**. Es entsteht ein ausführbares
+`/etc/zzz.d/resume/10-fingerabdruck.vor-void-i3`, das `zzz` von da an bei jedem Aufwachen
+mitausführt: zwei `pkill fprintd`, zwei USB-Unbind/Bind-Zyklen am Fingerabdruckleser, zwei
+Escape-Schleifen, die sich gegenseitig in die Quere kommen. Dasselbe für `20-funk`. Ändert sich
+der Hook später im Repo, läuft die eingefrorene alte Fassung für immer neben der neuen weiter.
+
+**Fix.** Die Sicherung aus dem gelesenen Verzeichnis heraushalten — so, wie der Autor es für
+`anything.original` schon vorgesehen hat:
+
+```sh
+# Sicherungen sammeln sich unter /var/backups/void-i3/ statt neben dem Original.
+# Zwei Zielverzeichnisse lesen JEDE Datei -- /etc/acpi/events (jede) und
+# /etc/zzz.d/resume (jede ausfuehrbare). Eine Kopie daneben waere dort die
+# Regel bzw. der Hook selbst, ein zweites Mal.
+SICHERUNG=/var/backups/void-i3
+sichern_system() {
+    [ -e "$1" ] || return 0
+    ziel="$SICHERUNG/${1#/}"
+    [ -e "$ziel" ] && return 0
+    sudo mkdir -p "$(dirname "$ziel")"
+    sudo cp -a "$1" "$ziel"
+}
+```
+
+Und einmalig aufräumen, was frühere Läufe hinterlassen haben:
+
+```sh
+sudo rm -f /etc/acpi/events/*.vor-void-i3 /etc/zzz.d/resume/*.vor-void-i3
+sudo sv restart acpid
+```
 
 ### W0 — `nullok` im PAM-Stack des Sperrbildschirms
 
@@ -665,6 +776,84 @@ fi
 
 Dasselbe Muster („Verzeichnis existiert" als Beleg für „ist eingerichtet") steht auch bei
 `setup.sh:787` für das Cursor-Theme und trägt dort dasselbe Risiko.
+
+### W-D — Die udev-Regel für `/dev/rfkill` wird nie angewandt
+
+**wichtig**
+
+```sh
+# setup.sh:893-894
+sudo udevadm hwdb --update
+sudo udevadm trigger --sysname-match="event*"
+```
+
+**Problem.** Der Trigger greift nur Geräte, deren sysname auf `event*` passt — also
+`/sys/class/input/event*`, die Tastaturen für den hwdb-Remap. Die zweite Regel in derselben
+soeben kopierten Datei betrifft aber ein ganz anderes Gerät:
+
+```
+# etc/udev/rules.d/60-rfkill-unblock.rules:15
+KERNEL=="rfkill", SUBSYSTEM=="misc", GROUP="wheel", MODE="0660"
+```
+
+Dessen sysname ist `rfkill` im Subsystem `misc` — von `--sysname-match="event*"` nicht erfasst.
+`/dev/rfkill` behält also `root:root 0644` bis zum nächsten Neustart.
+
+**Risiko.** Genau daran hängt laut Kommentar in `config/.local/bin/netz:19-21` das Ein- und
+Ausschalten des Funks per Leistenklick — für WLAN wie für Bluetooth. Nach dem Setup funktioniert
+das nicht, und die Schlussliste (`setup.sh:1149 ff.`) rät zu **Abmelden und neu anmelden**, nicht
+zum Neustart. Wer der Anleitung folgt, hat einen toten Funk-Klick und keinen Anhaltspunkt, warum.
+
+**Fix.** Die Regeln neu einlesen und breiter triggern:
+
+```sh
+sudo udevadm control --reload
+sudo udevadm trigger --sysname-match="event*"                      # hwdb / Tastatur
+sudo udevadm trigger --subsystem-match=misc --sysname-match=rfkill # /dev/rfkill an wheel
+info "Tastatur-Remap und rfkill-Rechte aktiv"
+```
+
+### W-E — `bereitschaft()` legt den Rechner auch dann schlafen, wenn das Sperren scheitert
+
+**wichtig**
+
+```sh
+# config/.local/bin/i3-sitzung:279-284
+bereitschaft() {
+    # Erst sperren, dann schlafen -- sonst liegt der entsperrte Schirm beim
+    # Aufwachen offen da. sperren kehrt zurueck, sobald die Sperre steht.
+    sperren
+    sudo zzz
+}
+```
+
+**Problem.** `sperren()` liefert bei einem Fehlschlag ausdrücklich `1` zurück
+(`i3-sitzung:150-153`: „xsecurelock kam nicht hoch — Schirm bleibt offen"). `bereitschaft()`
+prüft diesen Rückgabewert nicht, und das Skript hat kein `set -e`. Der Kommentar direkt darüber
+benennt das Ziel — „sonst liegt der entsperrte Schirm beim Aufwachen offen da" — und der Code
+stellt es nicht sicher.
+
+**Risiko.** Kommt `xsecurelock` nicht hoch — laut Kommentar in `i3-sitzung:41-44` etwa, weil
+gerade ein rofi die Tastatur greift —, schläft der Rechner trotzdem und wacht mit offenem
+Schreibtisch auf.
+
+Zum Vergleich: `/etc/acpi/deckel.sh:45-49` behandelt exakt denselben Fall bewusst und schreibt
+ihn wenigstens ins Log („Sperre kam nicht hoch — es wird trotzdem geschlafen"). In
+`bereitschaft()` passiert nicht einmal das.
+
+**Fix.**
+
+```sh
+bereitschaft() {
+    if ! sperren; then
+        notify-send -u critical "Bereitschaft abgebrochen" \
+            "Der Sperrbildschirm kam nicht hoch -- der Rechner bleibt wach." 2>/dev/null
+        logger -t i3-sitzung "Sperre kam nicht hoch -- Bereitschaft abgebrochen"
+        return 1
+    fi
+    sudo zzz
+}
+```
 
 ### W7 — `timestamp_timeout=0` wird mitten im Lauf scharf geschaltet
 
@@ -1133,17 +1322,19 @@ sudo xbps-install -Sy $PAKETE
 | # | Befund | Stelle | Aufwand |
 |---|---|---|---|
 | **K3** | Root schreibt und `chown`t in einen benutzerkontrollierten Pfad — Symlink-Angriff, umgeht die Passwortpflicht vollständig | `zzz.d/resume/10-fingerabdruck:84-90` | ~8 Zeilen |
+| **K4** | Die Sicherungskopie reaktiviert die entschärfte acpid-Sammelregel — Deckel schläft ungesperrt, Einschalttaste fährt ohne Rückfrage herunter | `setup.sh:826-828`, `849` | ~10 Zeilen |
 | K1 | Vorhersagbare `/tmp`-Dateien für Binaries, die `setcap`/root-Rechte bekommen | `setup.sh:973-977`, `992-995`, `einrichten.sh:165-167` | ~15 Zeilen |
-| K2 | Kein Integritätsnachweis auf dem Download-Pfad (`main` ungepinnt, keine Prüfsummen) | `setup.sh:57-62`, `756-759`, `793-798`, `einrichten.sh:45` | ~20 Zeilen + Release-Tag |
 
-K3 ist der einzige Befund, der eine bewusst errichtete Sicherheitsgrenze tatsächlich durchlöchert,
-und zugleich der billigste Fix im ganzen Bericht. Er gehört zuerst behoben.
+K3 und K4 heben beide eine Zusicherung auf, die das Setup an anderer Stelle mühsam aufbaut — K3
+die Passwortpflicht, K4 die Sperre beim Zuklappen. Beide sind zugleich unter den billigsten Fixes
+im ganzen Bericht. Sie gehören zuerst behoben.
 
 ### Wichtig — vor „production-grade"
 
 | # | Befund | Stelle |
 |---|---|---|
 | W0 | `nullok` im PAM-Stack des Sperrbildschirms | `pam.d/xsecurelock:30` |
+| K2 | Kein Integritätsnachweis auf dem Download-Pfad (`main` ungepinnt) — s. Herabstufung dort | `setup.sh:57-62`, `756`, `793` |
 | W-A | `tasten-led` für den Benutzer nicht ausführbar (Gruppe `audio` fehlt), Meldung sagt „fehlt" | `setup.sh:743` vs. `974`, `mikro-led:18` |
 | W-C | Schriftinstallation kann sich dauerhaft selbst blockieren, meldet dabei Erfolg | `setup.sh:752-765` |
 | W1 | `acpid` läuft 1–3 min mit der gefährlichen Sammelregel | `setup.sh:657` vs. `839` |
@@ -1152,6 +1343,8 @@ und zugleich der billigste Fix im ganzen Bericht. Er gehört zuerst behoben.
 | W4 | `flatpak update` erreicht die systemweit installierten Browser nicht | `setup.sh:520-526` |
 | W5 | `sed -i` meldet Erfolg ohne Treffer (6 Stellen, Bluetooth am kritischsten) | `setup.sh:615-617` u. a. |
 | W6 | Kein Rollback beim Fingerabdruck-Build (Pakete weg vor dem Build) | `einrichten.sh:80-85` |
+| W-D | udev-Regel für `/dev/rfkill` wird nie angewandt — Funk-Klick tot bis zum Neustart | `setup.sh:893-894` |
+| W-E | `bereitschaft()` schläft auch, wenn das Sperren scheitert | `i3-sitzung:279-284` |
 | W7 | `timestamp_timeout=0` mitten im Lauf → Passwortfragen im „unattended"-Modus | `setup.sh:944-947` |
 | W8 | `INT`-Trap löscht den Quellbaum, beendet aber nicht — abgebrochener Lauf meldet Erfolg | `setup.sh:55-56`, `755`, `790` |
 | W9 | Wallpaper mit Leerzeichen zerlegt den Sperrbildschirm | `sperrbild:160` |
@@ -1196,11 +1389,15 @@ ganzen System, die WLAN-Auswahl in `netz`, ist zugleich die am saubersten gesch�
 
 Vier Dinge trennen es von „production-grade":
 
-1. **Ein Befund hebt eine Zusicherung auf, die das Setup an anderer Stelle mühsam aufbaut.** K3
-   gibt jedem Code, der als Desktop-Benutzer läuft, root ohne Passwort — während `timestamp_timeout=0`
-   und der Fingerabdruck-Stack eigens dafür da sind, genau das zu verhindern. Das ist kein
-   Härtungsdetail, das ist ein Widerspruch im Sicherheitsmodell.
-2. **Vertrauen wird angenommen, nicht nachgewiesen.** Der gesamte Download-Pfad hat keine
+1. **Zwei Befunde heben eine Zusicherung auf, die das Setup an anderer Stelle mühsam aufbaut.**
+   K3 gibt jedem Code, der als Desktop-Benutzer läuft, root ohne Passwort — während
+   `timestamp_timeout=0` und der Fingerabdruck-Stack eigens dafür da sind, genau das zu
+   verhindern. K4 stellt über die eigene Sicherungskopie die acpid-Sammelregel wieder her, gegen
+   die `events/deckel`, `deckel.sh` und der Aufwach-Hook gebaut wurden — der Deckel schläft damit
+   im Münzwurf ungesperrt. Beides sind keine Härtungsdetails, das sind Widersprüche im
+   Sicherheitsmodell. Und beide Male steht die richtige Überlegung bereits als Kommentar im
+   Repo; sie ist nur an der Stelle nicht angewandt worden, wo sie greifen müsste.
+2. **Vertrauen wird angenommen, nicht nachgewiesen.** Der Download-Pfad hat keine
    Integritätsprüfung, und der Einstieg lädt zweimal unabhängig von einem beweglichen Branch. Dass
    das Repo an einer Stelle (`einrichten.sh:43`) genau richtig gepinnt ist, zeigt: der Gedanke war
    da, er wurde nur nicht zu Ende geführt.
@@ -1220,7 +1417,7 @@ wichtige Kategorie ist größtenteils Umsortieren (W1, W7) und Fehlerprüfung na
 W8, W-C). Danach würde das Skript ein Review in einem professionellen Umfeld bestehen — mit
 Anmerkungen zum Stil, nicht zur Sicherheit.
 
-**Einschätzung: 7/10 heute, 9/10 nach den drei kritischen und den sechzehn wichtigen Punkten.**
+**Einschätzung: 7/10 heute, 9/10 nach den drei kritischen und den neunzehn wichtigen Punkten.**
 Gefunden wurde viel, weil überall genau nachgesehen wurde — nicht, weil viel kaputt wäre.
 
 ---
@@ -1232,7 +1429,7 @@ sechs parallele Prüfer entlang getrennter Dimensionen (Supply-Chain, Rechte/PAM
 Shell-Qualität, Void-Spezifika, C-Code und privilegierte Helfer), deren Befunde anschließend
 gegen den echten Code nachgeprüft wurden.
 
-Shell-Semantik wurde gemessen statt erinnert. Vier Verdachtsfälle sind dabei ausgeschieden und
+Shell-Semantik wurde gemessen statt erinnert. Fünf Verdachtsfälle sind dabei ausgeschieden und
 stehen bewusst **nicht** in diesem Bericht:
 
 - `set -e` bricht bei `[ -e datei ] && n=$((n+1))` am Schleifenende **nicht** ab (gegengetestet in
@@ -1246,3 +1443,13 @@ stehen bewusst **nicht** in diesem Bericht:
   und `$`. Nur der Zeilenumbruch bleibt übrig (N2).
 - `cp` überträgt keine zu weiten Rechte, solange die umask stimmt — gemessen für 022, 002 und 000.
   Der Befund ist deshalb als Härtung eingestuft (W11), nicht als Fehler.
+- Ein Prüfer meldete, `netz` löse die SSID-Escapes **nach** dem Zeilen-Regex auf, sodass ein
+  Zeilenumbruch in einer fremden SSID die Auswertung verschieben könne (`netz:66-83`, `218-226`).
+  Das ist falsch herum: `wpa_cli` gibt SSIDs bereits printf-escaped aus, ein Zeilenumbruch kommt
+  also als die zwei Zeichen `\n` an und kann `re.M` nicht brechen. Erst danach zu entwirren ist
+  die *richtige* Reihenfolge — der Autor schreibt genau das in `netz:71`.
+
+Ein Befund ist umgekehrt gegen die erste Einschätzung **härter** geworden: K4 wurde als
+Doppelausführung der zzz-Hooks gemeldet. Beim Nachsehen betrifft dasselbe Muster auch
+`/etc/acpi/events/`, und dort schon im ersten Lauf — mit deutlich schwereren Folgen. Ein weiterer
+wurde **herabgestuft**: K2, siehe die Begründung dort.

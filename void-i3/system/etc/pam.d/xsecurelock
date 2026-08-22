@@ -1,9 +1,35 @@
 #%PAM-1.0
-# void-i3: Sperrbildschirm. Bewusst NUR Passwort.
+# void-i3: Sperrbildschirm.
 #
 # Kein pam_fprintd hier, obwohl sudo und login es haben: der Finger wird auf
 # dem Sperrbildschirm von einem eigenen Waechter geprueft (fprintd-verify in
 # i3-sitzung). Stuende er zusaetzlich in dieser Datei, wuerden zwei Prozesse
 # gleichzeitig nach dem Sensor greifen -- einer von beiden bekaeme ihn nicht.
-auth    include system-auth
+#
+# Der auth-Stack steht hier ausgeschrieben und zieht nicht mehr system-auth
+# herein. Grund ist die Meldung bei falschem Passwort: pam_unix schickt der
+# Anwendung dabei gar nichts -- mit einem kleinen PAM-Klienten nachgemessen,
+# es kommt nur der Prompt und danach der Fehlercode. xsecurelock hatte also
+# nichts anzuzeigen und liess es bei seinem eigenen "Processing...".
+#
+# pam_echo schiebt die Meldung nun selbst nach. Der Sprung dahinter:
+#
+#   pam_unix   [success=2 ...]  ok    -> ueberspringt echo und deny
+#                               sonst -> faellt durch
+#   pam_echo   optional               -> zeigt den Text, aendert nichts
+#   pam_deny   [default=die]          -> beendet mit Authentication failure
+#   pam_permit required               -> Ziel des Sprungs bei Erfolg
+#
+# Beide Zweige einzeln geprueft, indem pam_unix versuchsweise durch
+# pam_permit bzw. pam_deny ersetzt wurde: Erfolg meldet Success ohne Text,
+# Fehlschlag zeigt "Wrong password" und scheitert.
+#
+# Die Meldung bleibt stehen, bis pam_authenticate zurueckkehrt -- pam_unix
+# haengt an einen Fehlversuch rund eine Sekunde Verzoegerung an, gemessen
+# 1,3 s. Zeit genug zum Lesen.
+auth  [success=2 default=ignore]  pam_unix.so   try_first_pass nullok
+auth  optional                    pam_echo.so   Wrong password
+auth  [default=die]               pam_deny.so
+auth  required                    pam_permit.so
+
 account include system-auth

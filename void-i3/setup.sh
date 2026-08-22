@@ -213,6 +213,21 @@ sudo flatpak install -y flathub com.google.Chrome com.brave.Browser \
      com.visualstudio.code
 gut "Chrome, Brave und VS Code installiert"
 
+# Medientasten (F9/F10/F11) fuer Chrome: der Flatpak von Google Chrome bringt
+# in seinem Manifest die Zeile
+#     org.mpris.MediaPlayer2.chromium.*=own
+# mit -- offensichtlich vom Chromium-Paket uebernommen. Google Chrome meldet
+# seinen MPRIS-Dienst aber unter "chrome" an, nicht unter "chromium". Der
+# D-Bus-Filter des Sandkastens blockt die Anmeldung deshalb, und "playerctl"
+# findet ueberhaupt keinen Player -- die F-Tasten laufen ins Leere, obwohl an
+# ihnen nichts falsch ist. Nachgemessen mit dbus-send im Sandkasten:
+# RequestName auf ...MediaPlayer2.chrome.* antwortet ohne diesen Override mit
+# ServiceUnknown, mit ihm mit "uint32 1".
+# Brave braucht das nicht, dort steht im Manifest korrekt "brave.*".
+flatpak override --user com.google.Chrome \
+     --own-name='org.mpris.MediaPlayer2.chrome.*'
+gut "MPRIS-Berechtigung fuer Chrome gesetzt (Medientasten)"
+
 # VS Code meldet sonst dauerhaft "Update verfuegbar" und schickt beim Klick
 # darauf nur den Browser auf die Download-Seite: der Flatpak kann sich nicht
 # selbst aktualisieren, und Flathub hinkt der Version von Microsoft ohnehin

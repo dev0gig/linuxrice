@@ -103,6 +103,18 @@ exec_always --no-startup-id "pgrep -x dunst > /dev/null || dunst"
 # exec-Shell mit killen.
 exec_always --no-startup-id ~/.local/bin/akku-wache
 
+# Zweite, getrennte Wache: sie misst die Untaetigkeit (xprintidle) und setzt
+# die drei Energiezeiten durch -- Bildschirm dunkel (per DPMS), Sperren und
+# Bereitschaft, jede getrennt fuer Netzteil und Akkubetrieb. Eingestellt wird
+# das mit einem Linksklick auf den Akku in der Leiste, die Werte stehen in
+# ~/.config/akku/einstellungen und werden bei jedem Durchlauf neu gelesen.
+#
+# Absichtlich nicht in akku-wache mit drin: die warnt (Ton, Meldung), diese
+# hier greift ein (sperrt, legt schlafen). Zwei sehr verschiedene Dinge, und
+# ein Fehler in der einen soll die andere nicht mitreissen. Beendet ihren
+# Vorgaenger ueber eine eigene PID-Datei.
+exec_always --no-startup-id ~/.local/bin/akku wache
+
 # Kurzer Ton beim Ein- und Ausstecken des Netzteils. Eigenes Skript, weil es
 # im Zwei-Sekunden-Takt schaut -- die Akkuwache darf dafuer ruhig weiter
 # gemaechlich pollen.

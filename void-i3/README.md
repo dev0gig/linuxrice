@@ -30,7 +30,7 @@ Gerät“ sagt also, was von selbst passiert — nichts davon ist noch Handarbei
 | `bindcode 248` (F12-Zahnrad) in der i3-Config | `KEY_UNKNOWN` des `hp-wmi`-Treibers | ohne Wirkung; Sitzungsmenü bleibt über `$mod+Shift+e` erreichbar |
 | `etc/udev/rules.d/60-rfkill-unblock.rules` | WLAN-Softblock durch `hp_wmi` beim Booten | harmlos |
 | `etc/zzz.d/resume/20-funk` (WLAN-Teil) | demselben Softblock, nur nach dem Aufwachen | harmlos; der Bluetooth-Teil ist geräteunabhängig |
-| `akku-wache`, `netz-ton`, `i3status/config` | Akku, Netzteil und Temperaturquelle heißen je nach Gerät anders | wird gemessen: `BAT*` mit `capacity`, der Anschluss vom Typ `Mains` (also `AC`, `AC0` oder `ACAD`) und das `hwmon` namens `coretemp`, `k10temp` oder ersatzweise `acpitz`. Findet sich keine Temperaturquelle, fällt der Block aus der Leiste. Ohne Akku bricht `setup.sh` ab — die halbe Einrichtung hängt daran |
+| `akku-wache`, `netz-ton`, `akku`, `i3status/config` | Akku, Netzteil und Temperaturquelle heißen je nach Gerät anders | wird gemessen: `BAT*` mit `capacity`, der Anschluss vom Typ `Mains` (also `AC`, `AC0` oder `ACAD`) und das `hwmon` namens `coretemp`, `k10temp` oder ersatzweise `acpitz`. Findet sich keine Temperaturquelle, fällt der Block aus der Leiste. Ohne Akku bricht `setup.sh` ab — die halbe Einrichtung hängt daran |
 | Grafiktreiber in der Paketliste | Intel-Grafik | wird über `/sys/bus/pci/devices/*` bestimmt: `xf86-video-intel` bei Intel, `xf86-video-amdgpu` bei AMD, sonst der `modesetting`-Treiber aus `xorg-server` |
 | `fingerabdruck/` (selbst gebauter libfprint-Treiber) | Synaptics `06cb:00e7` und seine Tudor-Geschwister (`00c9`, `00ff`, `00d8`, `016c`) | `setup.sh` erkennt den Sensor und fragt vorne in der Übersicht danach; bei jedem anderen Sensor reicht das Void-Paket `fprintd`. Bei Dual-Boot vorher `fingerabdruck/README.md` lesen — die Kopplung verdrängt Windows Hello. |
 
@@ -107,9 +107,10 @@ VOID_I3_SSH=benutzer@rechner VOID_I3_UNATTENDED=1 sh void-i3/setup.sh
 > | `config/.local/bin/remote-shell` | `@@SSH_TARGET@@`, `@@REMOTE_ALIAS_NAME@@`; heißt lokal anders |
 > | `config/.local/bin/akku-wache` | `@@AKKU@@`, `@@NETZ@@`, `@@TEMP@@` |
 > | `config/.local/bin/netz-ton` | `@@AKKU@@`, `@@NETZ@@` |
+> | `config/.local/bin/akku` | `@@AKKU@@`, `@@NETZ@@` |
 > | `config/.config/i3status/config` | `@@TEMP@@` |
 >
-> Änderungen an diesen sieben also von Hand nachziehen. Alles Übrige darf
+> Änderungen an diesen acht also von Hand nachziehen. Alles Übrige darf
 > direkt kopiert werden.
 
 Es richtet ein:
@@ -499,6 +500,7 @@ Benachrichtigungs-Verlaufs ganz rechts.
 | Tailscale | Tailnet an/aus | — |
 | Medien | Play/Pause (Mausrad: Titel vor/zurück) | zum Fenster springen |
 | Ton | stumm um (Mausrad: lauter/leiser) | — |
+| Akku | Menü: Ladestand, Restzeit, Gesundheit und die drei Energiezeiten | dieselben Zeiten als Meldung |
 | Glocke | Verlauf ansehen | Verlauf leeren |
 
 Das Bluetooth-Icon zeigt den Zustand: stumpf heißt aus, blau heißt an, und
@@ -548,6 +550,65 @@ Jede dieser Handlungen meldet sich kurz über dunst: „WLAN an", „Tailscale a
 „<Netzname> verbunden". Deshalb schaltet die Leiste auch nicht mehr selbst
 per `rfkill`, sondern ruft `netz` auf — die Meldung hängt an einer Stelle statt
 an zweien.
+
+## Energie: dunkel, sperren, Bereitschaft
+
+Vorher tat sich hier **gar nichts**: der Bildschirm wurde nach zehn Minuten
+dunkel — der schlichte Vorgabewert des X-Servers, nirgends eingestellt —, und
+danach blieb der Rechner offen stehen, bis jemand kam. Gesperrt wurde nur von
+Hand (`$mod+l`, Sitzungsmenü) oder beim Zuklappen des Deckels, in Bereitschaft
+ging er nur genauso. Ein Leerlauf-Timeout gab es nicht, denn `elogind` läuft
+hier nicht als Dienst.
+
+Jetzt hängen drei Zeiten am **Linksklick auf den Akku** in der Leiste, jede
+getrennt für Netzteil und Akkubetrieb:
+
+| | am Netzteil | im Akkubetrieb |
+| --- | --- | --- |
+| Bildschirm dunkel | 10 min | 5 min |
+| Sperren | aus | 10 min |
+| Bereitschaft | aus | 30 min |
+
+Das sind die Vorgaben; im Menü steht jede Zeit von „nie" bis zwei Stunden zur
+Wahl. Am Netzteil bleibt der Rechner absichtlich wach — dort steht er meist am
+Schreibtisch, und Sperre wie Bereitschaft wären da eher im Weg. Gespeichert
+wird in `~/.config/akku/einstellungen`, einer Datei mit sechs Zahlen, die sich
+auch von Hand ändern lässt; die Wache liest sie bei jedem Durchlauf neu, ein
+i3-Reload ist dafür nicht nötig.
+
+Das Dunkelwerden macht der X-Server selbst (DPMS), gesetzt wird nur die dritte
+Stufe: `xset dpms 0 0 <sekunden>`. Standby und Suspend bleiben auf 0, sonst
+dimmt der Schirm in zwei Vorstufen, und die erste käme früher als die
+eingestellte Zeit. Das alte Blanking des Screensavers wird abgeschaltet — es
+ist ein zweiter Timer für dieselbe Sache und stand ebenfalls auf zehn Minuten.
+
+Sperren und Bereitschaft übernimmt `~/.local/bin/akku wache`, eine eigene
+Schleife neben `akku-wache`. Die eine **warnt** (Ton, Meldung), die andere
+**greift ein** (sperrt, legt schlafen) — zwei verschiedene Dinge, und ein
+Fehler in der einen soll die andere nicht mitreißen. Gesperrt und geschlafen
+wird über dasselbe `i3-sitzung`, an dem auch `$mod+l` und der Deckelschalter
+hängen; damit gilt hier ebenso das Entsperren per Fingerabdruck.
+
+**Warum nicht `xautolock`.** Das kennt nur *einen* Untätigkeitszähler. Seine
+zweite Aktion (`-killer`) hängt am Sperren statt am Leerlauf und hat einen
+fest eingebauten Mindestabstand von zehn Minuten. „Sperren nach 10, schlafen
+nach 30" ließe sich damit nicht bauen und „sperren aus, schlafen nach 30" erst
+recht nicht. Gemessen wird deshalb direkt mit `xprintidle` — dieselbe Quelle,
+aus der auch `xautolock` liest (die XScreenSaver-Erweiterung).
+
+**Der Fallstrick beim Zählen.** Sobald DPMS den Schirm abschaltet, kann die
+Idle-Zeit auf 0 zurückspringen, ohne dass jemand etwas angefasst hat. Eine
+Wache, die `xprintidle` blind glaubt, würde nach dem Dunkelwerden nie mehr
+sperren. Der Wert wird darum nur übernommen, solange `xset q` den Monitor als
+eingeschaltet meldet; ist er aus, zählt die Wache selbst weiter und nimmt den
+größeren der beiden Werte.
+
+**Läuft Musik oder ein Video, passiert nichts.** Solange ein MPRIS-Player
+`Playing` meldet, wird weder gesperrt noch geschlafen — ohne das endet jedes
+längere Video in der Bereitschaft, denn der Chrome-Flatpak meldet seine
+Wiedergabe zwar über MPRIS, hält den X-Screensaver aber nicht an. Das
+Dunkelwerden bleibt davon unberührt, das regelt ja der X-Server. Abschalten
+lässt sich die Rücksicht mit `medien_halten=0` in derselben Datei.
 
 ## Stolpersteine, die hier schon gelöst sind
 

@@ -3,8 +3,12 @@
 #
 # Gegenstueck zu Super+V unter Windows. Den Verlauf fuellt der Dienst
 # clipmenud, den die i3-Config per exec_always startet; dieses Skript ist
-# nur die Auswahl. Ein gewaehlter Eintrag landet wieder in der Zwischen-
-# ablage (CLIPBOARD und PRIMARY), danach ganz normal mit Strg+v einfuegen.
+# nur die Auswahl.
+#
+# clipmenu selbst legt den gewaehlten Eintrag NUR in die Zwischenablage
+# (CLIPBOARD und PRIMARY) -- es fuegt ihn nicht ein. Unter Windows fuegt
+# Super+V direkt ein, also ahmt der Teil unten das nach: Fokus zurueck aufs
+# vorherige Fenster, dann Strg+v tippen.
 #
 # Der Verlauf liegt unter $XDG_RUNTIME_DIR/clipmenu.6.$USER -- das ist ein
 # tmpfs, der Verlauf ist beim Neustart also weg. Das ist Absicht: so bleibt
@@ -22,4 +26,23 @@
 export CM_LAUNCHER=rofi
 export CM_HISTLENGTH="${CM_HISTLENGTH:-15}"
 
-exec clipmenu -i -no-show-icons -p "Zwischenablage"
+# Das Fenster merken, das vor rofi den Fokus hatte -- dort wird eingefuegt.
+ziel=$(xdotool getactivewindow 2>/dev/null)
+
+# Bricht der Nutzer mit Escape ab, endet clipmenu mit 1: nichts einfuegen.
+clipmenu -i -no-show-icons -p "Zwischenablage" || exit 0
+
+# Ohne Zielfenster (leere Arbeitsflaeche) bleibt es beim reinen Kopieren.
+[ -n "$ziel" ] || exit 0
+xdotool windowactivate --sync "$ziel" 2>/dev/null || exit 0
+
+# Terminals belegen Strg+v nicht mit Einfuegen, dort ist es Strg+Shift+v.
+case "$(xdotool getwindowclassname "$ziel" 2>/dev/null)" in
+    Alacritty|*-term|kitty|foot|*[Tt]erm*) taste=ctrl+shift+v ;;
+    *)                                     taste=ctrl+v ;;
+esac
+
+# Kurz warten, bis Super und Enter der Auswahl wirklich losgelassen sind --
+# sonst kaeme das v mit noch gedruecktem Super im Zielfenster an.
+sleep 0.15
+xdotool key --clearmodifiers "$taste"

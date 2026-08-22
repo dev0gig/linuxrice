@@ -1,31 +1,44 @@
 #!/bin/sh
-# 10-fingerabdruck -- nach dem Aufwachen den Fingerabdruckleser neu greifen.
+# 10-fingerabdruck -- nach dem Aufwachen den Fingerabdruckleser freiraeumen.
 #
-# Der Sensor haengt am USB (06cb:00e7, siehe fingerabdruck/README.md) und
-# meldet sich beim Aufwachen aus S3 neu an. fprintd haelt seinen libusb-Griff
-# aber ueber die Bereitschaft hinweg fest, und der zeigt danach ins Leere.
-# Ein fprintd-verify, das auf diesem Griff wartet, kehrt nie zurueck: der
-# Finger wird nicht erkannt und es gibt auch keine Fehlermeldung, die den
-# Waechter in ~/.local/bin/i3-sitzung zu einem neuen Versuch bewegen wuerde.
+# Klappt der Deckel zu, sperrt /etc/acpi/deckel.sh erst und legt den Rechner
+# dann schlafen. Der Fingerwaechter aus ~/.local/bin/i3-sitzung wartet zu
+# diesem Zeitpunkt also schon in einem fprintd-verify -- und der ueberlebt
+# die Bereitschaft nicht heil.
 #
-# Genau das ist der Fall, der beim Deckel-Zuklappen jedes Mal eintritt:
-# /etc/acpi/deckel.sh sperrt erst und legt den Rechner dann schlafen -- der
-# Waechter wartet also bereits, wenn die Bereitschaft beginnt.
+# Zwei Dinge dazu nachgemessen, weil beide gern falsch angenommen werden:
 #
+#   * Dieser Rechner kennt nur s2idle, kein S3: /sys/power/mem_sleep meldet
+#     "[s2idle]" ohne weitere Wahl. Es wird also nichts abgeschaltet, nur
+#     eingefroren.
+#   * Der Leser meldet sich beim Aufwachen NICHT neu an. Im Kernel-Log steht
+#     nach "PM: suspend exit" kein Reset von usb 3-6. Sein Griff wird aber
+#     ruhend gelegt (/sys/bus/usb/devices/3-6/power/control ist "auto"), und
+#     die laufende Uebertragung ueberlebt das nicht.
+#
+# Darum hier der Kahlschlag: den wartenden Pruefer beenden und fprintd dazu.
 # fprintd wird ueber D-Bus gestartet (siehe
 # /usr/share/dbus-1/system-services/net.reactivated.Fprint.service), es gibt
-# also keinen Dienst zum Neustarten. Beenden genuegt: der naechste Aufruf
-# weckt ihn wieder, und dann sucht er die Geraete neu.
+# also keinen Dienst zum Neustarten -- Beenden genuegt, der naechste Aufruf
+# weckt ihn wieder und er sucht die Geraete neu. Der Waechter merkt das Ende
+# seines Pruefers und startet binnen eines Taktes einen neuen.
 #
-# Der wartende fprintd-verify muss mit weg, sonst haelt er den alten Griff
-# weiter fest. Der Waechter merkt das Ende und startet binnen eines Taktes
-# einen neuen Versuch -- gegen den frischen fprintd.
-#
-# Laeuft als root aus /usr/bin/zzz heraus. pkill meldet 1, wenn nichts
-# passte; das ist der Normalfall, wenn gerade nicht gesperrt war, und darf
-# den Hook nicht als Fehler beenden.
+# Laeuft als root aus /usr/bin/zzz heraus. pkill meldet 1, wenn nichts passte
+# -- der Normalfall, wenn gerade nicht gesperrt war. Das darf den Hook nicht
+# als Fehler beenden, daher das abschliessende "exit 0".
 
-pkill -x fprintd-verify
-pkill -x fprintd
+# Dieselbe zuschaltbare Mitschrift wie im Waechter (~/.local/bin/i3-sitzung),
+# damit sich beide Seiten in einer Zeitleiste lesen lassen. Der Hook laeuft
+# als root, die Datei gehoert aber patrick -- darum wird nur geschrieben,
+# wenn sie schon da ist, und der Besitzer bleibt unangetastet.
+PROTOKOLL=/home/patrick/.cache/sperrbild/protokoll
+notiere() {
+    [ -f "$PROTOKOLL" ] && echo "$(date '+%H:%M:%S') resume-hook: $*" >> "$PROTOKOLL"
+    return 0
+}
+
+notiere "aufgewacht"
+pkill -x fprintd-verify && notiere "wartenden fprintd-verify beendet"
+pkill -x fprintd        && notiere "fprintd beendet"
 
 exit 0

@@ -30,6 +30,19 @@ ZUSTAND="$HOME/.cache/sperrbild/zustand"
 TAKT=0.25
 GEDULD=120
 
+# Messprotokoll fuer die Fehlersuche am Finger. Es schreibt nur, wenn die
+# Datei bereits liegt: "touch ~/.cache/sperrbild/protokoll" schaltet das
+# Mitschreiben ein, Loeschen wieder aus. Im Alltag kostet es damit nichts,
+# und zum Messen muss niemand das Skript anfassen.
+#
+# Ein gewoehnliches "logger" hilft hier nicht: auf diesem Rechner laeuft gar
+# kein Syslog-Dienst, die Zeilen fielen also ins Leere.
+PROTOKOLL="$HOME/.cache/sperrbild/protokoll"
+notiere() {
+    [ -f "$PROTOKOLL" ] && echo "$(date '+%H:%M:%S') $*" >> "$PROTOKOLL"
+    return 0
+}
+
 # Zeilen im dmenu-Format mit Symbol: Text, NUL, "icon", 0x1f, Symbolname.
 # Die Symbole kommen aus Papirus-Dark (icon-theme in config.rasi); rofi
 # skaliert die SVGs auf die 4em aus dem Theme hoch.
@@ -156,9 +169,11 @@ finger_entsperren() {
 
     (
         ausgabe=$(mktemp) || exit 0
+        notiere "Waechter gestartet"
         while pgrep -u "$uid" -x xsecurelock >/dev/null; do
             fprintd-verify >"$ausgabe" 2>&1 &
             pruefer=$!
+            notiere "Versuch $pruefer gestartet"
 
             # Auf das Ergebnis warten -- aber nicht endlos. Nach dem
             # Aufwachen aus der Bereitschaft kann fprintd-verify haengen
@@ -178,6 +193,7 @@ finger_entsperren() {
                 fi
                 runden=$(( runden + 1 ))
                 if [ "$runden" -ge "$GEDULD" ]; then
+                    notiere "Versuch $pruefer haengt -- abgebrochen"
                     kill "$pruefer" 2>/dev/null
                     wait "$pruefer" 2>/dev/null
                     continue 2
@@ -186,6 +202,7 @@ finger_entsperren() {
             done
 
             if wait "$pruefer"; then
+                notiere "Treffer -- Sperre wird beendet"
                 pkill -u "$uid" -x xsecurelock
                 rm -f "$ausgabe"
                 exit 0
@@ -194,6 +211,7 @@ finger_entsperren() {
             # Passwortmaske einblenden. Nur bei einem echten no-match --
             # bricht fprintd aus einem anderen Grund ab (Sensor belegt, Dienst
             # weg), soll nichts Rotes dastehen.
+            notiere "Versuch $pruefer beendet: $(tr '\n' ' ' < "$ausgabe")"
             if grep -q 'no-match' "$ausgabe" 2>/dev/null; then
                 echo nochmal > "$ZUSTAND"
                 pkill -u "$uid" -USR2 -x xsecurelock
@@ -203,6 +221,7 @@ finger_entsperren() {
             # Fehlversuch sofort wieder auflegt, soll nicht ins Leere fassen.
             sleep "$TAKT"
         done
+        notiere "Sperre weg -- Waechter beendet"
         rm -f "$ausgabe"
     ) >/dev/null 2>&1 &
 }

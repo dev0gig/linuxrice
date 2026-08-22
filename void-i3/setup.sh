@@ -480,7 +480,7 @@ for rel in etc/X11/xorg.conf.d/00-keyboard.conf \
            etc/acpi/events/deckel \
            etc/acpi/events/anything \
            etc/pam.d/xsecurelock \
-           usr/libexec/xsecurelock/saver_ehwaz \
+           usr/libexec/xsecurelock/saver_sperrbild \
            etc/zzz.d/resume/10-fingerabdruck \
            etc/zzz.d/resume/20-funk \
            etc/rc.local; do
@@ -508,7 +508,7 @@ sudo chmod 755 /etc/zzz.d/resume/20-funk
 # Und fuer das Saver-Modul: xsecurelock startet es als Programm. Es muss neben
 # den mitgelieferten Modulen liegen -- xsecurelock sucht seine Module nur in
 # diesem einen Verzeichnis, ein Pfad in XSECURELOCK_SAVER hilft nicht.
-sudo chmod 755 /usr/libexec/xsecurelock/saver_ehwaz
+sudo chmod 755 /usr/libexec/xsecurelock/saver_sperrbild
 
 # Der Dienst wurde weiter oben eingeschaltet, also bevor diese Regeln hier
 # lagen -- acpid liest sie nur beim Start. Ohne den Neustart bliebe bis zum

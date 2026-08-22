@@ -1,5 +1,5 @@
 #!/bin/sh
-# saver_ehwaz -- Hintergrundmodul fuer xsecurelock.
+# saver_sperrbild -- Hintergrundmodul fuer xsecurelock.
 #
 # xsecurelock zeichnet selbst nur eine Farbflaeche und startet fuer alles
 # Weitere ein Saver-Modul. Dieses hier baut mit ~/.local/bin/sperrbild die

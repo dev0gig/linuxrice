@@ -3,7 +3,7 @@
 # Sperrbildschirms und gibt den Pfad des fertigen PNG aus.
 #
 # xsecurelock zeichnet selbst nur eine Farbflaeche; alles Bildliche kommt vom
-# Saver-Modul (/usr/libexec/xsecurelock/saver_ehwaz), und das zeigt genau
+# Saver-Modul (/usr/libexec/xsecurelock/saver_sperrbild), und das zeigt genau
 # dieses PNG an. Der Text steht also im Bild, nicht im Programm -- deshalb
 # gibt es drei Zustaende:
 #

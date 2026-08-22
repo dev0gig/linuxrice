@@ -9,7 +9,7 @@
 ACTION=="add", SUBSYSTEM=="rfkill", ATTR{type}=="wlan", ATTR{soft}="0"
 
 # Damit der WLAN-Klick in der Leiste ohne sudo schalten kann: /dev/rfkill
-# gehoert sonst root:root mit 0644, patrick duerfte nur lesen. Ein
+# gehoert sonst root:root mit 0644, der Benutzer duerfte nur lesen. Ein
 # Passwortdialog auf einen Leistenklick waere Unfug, polkit gibt es hier
-# nicht -- also die Gruppe wheel schreiben lassen, in der patrick ohnehin ist.
+# nicht -- also die Gruppe wheel schreiben lassen, in der er ohnehin ist.
 KERNEL=="rfkill", SUBSYSTEM=="misc", GROUP="wheel", MODE="0660"

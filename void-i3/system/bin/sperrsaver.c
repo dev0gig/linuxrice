@@ -5,7 +5,7 @@
  *                <zustandsdatei>
  *
  * Aufgerufen wird es nicht direkt, sondern von
- * /usr/libexec/xsecurelock/saver_ehwaz -- dem Saver-Modul, das xsecurelock
+ * /usr/libexec/xsecurelock/saver_sperrbild -- dem Saver-Modul, das xsecurelock
  * startet. Die Bilder baut ~/.local/bin/sperrbild mit ImageMagick.
  *
  * Warum es dieses Programm ueberhaupt gibt

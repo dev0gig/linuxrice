@@ -25,9 +25,9 @@
 
 # Der fprintd-Fork liegt unter /usr/local/bin (siehe fingerabdruck/README.md,
 # er ist selbst gebaut und kommt nicht aus xbps). Darauf ist kein Verlass:
-# acpid startet /etc/acpi/deckel.sh mit PATH=/usr/bin:/usr/sbin, und "su
-# patrick -c" reicht genau diesen PATH weiter -- /usr/local/bin ist nicht
-# dabei, weil /etc/login.defs hier kein ENV_PATH setzt.
+# acpid startet /etc/acpi/deckel.sh mit PATH=/usr/bin:/usr/sbin, und ein
+# "su <benutzer> -c" reicht genau diesen PATH weiter -- /usr/local/bin ist
+# nicht dabei, weil /etc/login.defs hier kein ENV_PATH setzt.
 #
 # Die Folge war der Fehler, wegen dem das hier steht: beim Zuklappen fand
 # finger_entsperren kein fprintd-verify, kehrte wortlos zurueck, und der
@@ -80,7 +80,7 @@ zeilen() {
 # Schirm trotzdem gesperrt -- deshalb hier und nicht i3lock, das ausser einer
 # Farbe oder einem PNG ohnehin nichts anzeigen kann.
 #
-# Das Bild liefert /usr/libexec/xsecurelock/saver_ehwaz, die Anmeldemaske
+# Das Bild liefert /usr/libexec/xsecurelock/saver_sperrbild, die Anmeldemaske
 # auth_x11. Die Maske erscheint nicht sofort: xsecurelock startet sie erst auf
 # Tastendruck -- oder auf das Signal USR2, das der Fingerwaechter weiter unten
 # nach einem misslungenen Versuch schickt. Genau das ist die gewuenschte
@@ -106,7 +106,7 @@ zeilen() {
 # regelmaessig nach vorn. Ganz ausschliessen laesst sich ein kurzes Aufblitzen
 # damit nicht.
 starte_sperre() {
-    XSECURELOCK_SAVER=saver_ehwaz \
+    XSECURELOCK_SAVER=saver_sperrbild \
     XSECURELOCK_NO_COMPOSITE=1 \
     XSECURELOCK_BACKGROUND_COLOR='#161616' \
     XSECURELOCK_AUTH_BACKGROUND_COLOR='#1e1e1e' \

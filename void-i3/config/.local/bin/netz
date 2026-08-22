@@ -24,7 +24,7 @@
 #     /etc/sv/wpa_supplicant/run. Die Konfigdatei selbst bleibt root allein --
 #     das Passwort schreibt wpa_supplicant hinein, nicht dieses Skript.
 #   * "tailscale up/down" laeuft, weil der Benutzer bei tailscaled als Operator
-#     eingetragen ist ("tailscale set --operator=patrick").
+#     eingetragen ist ("tailscale set --operator=<benutzer>").
 
 import hashlib
 import os

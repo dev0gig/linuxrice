@@ -27,25 +27,14 @@
 # -- der Normalfall, wenn gerade nicht gesperrt war. Das darf den Hook nicht
 # als Fehler beenden, daher das abschliessende "exit 0".
 
-# Dieselbe zuschaltbare Mitschrift wie im Waechter (~/.local/bin/i3-sitzung),
-# damit sich beide Seiten in einer Zeitleiste lesen lassen. Der Hook laeuft
-# als root, die Datei gehoert aber patrick -- darum wird nur geschrieben,
-# wenn sie schon da ist, und der Besitzer bleibt unangetastet.
-PROTOKOLL=/home/patrick/.cache/sperrbild/protokoll
-notiere() {
-    [ -f "$PROTOKOLL" ] && echo "$(date '+%H:%M:%S') resume-hook: $*" >> "$PROTOKOLL"
-    return 0
-}
-
-notiere "aufgewacht"
-
 # ---------------------------------------------------------------------------
 # Wer ist die laufende X-Sitzung?
 #
-# Der Benutzer wird am laufenden i3 abgelesen statt fest verdrahtet -- diese
-# Datei liegt in einem oeffentlichen Repo. DISPLAY und XAUTHORITY kommen aus
-# seiner Prozessumgebung, feste Werte waeren hier falsch: die X-Cookies
-# haengen am Rechnernamen.
+# Das steht ganz oben, weil schon die Mitschrift darunter das Heimverzeichnis
+# braucht. Der Benutzer wird am laufenden i3 abgelesen statt fest verdrahtet
+# -- diese Datei liegt in einem oeffentlichen Repo. DISPLAY und XAUTHORITY
+# kommen aus seiner Prozessumgebung, feste Werte waeren hier falsch: die
+# X-Cookies haengen am Rechnernamen.
 i3pid=$(pgrep -x i3 | head -n1)
 benutzer=""
 heim=""
@@ -58,6 +47,20 @@ if [ -n "$i3pid" ]; then
     anzeige=$(printf '%s\n' "$umgebung" | sed -n 's/^DISPLAY=//p'    | head -n1)
     cookie=$( printf '%s\n' "$umgebung" | sed -n 's/^XAUTHORITY=//p' | head -n1)
 fi
+
+# Dieselbe zuschaltbare Mitschrift wie im Waechter (~/.local/bin/i3-sitzung),
+# damit sich beide Seiten in einer Zeitleiste lesen lassen. Der Hook laeuft
+# als root, die Datei gehoert aber dem Benutzer -- darum wird nur geschrieben,
+# wenn sie schon da ist, und der Besitzer bleibt unangetastet. Ist keine
+# Sitzung auffindbar, faellt das Schreiben still aus.
+PROTOKOLL="$heim/.cache/sperrbild/protokoll"
+notiere() {
+    [ -n "$heim" ] && [ -f "$PROTOKOLL" ] &&
+        echo "$(date '+%H:%M:%S') resume-hook: $*" >> "$PROTOKOLL"
+    return 0
+}
+
+notiere "aufgewacht"
 
 # ---------------------------------------------------------------------------
 # Den Ladekreis anschalten.

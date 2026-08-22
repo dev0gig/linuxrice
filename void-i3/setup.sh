@@ -481,6 +481,15 @@ PAKETE="$PAKETE gvfs"
 # immer "Schieber zu" und nicht "Treiber fehlt".
 PAKETE="$PAKETE guvcview"
 
+# Scanner. Der Brother MFC-L3760CDW haengt im WLAN, nicht am USB, und kann
+# eSCL (Apple AirScan) -- damit braucht es keinen Herstellertreiber:
+# sane-airscan spricht das Protokoll direkt, simple-scan ist die GUI dazu
+# (derselbe "Document Scanner" wie frueher unter Debian mit GNOME).
+# avahi findet das Geraet per mDNS; ohne den Daemon sieht "scanimage -L"
+# gar nichts. avahi-utils liefert avahi-browse zum Nachschauen, wenn doch
+# einmal nichts gefunden wird.
+PAKETE="$PAKETE sane sane-airscan simple-scan avahi avahi-utils nss-mdns"
+
 # Werkzeuge, die im Alltag dazugehoeren.
 PAKETE="$PAKETE git github-cli rclone xclip ImageMagick nodejs tailscale
         fonttools"
@@ -643,7 +652,9 @@ schritt "Dienste"
 # etc/acpi/deckel.sh). Seine Sammelregel "anything" wird oben durch die
 # abgeschaltete Fassung ersetzt -- sonst faehrt die Einschalttaste den
 # Rechner ohne Rueckfrage herunter.
-for d in dbus dhcpcd wpa_supplicant tailscaled bluetoothd alsa rtkit acpid; do
+# avahi-daemon sucht den Netzwerkscanner per mDNS (Abschnitt "Scanner" weiter
+# unten).
+for d in dbus dhcpcd wpa_supplicant tailscaled bluetoothd alsa rtkit acpid avahi-daemon; do
     if [ ! -e "/etc/sv/$d" ]; then
         warn "$d gibt es nicht, uebersprungen"
     elif [ -e "/var/service/$d" ]; then
@@ -653,6 +664,49 @@ for d in dbus dhcpcd wpa_supplicant tailscaled bluetoothd alsa rtkit acpid; do
         gut "$d eingeschaltet"
     fi
 done
+
+# ------------------------------------------------------------------ Scanner
+
+schritt "Scanner"
+
+# Zwei Kleinigkeiten, ohne die der Scanner scheinbar gar nicht da ist:
+#
+# 1. avahi-browse und scanimage melden hartnaeckig "Daemon not running",
+#    obwohl "sv status avahi-daemon" laeuft. Grund ist der schon laufende
+#    system-dbus: er kennt die erst jetzt installierte Policy in
+#    /usr/share/dbus-1/system.d/avahi-dbus.conf noch nicht. Ein reload (HUP)
+#    genuegt -- ein Neustart von dbus wuerde die laufende Sitzung zerlegen.
+#
+# 2. SANE bringt neben airscan ein eigenes escl-Backend mit. Es fragt den
+#    Webserver des Druckers auf Port 80 ab und kippt dessen komplette
+#    HTML-Startseite nach stdout -- sieht nach Fehler aus, ist nur Laerm --,
+#    und liefert das Geraet ein zweites Mal. airscan kann dasselbe besser,
+#    also bleibt escl aus.
+
+if [ -e /var/service/dbus ]; then
+    sudo sv reload dbus >/dev/null 2>&1 && gut "dbus hat die Avahi-Policy nachgeladen"
+fi
+[ -e /var/service/avahi-daemon ] && sudo sv restart avahi-daemon >/dev/null 2>&1
+
+if [ -f /etc/sane.d/dll.conf ] && grep -q '^escl$' /etc/sane.d/dll.conf; then
+    sudo sed -i 's/^escl$/#escl/' /etc/sane.d/dll.conf
+    gut "escl-Backend abgeschaltet, airscan uebernimmt"
+else
+    info "escl-Backend ist bereits aus"
+fi
+
+# Kontrolle: "scanimage -L" soll genau eine Zeile mit airscan zeigen. Beim
+# ersten Lauf braucht mDNS ein paar Sekunden, darum die Schleife.
+n=0
+while [ $n -lt 4 ]; do
+    if scanimage -L 2>/dev/null | grep -q '^device .airscan:'; then
+        gut "Scanner gefunden: $(scanimage -L 2>/dev/null | sed -n 's/^device .[^ ]* is a //p' | head -1)"
+        break
+    fi
+    n=$((n + 1))
+    sleep 3
+done
+[ $n -lt 4 ] || warn "Kein Scanner gefunden. Ist er eingeschaltet und im selben WLAN? Nachsehen mit: avahi-browse -rt _uscan._tcp"
 
 # ------------------------------------------------------------------- Locale
 

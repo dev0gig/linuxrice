@@ -171,7 +171,12 @@ exec_always --no-startup-id ~/.local/bin/claude-warte-blinken
 # Verlauf der Zwischenablage mitschreiben (Mod+v zeigt ihn an).
 # clipmenud haelt sich an $XDG_RUNTIME_DIR, das ist tmpfs -- der Verlauf ist
 # beim Neustart weg und liegt nie dauerhaft auf der Platte.
-exec_always --no-startup-id "pgrep -x clipmenud > /dev/null || clipmenud"
+# pgrep -x findet den Dienst nicht: clipmenud ist ein bash-Skript, der
+# Prozessname ist deshalb "bash". Ohne -f startet jeder i3-Reload einen
+# weiteren Dienst. -fx (exakte ganze Kommandozeile), damit die Pruefzeile
+# sich nicht selbst findet -- mit blossem -f waere das der Fall und der
+# Dienst startete nie.
+exec_always --no-startup-id "pgrep -fx 'bash /usr/bin/clipmenud' > /dev/null || clipmenud"
 
 # Verlauf der Benachrichtigungen (dasselbe wie ein Klick auf die Glocke
 # ganz rechts in der Leiste).

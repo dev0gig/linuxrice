@@ -23,15 +23,32 @@
 # bliebe das Menue an der Passwortfrage haengen, weil rofi kein Terminal
 # fuer die Eingabe hat.
 
+# Der fprintd-Fork liegt unter /usr/local/bin (siehe fingerabdruck/README.md,
+# er ist selbst gebaut und kommt nicht aus xbps). Darauf ist kein Verlass:
+# acpid startet /etc/acpi/deckel.sh mit PATH=/usr/bin:/usr/sbin, und "su
+# patrick -c" reicht genau diesen PATH weiter -- /usr/local/bin ist nicht
+# dabei, weil /etc/login.defs hier kein ENV_PATH setzt.
+#
+# Die Folge war der Fehler, wegen dem das hier steht: beim Zuklappen fand
+# finger_entsperren kein fprintd-verify, kehrte wortlos zurueck, und der
+# Sperrbildschirm nahm nur noch das Passwort. Bei $mod+l fiel es nie auf,
+# weil i3 den PATH der Anmeldesitzung erbt.
+#
+# Repariert wird es hier und nicht in deckel.sh: die Abhaengigkeit gehoert
+# diesem Skript, also soll es sich auch nicht auf den PATH des Aufrufers
+# verlassen.
+case ":$PATH:" in
+    *:/usr/local/bin:*) ;;
+    *) PATH="/usr/local/bin:$PATH"; export PATH ;;
+esac
+
 RASTER="$HOME/.config/rofi/sitzung.rasi"
 ZUSTAND="$HOME/.cache/sperrbild/zustand"
 
-# Takt des Fingerabdruck-Waechters in Sekunden und die Zahl der Takte, nach
-# denen ein nicht zurueckkehrender fprintd-verify abgebrochen wird.
-# 0,25 s * 120 = 30 s Geduld -- laenger braucht kein Versuch, und ein
-# Auflegen wird trotzdem in einem Augenblick bemerkt.
+# Takt des Fingerabdruck-Waechters in Sekunden: so oft wird nachgesehen, ob
+# der Pruefer fertig ist und ob die Sperre noch steht. Eine ganze Sekunde,
+# wie hier frueher stand, war traege genug, um nach dem Auflegen zu warten.
 TAKT=0.25
-GEDULD=120
 
 # Messprotokoll fuer die Fehlersuche am Finger. Es schreibt nur, wenn die
 # Datei bereits liegt: "touch ~/.cache/sperrbild/protokoll" schaltet das
@@ -172,28 +189,21 @@ finger_entsperren() {
             pruefer=$!
             notiere "Versuch $pruefer gestartet"
 
-            # Auf das Ergebnis warten -- aber nicht endlos. Nach dem
-            # Aufwachen aus der Bereitschaft kann fprintd-verify haengen
-            # bleiben (Erklaerung in /etc/zzz.d/resume/10-fingerabdruck);
-            # ohne diese Schranke wartete der Waechter dann fuer immer und
-            # der Finger waere tot, obwohl die Sperre noch steht.
+            # Auf das Ergebnis warten -- und zwar beliebig lange. Hier stand
+            # eine Zeitschranke, die einen "haengenden" Pruefer abbrechen
+            # sollte; das war ein Denkfehler. fprintd-verify wartet auf einen
+            # Finger und kehrt bis dahin nicht zurueck -- das IST der
+            # Normalfall, kein Haenger. Die Mitschrift zeigte, wie die
+            # Schranke alle 32 Sekunden einen voellig gesunden Versuch
+            # abriss und den Sensor neu greifen liess.
             #
-            # Gezaehlt wird in Runden zu $TAKT, nicht in Sekunden: der Takt
-            # bestimmt zugleich, wie schnell die Sperre nach dem Auflegen
-            # aufgeht. Eine ganze Sekunde war hier deutlich zu traege.
-            runden=0
+            # Abgebrochen wird nur noch aus einem Grund: die Sperre ist weg.
             while kill -0 "$pruefer" 2>/dev/null; do
                 if ! pgrep -u "$uid" -x xsecurelock >/dev/null; then
                     kill "$pruefer" 2>/dev/null
                     rm -f "$ausgabe"
+                    notiere "Sperre weg -- Waechter beendet"
                     exit 0
-                fi
-                runden=$(( runden + 1 ))
-                if [ "$runden" -ge "$GEDULD" ]; then
-                    notiere "Versuch $pruefer haengt -- abgebrochen"
-                    kill "$pruefer" 2>/dev/null
-                    wait "$pruefer" 2>/dev/null
-                    continue 2
                 fi
                 sleep "$TAKT"
             done

@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""Laesst die Titelleiste einer Claude-Sitzung blinken, die auf eine Antwort wartet.
+
+Der Fall aus dem Alltag: waehrend Claude arbeitet, geht man weg. Kommt dann
+eine Rueckfrage, bleibt sie stehen, bis man zufaellig wieder hinschaut. Die
+Statusleiste hilft dabei nicht -- ihr Blinken haengt am urgent-Flag, und das
+setzt Alacritty bei einer Terminal-Glocke NUR, wenn das Fenster gerade nicht
+den Fokus hat. Genau im gefragten Fall (man geht weg, die Sitzung liegt vorne)
+passiert dort also nichts.
+
+Darum hier ein zweiter, unabhaengiger Weg: der FENSTERTITEL. Claude Code
+schreibt seinen Zustand hinein -- "✳ Thema" wartet auf Eingabe, "◐ Thema" /
+"◑ Thema" arbeitet gerade. Der Wechsel von arbeitet nach wartet ist das
+Ereignis, auf das es ankommt, und der ist vom Fokus unabhaengig.
+
+Geblinkt wird nur die TITELLEISTE, nicht das ganze Fenster: i3 rendert
+title_format mit Pango-Markup, ein Farbwechsel darin laesst den Titel
+pulsieren, ohne dass der Inhalt darunter flackert. (Nachgeprueft: i3 escapt
+%title selbst, ein "&" oder "<" im Titel bricht das Markup also nicht.)
+
+Aufhoeren soll es, sobald man es gesehen hat -- gemessen an echter Anwesenheit
+ueber die X-Leerlaufzeit (MIT-SCREEN-SAVER), nicht am Fokus allein. Sitzt man
+davor und tippt, wird gar nicht erst geblinkt.
+
+Laeuft als Daemon, gestartet per exec_always aus der i3-Config.
+"""
+import os
+import signal
+import threading
+import time
+
+import i3ipc
+from Xlib import display
+
+# Einmalig-Lauf ueber eine PID-Datei -- wie bei i3-workspace-names, und aus
+# demselben Grund: "pkill -f claude-warte-blinken" aus der i3-Config wuerde die
+# eigene exec-Shell mit erschlagen, deren Kommandozeile den Suchstring enthaelt.
+PIDFILE = os.path.join(
+    os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "claude-warte-blinken.pid"
+)
+
+# Zustandszeichen, das Claude Code vor den Titel setzt, wenn es auf Eingabe
+# wartet. Bewusst wird NUR dieses eine Zeichen als "wartet" gewertet und alles
+# andere als "arbeitet" -- nicht umgekehrt. Aendert Claude sein Zeichen, blinkt
+# es dann eben nicht mehr; die Umkehrung wuerde bei jeder Titelaenderung
+# faelschlich Dauerblinken ausloesen, und das faellt weit unangenehmer auf.
+# Als zweite, davon unabhaengige Quelle dient das urgent-Flag (siehe unten).
+WARTEZEICHEN = "✳"          # ✳
+
+# Farbe und Takt sind dieselben wie beim Blinken der Arbeitsflaeche in der
+# Leiste (~/.local/bin/i3-workspace-names) -- es ist dieselbe Aussage, also
+# soll es auch gleich aussehen.
+ROT = "#fb4934"
+TAKT = 0.6
+
+# Ab wann gilt man als anwesend. Kleiner Wert: schon eine Mausbewegung oder ein
+# Tastendruck raeumt das Blinken weg. Sekunden.
+ANWESEND_UNTER = 5.0
+
+# Zum Nachmessen: CLAUDE_BLINK_LOG=/tmp/blink.log claude-warte-blinken
+LOGDATEI = os.environ.get("CLAUDE_BLINK_LOG")
+
+# con_id aller Fenster, die gerade eine unbeantwortete Frage haben.
+_merker = set()
+# con_id -> True, solange dort zuletzt "wartet" im Titel stand. Nur der WECHSEL
+# nach wartet setzt den Merker; stuende schon "wartet" da, als das Skript
+# startete, waere jede Titelaenderung ein neuer Weckruf.
+_zustand = {}
+_lock = threading.Lock()
+_wecker = threading.Event()
+
+
+def log(text):
+    if not LOGDATEI:
+        return
+    with open(LOGDATEI, "a") as fh:
+        fh.write(f"{time.strftime('%H:%M:%S')} {text}\n")
+
+
+def take_over():
+    """Eine evtl. noch laufende aeltere Instanz beenden und die PID-Datei uebernehmen."""
+    try:
+        alt = int(open(PIDFILE).read().strip())
+        if alt != os.getpid():
+            os.kill(alt, signal.SIGTERM)
+            for _ in range(50):             # hoechstens 5 s, dann eben nicht
+                time.sleep(0.1)
+                os.kill(alt, 0)             # wirft OSError, sobald sie weg ist
+    except (OSError, ValueError):
+        pass
+    try:
+        with open(PIDFILE, "w") as fh:
+            fh.write(str(os.getpid()))
+    except OSError:
+        pass
+
+
+def wartet(con):
+    """Steht in diesem Fenster eine Claude-Frage an?"""
+    if (con.window_class or "") != "Alacritty":
+        return False
+    return (con.name or "").startswith(WARTEZEICHEN)
+
+
+def leerlauf(d):
+    """Sekunden seit der letzten Maus- oder Tastatureingabe."""
+    try:
+        return d.screen().root.screensaver_query_info().idle / 1000.0
+    except Exception:
+        return 0.0                          # im Zweifel: Nutzer ist da
+
+
+def titel_setzen(i3, con_id, hervorgehoben):
+    """Faerbt den Titel dieses Fensters -- oder stellt ihn wieder normal.
+
+    %title bleibt ein Platzhalter, statt den Titel selbst einzusetzen: i3
+    fuellt ihn bei jeder Titelaenderung selbst nach und escapt ihn dabei fuer
+    Pango. Sonst muesste dieses Skript beides nachziehen.
+    """
+    if hervorgehoben:
+        fmt = f"<span foreground='{ROT}'>%title</span>"
+    else:
+        fmt = "%title"
+    i3.command(f'[con_id={con_id}] title_format "{fmt}"')
+
+
+def pruefen(i3, d):
+    """Merker nachfuehren: neue Fragen aufnehmen, gesehene wieder streichen."""
+    with _lock:
+        idle = leerlauf(d)
+        offen = set()
+
+        for con in i3.get_tree().leaves():
+            offen.add(con.id)
+            frage = wartet(con) or con.urgent
+            vorher = _zustand.get(con.id, False)
+            _zustand[con.id] = frage
+
+            # Nur der Wechsel zaehlt: gerade eben hat Claude noch gearbeitet
+            # und wartet jetzt -- das ist der Moment, in dem etwas ansteht.
+            if frage and not vorher:
+                _merker.add(con.id)
+                log(f"neu: {con.id} {con.name!r}")
+
+            # Gesehen: das Fenster liegt vorne UND es kam gerade eine Eingabe.
+            # Der Fokus allein reicht nicht -- im gefragten Fall (weggegangen,
+            # Sitzung liegt vorne) waere er die ganze Zeit da.
+            if con.id in _merker and con.focused and idle < ANWESEND_UNTER:
+                _merker.discard(con.id)
+                titel_setzen(i3, con.id, False)
+                log(f"gesehen: {con.id}")
+
+            # Claude arbeitet weiter -- dann hat sich die Frage erledigt.
+            if con.id in _merker and not frage:
+                _merker.discard(con.id)
+                titel_setzen(i3, con.id, False)
+                log(f"erledigt: {con.id}")
+
+        # Geschlossene Fenster nicht ewig mitschleppen
+        for weg in (set(_zustand) - offen):
+            _zustand.pop(weg, None)
+            _merker.discard(weg)
+
+
+def blinker():
+    """Schaltet die Farbe im Takt um, solange etwas offen ist.
+
+    Eigene i3ipc-Verbindung: die des Hauptthreads sitzt in ihrer
+    Ereignisschleife, ein Kommando von hier aus wuerde sich mit deren
+    Antworten auf demselben Socket vermischen.
+    """
+    i3 = i3ipc.Connection()
+    d = display.Display()
+    while True:
+        if not _merker:
+            _wecker.wait()                  # schlafen, bis etwas ansteht
+            _wecker.clear()
+            continue
+
+        pruefen(i3, d)
+        # Phase aus der absoluten Zeit statt aus einem Umschalter: so laeuft
+        # dieses Blinken im Gleichschritt mit dem der Arbeitsflaeche in der
+        # Leiste, obwohl beide getrennte Dienste sind -- gleicher Takt,
+        # gleiche Formel, gleiche Uhr.
+        an = int(time.monotonic() / TAKT) % 2 == 0
+        with _lock:
+            for con_id in list(_merker):
+                titel_setzen(i3, con_id, an)
+
+        # Bis zum naechsten Taktrand schlafen, nicht stur TAKT lang -- sonst
+        # driftet die Phase gegen die der Leiste weg.
+        _wecker.wait(TAKT - (time.monotonic() % TAKT))
+        _wecker.clear()
+
+
+def main():
+    take_over()
+    i3 = i3ipc.Connection()
+    d = display.Display()
+
+    def on_event(i3_conn, event):
+        pruefen(i3_conn, d)
+        _wecker.set()
+
+    for ev in ("window::title", "window::focus", "window::urgent",
+               "window::close", "window::new"):
+        i3.on(ev, on_event)
+
+    threading.Thread(target=blinker, daemon=True).start()
+
+    def aufraeumen(i3_conn, event=None):
+        """Gefaerbte Titel wieder normal stellen, sonst bleibt einer rot stehen."""
+        with _lock:
+            for con_id in list(_merker):
+                titel_setzen(i3_conn, con_id, False)
+            _merker.clear()
+
+    i3.on("shutdown::restart", aufraeumen)
+    signal.signal(signal.SIGTERM, lambda *_: (aufraeumen(i3), i3.main_quit()))
+
+    pruefen(i3, d)
+    i3.main()
+
+
+if __name__ == "__main__":
+    main()

@@ -105,7 +105,7 @@ PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils
         i3 i3status i3lock rofi dmenu picom feh clipmenu
         alacritty xterm pcmanfm flatpak
         xdg-desktop-portal xdg-desktop-portal-gtk
-        libinput-gestures python3-i3ipc
+        libinput-gestures python3-i3ipc python3-xlib
         nerd-fonts-symbols-ttf noto-fonts-cjk-sans papirus-icon-theme"
 
 # Benachrichtigungen: dunst ist der D-Bus-Dienst auf

@@ -243,6 +243,39 @@ eigene Höhe für Titelleisten kennt i3 nicht, sie ergibt sich aus der globalen
 Eingestellt ist **11** — 24 px, und zugleich die Größe der Statusleiste, Leiste
 oben und Titelleiste darunter passen also zusammen.
 
+### Blinken, wenn eine Rückfrage ansteht
+
+Geht man weg, während Claude arbeitet, bleibt eine Rückfrage stehen, bis man
+zufällig wieder hinschaut. `~/.local/bin/claude-warte-blinken` lässt darum die
+**Titelleiste** der betroffenen Sitzung pulsieren — im selben Rot und im selben
+Takt wie der Arbeitsflächen-Knopf in der Leiste, es ist ja dieselbe Aussage.
+Nur die Leiste blinkt, nicht das Fenster: i3 rendert `title_format` mit
+Pango-Markup, ein Farbwechsel darin lässt den Inhalt darunter in Ruhe.
+
+Der naheliegende Weg über das **urgent-Flag reicht dafür nicht**. Alacritty
+setzt es bei der Terminal-Glocke nur, wenn das Fenster **nicht** den Fokus hat
+— und genau im gefragten Fall, weggegangen mit der Sitzung im Vordergrund,
+passiert dort nichts. Der Dienst liest deshalb den **Fenstertitel**, in dem
+Claude seinen Zustand ohnehin mitschreibt: `✳` wartet auf Eingabe, `◐`/`◑`
+arbeitet. Der **Wechsel** von arbeitet nach wartet ist das Ereignis — ein
+Dauerzustand wäre es nicht, eine ruhende Sitzung steht schließlich immer auf
+`✳`. Als zweite, davon unabhängige Quelle zählt das urgent-Flag weiterhin mit;
+fällt eine der beiden aus, greift die andere.
+
+Aufhören soll es, sobald man es gesehen hat — und „gesehen" heißt **anwesend**,
+nicht „fokussiert": im gefragten Fall liegt das Fenster ja die ganze Zeit
+vorne. Gemessen wird die echte Leerlaufzeit über die X-Erweiterung
+**MIT-SCREEN-SAVER** (`screensaver_query_info().idle`, dafür `python3-xlib`).
+Erst Fokus **und** eine Eingabe in den letzten 5 Sekunden räumen das Blinken
+weg. Sitzt man davor und tippt, fängt es also gar nicht erst an.
+
+Beim Erkennen gilt bewusst nur `✳` als „wartet" und alles andere als
+„arbeitet", nicht umgekehrt: ändert Claude sein Zeichen, blinkt es dann eben
+nicht mehr. Die Umkehrung würde bei jeder Titeländerung fälschlich
+Dauerblinken auslösen, und das fällt weit unangenehmer auf. Zum Nachmessen
+nimmt der Dienst `CLAUDE_BLINK_LOG=/tmp/blink.log` und schreibt dort jedes
+`neu:`, `gesehen:` und `erledigt:` mit.
+
 ## Benachrichtigungen
 
 ### Wie eine Meldung aussieht

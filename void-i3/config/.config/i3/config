@@ -149,6 +149,13 @@ exec_always --no-startup-id libinput-gestures-setup restart
 # (PID-Datei) -- ein "pkill -f" hier wuerde die eigene exec-Shell mit killen.
 exec_always --no-startup-id ~/.local/bin/i3-workspace-names
 
+# Laesst die Titelleiste einer Claude-Sitzung blinken, die auf eine Antwort
+# wartet -- fuer den Fall, dass man waehrend der Arbeit weggeht. Zweiter, vom
+# urgent-Flag unabhaengiger Weg: Alacritty setzt urgent bei der Terminal-Glocke
+# nur, wenn das Fenster NICHT den Fokus hat -- und genau dann passiert dort
+# nichts, wenn die Sitzung beim Weggehen vorne lag.
+exec_always --no-startup-id ~/.local/bin/claude-warte-blinken
+
 # Verlauf der Zwischenablage mitschreiben (Mod+v zeigt ihn an).
 # clipmenud haelt sich an $XDG_RUNTIME_DIR, das ist tmpfs -- der Verlauf ist
 # beim Neustart weg und liegt nie dauerhaft auf der Platte.

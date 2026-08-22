@@ -480,14 +480,17 @@ hide_edge_borders both
 # weg, sobald der Titel auf "Alacritty" zurueckfaellt.  "border normal 0"
 # heisst: Titelleiste ja, Rahmen an den Seiten nein.
 #
-# Die anderen Terminals (remote-term, vitals-dashboard) laufen unter eigenen
-# Klassen und sind darum nicht betroffen.
+# Das Autostart-Terminal auf Flaeche 2 muss mitgemeint sein: es laeuft unter
+# der eigenen Klasse "autostart-term" (die braucht das "assign" weiter oben)
+# und fiel darum durch die reine Alacritty-Regel hindurch -- genau dort laufen
+# aber Claude-Sitzungen.  Die uebrigen Terminals (remote-term, vitals-dashboard)
+# bleiben bewusst draussen: dort steht immer dasselbe drin.
 # Titel mittig -- linksbuendig klebt er sonst in der Ecke ueber dem Text,
 # in der Mitte liest er sich wie eine Ueberschrift der Sitzung.
 title_align center
 
-for_window [class="^Alacritty$" title="^(?!Alacritty$).*$"] border normal 0
-for_window [class="^Alacritty$" title="^Alacritty$"] border none
+for_window [class="^(Alacritty|autostart-term)$" title="^(?!Alacritty$).*$"] border normal 0
+for_window [class="^(Alacritty|autostart-term)$" title="^Alacritty$"] border none
 
 # Farben greifen nur noch dort, wo i3 doch Flaechen zeichnet
 # (z. B. Titelleisten im stacking/tabbed-Layout und an den Claude-Fenstern).

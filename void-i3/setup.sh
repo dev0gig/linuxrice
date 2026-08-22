@@ -252,6 +252,7 @@ ANTWORTEN="${XDG_CONFIG_HOME:-$HOME/.config}/void-i3/antworten.conf"
 # Der Ordner void-i3 liegt bewusst nicht in config/ im Repo -- sonst wuerde
 # der Kopierschritt weiter unten die eigenen Antworten ueberbuegeln.
 if [ -r "$ANTWORTEN" ]; then
+    # shellcheck disable=SC1090  # Pfad steht erst zur Laufzeit fest
     . "$ANTWORTEN"
     info "fruehere Antworten aus $ANTWORTEN"
 fi

@@ -8,7 +8,7 @@
 #   Linksklick  -> ~/.local/bin/benachrichtigungen (Verlauf per rofi)
 #   Rechtsklick -> Verlauf sofort leeren
 #
-# Ausserdem macht es zwei Bloecke von i3status anklickbar. i3status vergibt
+# Ausserdem macht es drei Bloecke von i3status anklickbar. i3status vergibt
 # jedem Block einen Namen, an dem sich die Klicks auseinanderhalten lassen
 # ("wireless", "volume"). Auf die instance ist kein Verlass: dort steht der
 # aufgeloeste Wert, also "wlo1" statt "_first_".
@@ -19,6 +19,12 @@
 #   WLAN    Linksklick  -> Funk an/aus, Rechtsklick -> Menue (Netze suchen,
 #           Passwort eingeben, verbinden). Beides ueber ~/.local/bin/netz,
 #           das auch im Terminal bedienbar ist.
+#   Akku    Linksklick  -> Menue (Ladestand, Restzeit, Gesundheit, dazu die
+#           drei Zeiten fuer Dunkelwerden, Sperren und Bereitschaft -- jede
+#           getrennt fuer Netzteil und Akkubetrieb), Rechtsklick -> dieselben
+#           Zeiten als Meldung. Beides ueber ~/.local/bin/akku. Dort steckt
+#           auch die Wache, die die Zeiten durchsetzt; sie laeuft als
+#           "akku wache" aus ~/.config/i3/config.
 #
 # Ausserdem fasst es die vier Systemwerte von i3status (CPU, Temperatur, RAM,
 # Platte) zu EINEM Block ganz links zusammen: in der Leiste steht dann nur noch
@@ -148,6 +154,10 @@ BLUETOOTH = os.path.expanduser("~/.local/bin/bluetooth")
 # Gegenstueck fuers Netz: schaltet WLAN und Tailnet, meldet das jeweils
 # ueber dunst und bringt das rofi-Menue mit der Netzsuche mit.
 NETZ = os.path.expanduser("~/.local/bin/netz")
+
+# Gegenstueck fuer den Akku: Menue mit den Energiezeiten, Kurzmeldung, und
+# die Wache, die aus der i3-Config heraus laeuft.
+AKKU = os.path.expanduser("~/.local/bin/akku")
 
 # Zustand des Adapters, gefuellt von bt_abfragen(): None heisst "noch nichts
 # gelesen", ein leeres dict heisst "kein Adapter da" -- dann faellt der Block weg.
@@ -1224,6 +1234,15 @@ def klicks():
 
         if name == "medien":
             nebenlaeufig(lambda: medien_klick(taste))
+            continue
+
+        if name == "battery":
+            # Kein nebenlaeufig(): beide Aufrufe kehren sofort zurueck, das
+            # rofi-Fenster haelt nur seinen eigenen Prozess auf.
+            if taste == 1:
+                subprocess.Popen([AKKU])
+            elif taste == 3:
+                subprocess.Popen([AKKU, "zustand"])
             continue
 
         if name == "dunst":

@@ -1,0 +1,31 @@
+#!/bin/sh
+# 10-fingerabdruck -- nach dem Aufwachen den Fingerabdruckleser neu greifen.
+#
+# Der Sensor haengt am USB (06cb:00e7, siehe fingerabdruck/README.md) und
+# meldet sich beim Aufwachen aus S3 neu an. fprintd haelt seinen libusb-Griff
+# aber ueber die Bereitschaft hinweg fest, und der zeigt danach ins Leere.
+# Ein fprintd-verify, das auf diesem Griff wartet, kehrt nie zurueck: der
+# Finger wird nicht erkannt und es gibt auch keine Fehlermeldung, die den
+# Waechter in ~/.local/bin/i3-sitzung zu einem neuen Versuch bewegen wuerde.
+#
+# Genau das ist der Fall, der beim Deckel-Zuklappen jedes Mal eintritt:
+# /etc/acpi/deckel.sh sperrt erst und legt den Rechner dann schlafen -- der
+# Waechter wartet also bereits, wenn die Bereitschaft beginnt.
+#
+# fprintd wird ueber D-Bus gestartet (siehe
+# /usr/share/dbus-1/system-services/net.reactivated.Fprint.service), es gibt
+# also keinen Dienst zum Neustarten. Beenden genuegt: der naechste Aufruf
+# weckt ihn wieder, und dann sucht er die Geraete neu.
+#
+# Der wartende fprintd-verify muss mit weg, sonst haelt er den alten Griff
+# weiter fest. Der Waechter merkt das Ende und startet binnen eines Taktes
+# einen neuen Versuch -- gegen den frischen fprintd.
+#
+# Laeuft als root aus /usr/bin/zzz heraus. pkill meldet 1, wenn nichts
+# passte; das ist der Normalfall, wenn gerade nicht gesperrt war, und darf
+# den Hook nicht als Fehler beenden.
+
+pkill -x fprintd-verify
+pkill -x fprintd
+
+exit 0

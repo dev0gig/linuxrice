@@ -23,6 +23,13 @@
 RASTER="$HOME/.config/rofi/sitzung.rasi"
 ZUSTAND="$HOME/.cache/sperrbild/zustand"
 
+# Takt des Fingerabdruck-Waechters in Sekunden und die Zahl der Takte, nach
+# denen ein nicht zurueckkehrender fprintd-verify abgebrochen wird.
+# 0,25 s * 120 = 30 s Geduld -- laenger braucht kein Versuch, und ein
+# Auflegen wird trotzdem in einem Augenblick bemerkt.
+TAKT=0.25
+GEDULD=120
+
 # Zeilen im dmenu-Format mit Symbol: Text, NUL, "icon", 0x1f, Symbolname.
 # Die Symbole kommen aus Papirus-Dark (icon-theme in config.rasi); rofi
 # skaliert die SVGs auf die 4em aus dem Theme hoch.
@@ -139,20 +146,45 @@ finger_entsperren() {
     command -v fprintd-verify >/dev/null 2>&1 || return 0
     fprintd-list "$(id -un)" 2>/dev/null | grep -q '^Fingerprints for user' || return 0
     uid=$(id -u)
-    pgrep -u "$uid" -x fprintd-verify >/dev/null && return 0
+
+    # Reste eines frueheren Laufs wegraeumen. Hier stand frueher das
+    # Gegenteil -- "laeuft schon einer? dann nichts tun" -- und das war der
+    # Grund, warum der Finger manchmal gar nicht reagierte: ein haengen
+    # gebliebener fprintd-verify liess den Waechter erst gar nicht starten,
+    # und der Sensor blieb bis zum Neustart stumm.
+    pkill -u "$uid" -x fprintd-verify 2>/dev/null
+
     (
         ausgabe=$(mktemp) || exit 0
         while pgrep -u "$uid" -x xsecurelock >/dev/null; do
             fprintd-verify >"$ausgabe" 2>&1 &
             pruefer=$!
+
+            # Auf das Ergebnis warten -- aber nicht endlos. Nach dem
+            # Aufwachen aus der Bereitschaft kann fprintd-verify haengen
+            # bleiben (Erklaerung in /etc/zzz.d/resume/10-fingerabdruck);
+            # ohne diese Schranke wartete der Waechter dann fuer immer und
+            # der Finger waere tot, obwohl die Sperre noch steht.
+            #
+            # Gezaehlt wird in Runden zu $TAKT, nicht in Sekunden: der Takt
+            # bestimmt zugleich, wie schnell die Sperre nach dem Auflegen
+            # aufgeht. Eine ganze Sekunde war hier deutlich zu traege.
+            runden=0
             while kill -0 "$pruefer" 2>/dev/null; do
                 if ! pgrep -u "$uid" -x xsecurelock >/dev/null; then
                     kill "$pruefer" 2>/dev/null
                     rm -f "$ausgabe"
                     exit 0
                 fi
-                sleep 1
+                runden=$(( runden + 1 ))
+                if [ "$runden" -ge "$GEDULD" ]; then
+                    kill "$pruefer" 2>/dev/null
+                    wait "$pruefer" 2>/dev/null
+                    continue 2
+                fi
+                sleep "$TAKT"
             done
+
             if wait "$pruefer"; then
                 pkill -u "$uid" -x xsecurelock
                 rm -f "$ausgabe"
@@ -166,7 +198,10 @@ finger_entsperren() {
                 echo nochmal > "$ZUSTAND"
                 pkill -u "$uid" -USR2 -x xsecurelock
             fi
-            sleep 1
+            # Gleich wieder scharf schalten. Die Pause ist bewusst kurz: in
+            # ihr ist der Sensor blind, und wer den Finger nach einem
+            # Fehlversuch sofort wieder auflegt, soll nicht ins Leere fassen.
+            sleep "$TAKT"
         done
         rm -f "$ausgabe"
     ) >/dev/null 2>&1 &

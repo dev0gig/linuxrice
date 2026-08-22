@@ -466,6 +466,7 @@ for rel in etc/X11/xorg.conf.d/00-keyboard.conf \
            etc/acpi/events/anything \
            etc/pam.d/xsecurelock \
            usr/libexec/xsecurelock/saver_ehwaz \
+           etc/zzz.d/resume/10-fingerabdruck \
            etc/rc.local; do
     sudo mkdir -p "/$(dirname "$rel")"
     sichern_system "/$rel"
@@ -481,6 +482,11 @@ sudo chmod 755 /etc/rc.local
 
 # Dasselbe fuer den Deckel-Handler: acpid ruft ihn direkt auf.
 sudo chmod 755 /etc/acpi/deckel.sh
+
+# Und fuer den Aufwach-Hook: /usr/bin/zzz laeuft die Verzeichnisse
+# /etc/zzz.d/suspend und /etc/zzz.d/resume durch und ruft daraus nur auf, was
+# ausfuehrbar ist -- eine Datei ohne das Recht wird wortlos uebergangen.
+sudo chmod 755 /etc/zzz.d/resume/10-fingerabdruck
 
 # Und fuer das Saver-Modul: xsecurelock startet es als Programm. Es muss neben
 # den mitgelieferten Modulen liegen -- xsecurelock sucht seine Module nur in

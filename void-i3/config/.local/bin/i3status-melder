@@ -73,6 +73,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -242,11 +243,48 @@ medien_monitor_laeuft = False
 medien_ton_laeuft = False
 medien_zaehler = 0
 
+# Alle laufenden Lauscher-Prozesse (gdbus, dbus-monitor, playerctl, pactl).
+#
+# WARUM eine Liste: die Monitore sind eigene Prozesse, und beim Beenden der
+# Leiste blieben sie sonst als Waisen mit PPID 1 zurueck -- bei jedem
+# "i3-msg restart" ein Satz mehr, bis dutzende gdbus-Prozesse auf einem
+# leeren Bus lauschen. Aufgefallen beim Einbau des Medien-Blocks, gegolten
+# hat es fuer die Glocke und Bluetooth aber schon vorher.
+kinder = []
+kinder_schloss = threading.Lock()
+
 anzahl = 0
 letzte_zeile = []
 schloss = threading.Lock()
 monitor_laeuft = False
 bt_monitor_laeuft = False
+
+
+def kind_merken(prozess):
+    """Einen Lauscher-Prozess vormerken, damit er beim Beenden mitgeht."""
+    with kinder_schloss:
+        kinder[:] = [k for k in kinder if k.poll() is None]  # Beendete raus
+        kinder.append(prozess)
+    return prozess
+
+
+def kinder_beenden(*_):
+    """Alle Lauscher mitnehmen und selbst gehen.
+
+    Haengt an SIGTERM und SIGHUP, denn genau die schickt i3bar dem
+    status_command beim Beenden (erst SIGTERM, SIGKILL erst danach). Ohne
+    diesen Handler beendet Python sich bei SIGTERM sofort und laesst die
+    Kinder stehen.
+    """
+    with kinder_schloss:
+        liste = list(kinder)
+        kinder.clear()
+    for k in liste:
+        try:
+            k.terminate()
+        except OSError:
+            pass
+    os._exit(0)
 
 
 def verlauf_laenge():
@@ -523,9 +561,9 @@ def bt_monitor():
     befehl = ["stdbuf", "-oL", "gdbus", "monitor", "--system", "--dest", "org.bluez"]
     while True:
         try:
-            lauscher = subprocess.Popen(
+            lauscher = kind_merken(subprocess.Popen(
                 befehl, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                encoding="utf-8", errors="replace")
+                encoding="utf-8", errors="replace"))
         except OSError:
             return
         bt_monitor_laeuft = True
@@ -850,9 +888,9 @@ def medien_monitor():
     befehl = ["stdbuf", "-oL", "playerctl", "-a", "-F", "status"]
     while True:
         try:
-            lauscher = subprocess.Popen(
+            lauscher = kind_merken(subprocess.Popen(
                 befehl, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                encoding="utf-8", errors="replace")
+                encoding="utf-8", errors="replace"))
         except OSError:
             return
         medien_monitor_laeuft = True
@@ -879,9 +917,9 @@ def medien_ton_monitor():
     befehl = ["stdbuf", "-oL", "pactl", "subscribe"]
     while True:
         try:
-            lauscher = subprocess.Popen(
+            lauscher = kind_merken(subprocess.Popen(
                 befehl, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                encoding="utf-8", errors="replace")
+                encoding="utf-8", errors="replace"))
         except OSError:
             return
         medien_ton_laeuft = True
@@ -1078,9 +1116,9 @@ def monitor():
     befehl = ["stdbuf", "-oL", "gdbus", "monitor", "--session", "--dest", DIENST]
     while True:
         try:
-            lauscher = subprocess.Popen(
+            lauscher = kind_merken(subprocess.Popen(
                 befehl, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                encoding="utf-8", errors="replace")
+                encoding="utf-8", errors="replace"))
         except OSError:
             return                      # kein gdbus -- dann eben abfragen
         monitor_laeuft = True
@@ -1198,8 +1236,10 @@ def main():
     # welche Locale i3bar dem Skript vererbt, ist nicht garantiert.
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stdin.reconfigure(encoding="utf-8", errors="replace")
-    i3status = subprocess.Popen(["i3status"], stdout=subprocess.PIPE,
-                                encoding="utf-8", errors="replace")
+    for zeichen in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(zeichen, kinder_beenden)
+    i3status = kind_merken(subprocess.Popen(["i3status"], stdout=subprocess.PIPE,
+                                            encoding="utf-8", errors="replace"))
     anzahl = verlauf_laenge()
     bt_abfragen()
     ts_abfragen()

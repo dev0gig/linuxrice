@@ -24,11 +24,15 @@
 # Meldungen des Vorgaengers weg; sonst haengt eine alte "Akku fast leer"-
 # Warnung mit laengst falschem Prozentwert fuer immer am Bildschirm.
 #
-# Der Akku heisst auf diesem Geraet BAT1, nicht BAT0.
+# Die drei Pfade setzt setup.sh ein: der Akku heisst je nach Geraet BAT0
+# oder BAT1, das Netzteil AC, AC0 oder ACAD, und die hwmon-Nummer der
+# Package-Temperatur haengt an der Ladereihenfolge der Module. Bleibt TEMP
+# leer, findet die Temperaturwarnung weiter unten schlicht keine Datei und
+# meldet nichts -- das ist Absicht.
 
-AKKU=/sys/class/power_supply/BAT1
-NETZ=/sys/class/power_supply/ACAD
-TEMP=/sys/class/hwmon/hwmon4/temp1_input     # Package-Temperatur, wie i3status
+AKKU=/sys/class/power_supply/@@AKKU@@
+NETZ=/sys/class/power_supply/@@NETZ@@
+TEMP=@@TEMP@@   # Package-Temperatur, dieselbe Quelle wie i3status
 
 INTERVALL=60       # Sekunden im Normalbetrieb
 INTERVALL_WARN=10  # Sekunden, solange eine Warnung offen steht: dann soll das

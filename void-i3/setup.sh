@@ -1002,6 +1002,23 @@ schritt "Platzhalter einsetzen"
 
 sed -i "s|@@WS2_NAME@@|$WS2_NAME|" "$HOME/.local/bin/i3-workspace-names"
 
+# Die im Hardware-Block gemessenen Pfade. Sie standen frueher fest in den
+# drei Dateien und waren auf jedem anderen Notebook falsch.
+sed -i "s|@@AKKU@@|$AKKU|g; s|@@NETZ@@|$NETZ|g" \
+    "$HOME/.local/bin/akku-wache" "$HOME/.local/bin/netz-ton"
+if [ -n "$TEMP" ]; then
+    sed -i "s|@@TEMP@@|$TEMP|g" \
+        "$HOME/.local/bin/akku-wache" "$HOME/.config/i3status/config"
+    gut "Akku $AKKU, Netzteil $NETZ, Temperatur $TEMP"
+else
+    # Ohne Quelle bleibt der Block in der Datei stehen, wird aber nicht mehr
+    # angeordnet -- i3status stoert ein unbenutzter Block nicht, ein Pfad
+    # ins Leere dagegen schon.
+    sed -i "s|@@TEMP@@||g" "$HOME/.local/bin/akku-wache"
+    sed -i '/order += "cpu_temperature 0"/d; s|@@TEMP@@||' "$HOME/.config/i3status/config"
+    warn "keine Temperaturquelle -- der Block bleibt aus der Leiste heraus"
+fi
+
 if [ -n "$SSH_TARGET" ]; then
     ALIAS_NAME=$(printf '%s' "${SSH_TARGET#*@}" | tr -cd 'a-zA-Z0-9_')
     # Bleibt nichts uebrig (Ziel war z.B. nur eine IP mit Punkten), braucht
@@ -1053,6 +1070,18 @@ for s in "$HOME"/.local/bin/vitals-btop "$HOME"/.local/bin/wallpaper "$HOME/.con
 done
 
 # -------------------------------------------------------------------- Schluss
+
+# Was wegen der Hardware ausgelassen wurde, gehoert an den Schluss: oben in
+# der Uebersicht ist es nach einem langen Lauf laengst aus dem Bild gerollt.
+if [ -n "$UEBERSPRUNGEN" ]; then
+    printf '\n%sWegen der Hardware ausgelassen:%s\n' "$FETT" "$AUS"
+    printf '%s' "$UEBERSPRUNGEN" | while IFS='|' read -r teil grund; do
+        if [ -n "$teil" ]; then
+            printf '\n  %s%s%s\n' "$GELB" "$teil" "$AUS"
+            printf '%s\n' "$grund" | fold -s -w 66 | sed 's/^/    /'
+        fi
+    done
+fi
 
 cat <<ENDE
 

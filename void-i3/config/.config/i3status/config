@@ -45,10 +45,14 @@ cpu_usage {
         format_above_threshold = "  <span foreground='#fb4934'>󰘚</span> <span foreground='#fb4934'>%usage</span>  "
 }
 
-# coretemp liegt auf hwmon4, temp1_input ist die Package-Temperatur
+# Den Pfad setzt setup.sh ein: es sucht das hwmon mit dem Namen coretemp
+# (bei AMD k10temp), ersatzweise acpitz. Die Nummer haengt an der
+# Ladereihenfolge der Module und kann sich nach einem Kernel-Update
+# verschieben -- dann setup.sh noch einmal laufen lassen. Findet es gar
+# nichts, nimmt es die Zeile "order += cpu_temperature 0" heraus.
 cpu_temperature 0 {
         format = "  <span foreground='#d3869b'>󰔏</span> <span foreground='#9a9a9a'>%degrees °C</span>  "
-        path   = "/sys/class/hwmon/hwmon4/temp1_input"
+        path   = "@@TEMP@@"
         max_threshold = 85
         format_above_threshold = "  <span foreground='#fb4934'>󰔏</span> <span foreground='#fb4934'>%degrees °C</span>  "
 }

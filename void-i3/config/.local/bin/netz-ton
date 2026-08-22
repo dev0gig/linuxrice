@@ -18,8 +18,9 @@
 # Zwei Sekunden Abfrage kosten praktisch nichts: "read < datei" ist ein
 # Shell-Builtin ohne eigenen Prozess, es bleibt ein fork je Takt fuer sleep.
 
-NETZ=/sys/class/power_supply/ACAD
-AKKU=/sys/class/power_supply/BAT1
+# Beide Pfade setzt setup.sh ein -- die Namen sind geraeteabhaengig.
+NETZ=/sys/class/power_supply/@@NETZ@@
+AKKU=/sys/class/power_supply/@@AKKU@@
 
 TAKT=2                 # Sekunden zwischen zwei Abfragen
 LAUTSTAERKE=1.0        # Faktor auf die eingestellte Lautstaerke

@@ -6,11 +6,15 @@
 
 # WLAN-Softblock aufheben (hp_wmi blockt beim Boot).
 #
-# Streng genommen erledigt das schon die udev-Regel
-# /etc/udev/rules.d/60-rfkill-unblock.rules, sobald das rfkill-Geraet
-# auftaucht. Die Zeile bleibt trotzdem stehen: sie kostet nichts und faengt
-# den Fall ab, dass das Geraet schon vor dem Laden der Regeln da war.
+# Die Zeile allein reicht nicht: sie laeuft in Sekunde ~6, hp_wmi laedt in
+# Sekunde 5,8 und meldet danach noch eigene Ereignisse. Ein Block, der erst
+# spaeter kommt, bleibt dann stehen -- WLAN war nach jedem Neustart aus.
+# Darum haelt /etc/funk-beim-boot.sh im Hintergrund noch anderthalb Minuten
+# lang dagegen (und schreibt mit, was passiert ist:
+# /var/log/funk-beim-boot.log). Diese Zeile bleibt als sofortiger erster
+# Griff stehen, sie kostet nichts.
 rfkill unblock wifi
+/etc/funk-beim-boot.sh >/dev/null 2>&1 &
 
 # /run liegt auf tmpfs, /run/user ist nach dem Boot also weg.
 # pam_dumb_runtime_dir (steht als Void-Standard in /etc/pam.d/system-login)

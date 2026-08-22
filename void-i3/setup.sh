@@ -483,6 +483,7 @@ for rel in etc/X11/xorg.conf.d/00-keyboard.conf \
            usr/libexec/xsecurelock/saver_sperrbild \
            etc/zzz.d/resume/10-fingerabdruck \
            etc/zzz.d/resume/20-funk \
+           etc/funk-beim-boot.sh \
            etc/rc.local; do
     sudo mkdir -p "/$(dirname "$rel")"
     sichern_system "/$rel"
@@ -495,6 +496,9 @@ sudo fc-cache -f >/dev/null 2>&1 || true
 # Ohne das Ausfuehrrecht wird sie beim Booten stillschweigend uebersprungen --
 # und cp behaelt die Rechte einer bereits vorhandenen Zieldatei bei.
 sudo chmod 755 /etc/rc.local
+
+# Und fuer das Startfenster, das rc.local im Hintergrund aufruft.
+sudo chmod 755 /etc/funk-beim-boot.sh
 
 # Dasselbe fuer den Deckel-Handler: acpid ruft ihn direkt auf.
 sudo chmod 755 /etc/acpi/deckel.sh

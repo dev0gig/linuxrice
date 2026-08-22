@@ -1,0 +1,122 @@
+#!/bin/sh
+# Beendet Programme geordnet, bevor runit sie abschiesst.
+#
+# Warum es das gibt: /etc/runit/shutdown.d/70-pkill.sh schickt allen Prozessen
+# SIGTERM, wartet genau eine Sekunde und schickt dann SIGKILL. Chrome braucht
+# laenger, um seine Sitzung wegzuschreiben -- es wird also mitten im Speichern
+# erschlagen und meldet beim naechsten Start "nicht ordnungsgemaess beendet".
+#
+# Dieses Skript laeuft als 05-sanft-beenden.sh ganz am Anfang von Stage 3,
+# also noch bevor die Dienste gestoppt werden und X wegbricht:
+#   1. Browser/Editoren einzeln per SIGTERM, dann warten bis sie weg sind.
+#   2. Danach der Rest der Nutzersitzung, ebenfalls mit Geduld.
+# Was danach noch lebt, raeumt 70-pkill.sh wie gehabt weg.
+
+PATH=/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+LOG=/var/log/sanft-beenden.log
+
+# Programme, die einzeln und zuerst drankommen. Getroffen wird nur der
+# Hauptprozess (Kindprozesse tragen --type= und beenden sich mit ihm).
+# Verglichen wird das erste Feld der Kommandozeile (argv[0]) *exakt* -- sonst
+# wuerde "/app/extra/chrome" auch "/app/extra/chrome_crashpad_handler" treffen.
+MUSTER="/app/extra/chrome
+/opt/google/chrome/chrome
+/app/brave/brave
+/opt/brave.com/brave/brave
+/app/extra/vscode/code
+/usr/lib/code/code"
+
+WARTE_APPS=20      # Sekunden Geduld fuer die Programme oben
+WARTE_REST=5       # Sekunden Geduld fuer den Rest der Sitzung
+
+# Ohne "--jetzt" wird nichts gesendet, sondern nur gezeigt, was passieren
+# wuerde -- damit ein versehentlicher Aufruf im Betrieb nicht die Sitzung
+# abraeumt. Der Shutdown-Hook uebergibt --jetzt.
+ECHT=nein
+[ "$1" = "--jetzt" ] && ECHT=ja
+
+protokoll() {
+    if [ "$ECHT" = ja ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG"
+    else
+        echo "[Probe] $*"
+    fi
+}
+
+# Alle PIDs, deren argv[0] das Muster ist -- ohne die --type=-Kinder
+# (Renderer, GPU, Zygote; die gehen mit dem Hauptprozess von selbst).
+hauptprozesse() {
+    muster=$1
+    for d in /proc/[0-9]*; do
+        [ -r "$d/cmdline" ] || continue
+        zeile=$(tr '\0' ' ' < "$d/cmdline" 2>/dev/null) || continue
+        befehl=${zeile%% *}
+        [ "$befehl" = "$muster" ] || continue
+        case "$zeile" in
+            *--type=*) continue ;;
+        esac
+        echo "${d#/proc/}"
+    done
+}
+
+lebt() {
+    for p in $1; do
+        [ -d "/proc/$p" ] && return 0
+    done
+    return 1
+}
+
+if [ "$ECHT" = ja ]; then
+    # Log nicht endlos wachsen lassen
+    if [ -f "$LOG" ] && [ "$(wc -l < "$LOG")" -gt 500 ]; then
+        tail -n 200 "$LOG" > "$LOG.neu" && mv "$LOG.neu" "$LOG"
+    fi
+    protokoll "--- Herunterfahren, beende Programme geordnet ---"
+else
+    echo "Trockenlauf -- es wird nichts beendet. Echt: sanft-beenden --jetzt"
+fi
+
+# --- Stufe 1: die genannten Programme -------------------------------------
+pids=""
+for muster in $MUSTER; do
+    for pid in $(hauptprozesse "$muster"); do
+        protokoll "SIGTERM an $muster (PID $pid)"
+        [ "$ECHT" = ja ] || continue
+        kill -TERM "$pid" 2>/dev/null && pids="$pids $pid"
+    done
+done
+
+if [ -n "$pids" ]; then
+    schritte=$((WARTE_APPS * 5))
+    while [ "$schritte" -gt 0 ] && lebt "$pids"; do
+        sleep 0.2
+        schritte=$((schritte - 1))
+    done
+    if lebt "$pids"; then
+        protokoll "nach ${WARTE_APPS}s noch aktiv:$(for p in $pids; do [ -d /proc/$p ] && printf ' %s' "$p"; done)"
+    else
+        protokoll "alle sauber beendet nach $(( (WARTE_APPS * 5 - schritte) / 5 ))s"
+    fi
+fi
+
+# --- Stufe 2: der Rest der Nutzersitzung ----------------------------------
+# Gleiche Auswahl wie 70-pkill.sh (alles ausser Kernel-Threads und der
+# runit-Sitzung), nur mit mehr Geduld als einer Sekunde.
+if [ "$ECHT" != ja ]; then
+    protokoll "danach SIGTERM an $(pgrep --inverse -s0,1 2>/dev/null | wc -l) weitere Prozesse der Sitzung"
+elif pkill --inverse -s0,1 -TERM 2>/dev/null; then
+    protokoll "SIGTERM an die restliche Sitzung"
+    schritte=$((WARTE_REST * 5))
+    while [ "$schritte" -gt 0 ] && pgrep --inverse -s0,1 >/dev/null 2>&1; do
+        sleep 0.2
+        schritte=$((schritte - 1))
+    done
+    if [ "$schritte" -gt 0 ]; then
+        protokoll "Sitzung leer"
+    else
+        protokoll "Rest laeuft noch, 70-pkill uebernimmt"
+    fi
+fi
+
+protokoll "fertig"
+exit 0

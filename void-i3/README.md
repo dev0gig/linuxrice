@@ -515,6 +515,21 @@ an zweien.
   liegt dann im Sandkasten unter
   `/usr/lib/x86_64-linux-gnu/dri/intel-vaapi-driver/`. Kontrolle in
   `chrome://gpu` unter „Video Decode".
+* **„Chrome wurde nicht ordnungsgemäß beendet"** nach jedem Herunterfahren
+  liegt an `/etc/runit/shutdown.d/70-pkill.sh`: das schickt allen Prozessen
+  SIGTERM, wartet **eine** Sekunde und schickt dann SIGKILL. Chrome braucht
+  länger, um seine Sitzung wegzuschreiben, und wird mitten im Speichern
+  erschlagen. Gegenmittel ist `system/usr/local/sbin/sanft-beenden`, das als
+  `05-sanft-beenden.sh` **vor** dem Dienste-Stopp läuft: erst SIGTERM an die
+  Hauptprozesse von Chrome, Brave und VS Code und bis zu 20 Sekunden warten,
+  bis sie weg sind, dann der Rest der Sitzung mit fünf Sekunden Geduld. Zwei
+  Feinheiten: Getroffen wird nur, wessen **argv[0] exakt** passt (`grep` auf
+  `/app/extra/chrome` würde sonst auch den `chrome_crashpad_handler` treffen)
+  und wessen Kommandozeile **kein** `--type=` enthält — die Renderer- und
+  GPU-Kinder gehen mit dem Hauptprozess von selbst. Ohne Argument macht das
+  Skript nur einen Trockenlauf und zeigt, wen es beenden würde; der Hook ruft
+  es mit `--jetzt` auf. Nachlesen lässt sich der letzte Durchlauf in
+  `/var/log/sanft-beenden.log`.
 * **Chrome kann sich selbst nicht zum Standardbrowser machen.** Im Sandkasten
   fehlt `xdg-settings`, der Knopf läuft ins Leere (`failed to execvp`). Der
   Eintrag steht deshalb direkt in `~/.config/mimeapps.list`.

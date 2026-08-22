@@ -484,6 +484,8 @@ for rel in etc/X11/xorg.conf.d/00-keyboard.conf \
            etc/zzz.d/resume/10-fingerabdruck \
            etc/zzz.d/resume/20-funk \
            etc/funk-beim-boot.sh \
+           etc/runit/shutdown.d/05-sanft-beenden.sh \
+           usr/local/sbin/sanft-beenden \
            etc/rc.local; do
     sudo mkdir -p "/$(dirname "$rel")"
     sichern_system "/$rel"
@@ -499,6 +501,11 @@ sudo chmod 755 /etc/rc.local
 
 # Und fuer das Startfenster, das rc.local im Hintergrund aufruft.
 sudo chmod 755 /etc/funk-beim-boot.sh
+
+# Und fuer das Beenden-Skript: das Fragment in /etc/runit/shutdown.d ruft es
+# nur auf, wenn es ausfuehrbar ist -- sonst faehrt der Rechner wie bisher
+# herunter, ohne Fehlermeldung, aber auch ohne Wirkung.
+sudo chmod 755 /usr/local/sbin/sanft-beenden
 
 # Dasselbe fuer den Deckel-Handler: acpid ruft ihn direkt auf.
 sudo chmod 755 /etc/acpi/deckel.sh

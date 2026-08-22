@@ -53,6 +53,9 @@ function aktion(c) {
     gsub(/^"|"$/, "", c)
 
     if (c ~ /i3-hilfe/)                    return "Diese Uebersicht"
+    # Die genauere Regel muss zuerst stehen: "i3-sitzung sperren" wuerde
+    # sonst auch auf das Muster darunter passen und als Menue erscheinen.
+    if (c ~ /i3-sitzung sperren/)          return "Bildschirm sperren"
     if (c ~ /i3-sitzung/)                  return "Abmelden / Neustart / Herunterfahren"
     if (c ~ /osd lauter/)                  return "Lauter"
     if (c ~ /osd leiser/)                  return "Leiser"

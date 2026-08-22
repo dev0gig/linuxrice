@@ -37,15 +37,18 @@ if [ -n "$i3pid" ]; then
     cookie=$( printf '%s\n' "$umgebung" | sed -n 's/^XAUTHORITY=//p' | head -n1)
 
     if [ -n "$benutzer" ] && [ -n "$anzeige" ]; then
-        # i3lock forkt, der Aufruf kehrt also sofort zurueck. Das Sperren
-        # laeuft ueber dasselbe Skript wie $mod+l und das Sitzungsmenue --
-        # damit gilt hier auch das Entsperren per Fingerabdruck.
-        su "$benutzer" -c \
-           "DISPLAY='$anzeige' XAUTHORITY='$cookie' ~/.local/bin/i3-sitzung sperren" \
-           >/dev/null 2>&1
-        # Kurz warten, damit das Sperrfenster noch sicher hochkommt, bevor
-        # der Rechner einschlaeft -- sonst liegt der entsperrte Schirm beim
-        # Aufwachen einen Wimpernschlag lang offen da.
+        # Gesperrt wird ueber dasselbe Skript wie bei $mod+l -- damit gilt
+        # hier auch das Entsperren per Fingerabdruck. Es kehrt zurueck,
+        # sobald xsecurelock steht, und meldet mit einem Rueckgabewert
+        # ungleich 0, wenn es nicht hochkam (etwa weil gerade ein rofi die
+        # Tastatur greift).
+        if ! su "$benutzer" -c \
+             "DISPLAY='$anzeige' XAUTHORITY='$cookie' ~/.local/bin/i3-sitzung sperren" \
+             >/dev/null 2>&1; then
+            logger -t deckel "Sperre kam nicht hoch -- es wird trotzdem geschlafen"
+        fi
+        # Kurz warten: der Prozess laeuft zwar, sein Fenster braucht aber noch
+        # einen Wimpernschlag, bis es wirklich vor dem Schreibtisch liegt.
         sleep 1
     else
         logger -t deckel "X-Sitzung nicht bestimmbar, es wird ohne Sperre geschlafen"

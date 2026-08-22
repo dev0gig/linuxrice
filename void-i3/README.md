@@ -14,21 +14,35 @@ Das Setup ist auf **ein** Notebook zugeschnitten: **HP ENVY x360 Convertible
 13-bd0xxx** (Intel Core i7-1165G7 „Tiger Lake", Audio-Codec Realtek ALC245
 mit HP-Subsystem `0x103c8824`, 1920×1080). Das meiste läuft auf jedem
 Rechner, aber ein paar Teile sind an genau diese Hardware gebunden — vor
-allem die LED-Ansteuerung, die direkt in Register des Codecs schreibt:
+allem die LED-Ansteuerung, die direkt in Register des Codecs schreibt.
+
+`setup.sh` prüft das inzwischen selbst, noch vor der ersten Frage und lange
+vor dem ersten Paket. Was es messen kann, misst es und setzt es ein; was an
+genau dieses Notebook gebunden ist, lässt es aus und sagt am Ende, warum;
+und wo es ohne die passende Hardware nicht weitergeht, bricht es mit einer
+Begründung ab, bevor irgendetwas verändert wurde. Die Spalte „Auf anderem
+Gerät“ sagt also, was von selbst passiert — nichts davon ist noch Handarbeit:
 
 | Teil | Gebunden an | Auf anderem Gerät |
 | --- | --- | --- |
-| `system/bin/tasten-led.c` (LEDs in F5/F8) | GPIO-Pin 2 und COEF-Register `0x0b` des ALC245, durch Ausprobieren auf diesem Gerät ermittelt | **Nicht installieren.** Das Programm prüft nur die Codec-ID (ALC245), nicht das HP-Subsystem — auf einem anderen ALC245-Gerät schreibt es dieselben Register, und dort kann die Belegung eine ganz andere sein. Den Block „LEDs in F5 und F8" in `setup.sh` überspringen, `mikro-led`/`ton-led` laufen dann ohne LED weiter. |
-| `etc/udev/hwdb.d/61-hp-envy-fkeys.hwdb` | DMI-Match auf genau dieses Modell | greift schlicht nicht, harmlos |
+| `system/bin/tasten-led.c` (LEDs in F5/F8) | GPIO-Pin 2 und COEF-Register `0x0b` des ALC245, durch Ausprobieren auf diesem Gerät ermittelt | wird übersprungen. Das Programm selbst prüft nur die Codec-ID (ALC245), nicht das HP-Subsystem — auf einem anderen ALC245-Gerät schriebe es dieselben Register blind. Darum liest `setup.sh` das Subsystem aus `/proc/asound/card*/codec#*` und baut `tasten-led` nur bei `0x103c8824`; `mikro-led`/`ton-led` laufen dann ohne LED weiter. |
+| `etc/udev/hwdb.d/61-hp-envy-fkeys.hwdb` | DMI-Match auf genau dieses Modell | greift schlicht nicht, harmlos; `setup.sh` legt die Regel trotzdem ab und weist am Ende darauf hin |
 | `bindcode 248` (F12-Zahnrad) in der i3-Config | `KEY_UNKNOWN` des `hp-wmi`-Treibers | ohne Wirkung; Sitzungsmenü bleibt über `$mod+Shift+e` erreichbar |
 | `etc/udev/rules.d/60-rfkill-unblock.rules` | WLAN-Softblock durch `hp_wmi` beim Booten | harmlos |
 | `etc/zzz.d/resume/20-funk` (WLAN-Teil) | demselben Softblock, nur nach dem Aufwachen | harmlos; der Bluetooth-Teil ist geräteunabhängig |
-| `akku-wache`, `netz-ton`, `i3status/config` | `BAT1`, `ACAD`, `/sys/class/hwmon/hwmon4` (coretemp) | anpassen: meist `BAT0`/`AC`, und die hwmon-Nummer nachsehen (`cat /sys/class/hwmon/*/name`) |
-| `xf86-video-intel` in der Paketliste | Intel-Grafik | bei AMD/NVIDIA aus der Liste nehmen, der `modesetting`-Treiber aus `xorg-server` reicht |
-| `fingerabdruck/` (selbst gebauter libfprint-Treiber) | Synaptics `06cb:00e7` und seine Tudor-Geschwister (`00c9`, `00ff`, `00d8`, `016c`) | `setup.sh` erkennt den Sensor und fragt; bei jedem anderen Sensor reicht das Void-Paket `fprintd`. Bei Dual-Boot vorher `fingerabdruck/README.md` lesen — die Kopplung verdrängt Windows Hello. |
+| `akku-wache`, `netz-ton`, `i3status/config` | Akku, Netzteil und Temperaturquelle heißen je nach Gerät anders | wird gemessen: `BAT*` mit `capacity`, der Anschluss vom Typ `Mains` (also `AC`, `AC0` oder `ACAD`) und das `hwmon` namens `coretemp`, `k10temp` oder ersatzweise `acpitz`. Findet sich keine Temperaturquelle, fällt der Block aus der Leiste. Ohne Akku bricht `setup.sh` ab — die halbe Einrichtung hängt daran |
+| Grafiktreiber in der Paketliste | Intel-Grafik | wird über `/sys/bus/pci/devices/*` bestimmt: `xf86-video-intel` bei Intel, `xf86-video-amdgpu` bei AMD, sonst der `modesetting`-Treiber aus `xorg-server` |
+| `fingerabdruck/` (selbst gebauter libfprint-Treiber) | Synaptics `06cb:00e7` und seine Tudor-Geschwister (`00c9`, `00ff`, `00d8`, `016c`) | `setup.sh` erkennt den Sensor und fragt vorne in der Übersicht danach; bei jedem anderen Sensor reicht das Void-Paket `fprintd`. Bei Dual-Boot vorher `fingerabdruck/README.md` lesen — die Kopplung verdrängt Windows Hello. |
 
 Tastatur- und Touchpad-Konfiguration, Schriften, Ton, Bluetooth, das
 Dashboard und die i3-Config selbst sind nicht gerätespezifisch.
+
+Zwei Dinge sind Bedingung und kein Ausweichen wert: **x86_64** — daran
+hängen die Paketliste, die beiden C-Programme in `system/bin` und die
+Zugriffe auf `/proc/asound` — und ein **Akku**, weil Akkuwarnung, Ton beim
+An- und Abstecken, Deckelschalter, Helligkeitstasten, Touchpad-Gesten und
+der Akkublock in der Leiste alle davon ausgehen. Fehlt eines von beiden,
+bricht `setup.sh` sofort ab.
 
 ## Einrichten
 
@@ -43,11 +57,42 @@ sh setup.sh
 System noch nicht da. Das Skript holt sich den Rest des Repos selbst. Wer
 schon geklont hat, ruft stattdessen `sh void-i3/setup.sh` auf.
 
-Das Skript fragt zu Beginn nach dem SSH-Ziel für Arbeitsfläche 3 und den
-Beschriftungen für die Arbeitsflächen 2 und 3 — im Repo stehen dafür nur
-Platzhalter, keine echten Rechnernamen. Danach läuft es ohne Rückfragen
-durch und ist **mehrfach ausführbar**: was es überschreibt, legt es vorher
-als `<datei>.vor-void-i3` daneben.
+Zuerst prüft es die Hardware, dann fragt es — alles an einer Stelle, damit
+man danach weggehen kann. Gefragt wird nach der Beschriftung für
+Arbeitsfläche 2, dem SSH-Ziel für Arbeitsfläche 3 samt Beschriftung (im Repo
+stehen dafür nur Platzhalter, keine echten Rechnernamen) und, falls der
+Sensor da ist, nach dem Fingerabdrucktreiber. Danach steht eine Übersicht:
+
+```
+  So wird eingerichtet:
+
+    1  Arbeitsflaeche 2   lokal
+    2  Arbeitsflaeche 3   benutzer@rechner  (Name: rechner)
+    3  Fingerabdruck      06cb:00e7 -- Treiber wird gebaut
+
+       Gemessen:
+       Geraet           HP ENVY x360 Convertible 13-bd0xxx
+       Akku / Netzteil  BAT1 / ACAD
+       Temperatur       /sys/class/hwmon/hwmon4/temp1_input
+       Grafik           Intel -- xf86-video-intel
+       Audio-Codec      ALC245, HP-Subsystem 0x103c8824
+
+    [Enter] starten   [1-3] aendern   [q] abbrechen:
+```
+
+Danach läuft es ohne Rückfragen durch und ist **mehrfach ausführbar**: was
+es überschreibt, legt es vorher als `<datei>.vor-void-i3` daneben. Die
+Antworten merkt es sich in `~/.config/void-i3/antworten.conf` und legt sie
+beim nächsten Lauf wieder vor — wer die Datei löscht, wird neu gefragt.
+
+Ohne Terminal an der Eingabe oder mit `VOID_I3_UNATTENDED=1` läuft alles
+ohne Rückfrage durch. Einzeln vorgeben lassen sich die Antworten über
+`VOID_I3_WS2`, `VOID_I3_SSH`, `VOID_I3_WS3` und `VOID_I3_FINGER`; sie
+schlagen die Antwortdatei:
+
+```sh
+VOID_I3_SSH=benutzer@rechner VOID_I3_UNATTENDED=1 sh void-i3/setup.sh
+```
 
 > **Diese Dateien sind Vorlagen, keine Kopien eines laufenden Systems.**
 > Sie lassen sich nicht mit `cp ~/.config/… hierher` pflegen — dabei gehen
@@ -60,8 +105,11 @@ als `<datei>.vor-void-i3` daneben.
 > | `config/.bashrc` | `@@REMOTE_ALIAS@@` statt eines fertigen `alias` |
 > | `config/.local/bin/i3-workspace-names` | `@@WS2_NAME@@`, `@@WS3_NAME@@` |
 > | `config/.local/bin/remote-shell` | `@@SSH_TARGET@@`, `@@REMOTE_ALIAS_NAME@@`; heißt lokal anders |
+> | `config/.local/bin/akku-wache` | `@@AKKU@@`, `@@NETZ@@`, `@@TEMP@@` |
+> | `config/.local/bin/netz-ton` | `@@AKKU@@`, `@@NETZ@@` |
+> | `config/.config/i3status/config` | `@@TEMP@@` |
 >
-> Änderungen an diesen vier also von Hand nachziehen. Alles Übrige darf
+> Änderungen an diesen sieben also von Hand nachziehen. Alles Übrige darf
 > direkt kopiert werden.
 
 Es richtet ein:

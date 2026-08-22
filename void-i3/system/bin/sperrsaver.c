@@ -55,7 +55,7 @@
 
 /* Wie oft die Zustandsdatei nachgelesen wird. 200 ms sind fuer das Auge
  * sofort und kosten praktisch nichts. */
-static const long PRUEFUNG_US = 200000;
+static const double PRUEFUNG_S = 0.2;
 
 enum { Z_FINGER = 0, Z_NOCHMAL = 1, Z_AUFWACHEN = 2 };
 
@@ -74,7 +74,7 @@ static const double KREIS_RADIUS  = 0.045;
 static const double KREIS_DICKE   = 0.0055;
 static const double KREIS_BOGEN   = 1.7;     /* Radiant, knapp ein Viertel */
 static const double KREIS_PERIODE = 6.0;     /* Sekunden je Umdrehung */
-static const long   KREIS_US      = 40000;   /* 25 Bilder je Sekunde */
+static const double KREIS_TAKT    = 0.04;    /* 25 Bilder je Sekunde */
 
 /* Nach so vielen Sekunden faellt die Anzeige von selbst auf das
  * Fingerabdruck-Bild zurueck. Zurueckgelegt wird der Zustand eigentlich vom
@@ -87,6 +87,15 @@ static const double PI = 3.14159265358979323846;
 
 /* Farbe des Kreises: #e8e8e8, dieselbe wie der Text im Sperrbild. */
 static const double HELL_R = 0.910, HELL_G = 0.910, HELL_B = 0.910;
+
+/* Monotone Uhr in Sekunden. Nicht die Tageszeit: die kann springen, und ein
+ * Sprung waehrend der Bereitschaft ist hier der Normalfall. */
+static double jetzt(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec + (double)t.tv_nsec / 1000000000.0;
+}
 
 static cairo_surface_t *lade(const char *pfad)
 {
@@ -266,7 +275,8 @@ int main(int argc, char **argv)
     int x_fd = ConnectionNumber(anzeige);
 
     double winkel = 0;
-    double schritt = 2 * PI * ((double)KREIS_US / 1000000.0) / KREIS_PERIODE;
+    double kreis_beginn = 0;          /* seit wann dreht sich der Kreis */
+    double letztes_bild = 0;
     time_t beginn = 0;                /* seit wann steht "aufwachen" da */
     int abgelaufen = 0;
 
@@ -288,20 +298,42 @@ int main(int argc, char **argv)
         }
         int neuer = (roh == Z_AUFWACHEN && abgelaufen) ? Z_FINGER : roh;
 
+        double t = jetzt();
+
         if (neuer != zustand) {
             zustand = neuer;
             winkel = 0;
+            kreis_beginn = t;
+            letztes_bild = t;
             zeichne(ziel, bilder[zustand], masse.width, masse.height);
             if (zustand == Z_AUFWACHEN)
                 zeichne_kreis(ziel, bilder[zustand],
                               masse.width, masse.height, winkel);
             XFlush(anzeige);
-        } else if (zustand == Z_AUFWACHEN) {
-            winkel += schritt;
-            if (winkel >= 2 * PI)
-                winkel -= 2 * PI;
+        } else if (zustand == Z_AUFWACHEN && t - letztes_bild >= KREIS_TAKT) {
+            /* Der Winkel kommt aus der Uhr und nicht daher, dass je Durchlauf
+             * ein Stueck weitergerueckt wird. Das ist keine Feinheit, sondern
+             * der Grund, warum der Kreis ueberhaupt in der eingestellten
+             * Geschwindigkeit dreht.
+             *
+             * Nachgemessen: cairo uebertraegt das Bild ueber die
+             * Shared-Memory-Erweiterung, und der Server schickt fuer jede
+             * Uebertragung ein ShmCompletion (Ereignistyp 65). Damit ist der
+             * X-Anschluss sofort wieder lesbar, das select unten kehrt ohne
+             * Wartezeit zurueck -- und ein Winkel, der je Durchlauf
+             * weiterrueckt, dreht mitsamt dieser Rueckkopplung: 16939
+             * Completion-Ereignisse in drei Sekunden, also rund 5600 Bilder je
+             * Sekunde statt der gewollten 25. KREIS_PERIODE war dabei
+             * praktisch wirkungslos.
+             *
+             * Der Nachkommaanteil bricht die Umdrehung um, ohne fmod -- das
+             * spart die Mathematik-Bibliothek beim Uebersetzen. */
+            double u = (t - kreis_beginn) / KREIS_PERIODE;
+            u -= (double)(long long)u;
+            winkel = u * 2 * PI;
             zeichne_kreis(ziel, bilder[zustand],
                           masse.width, masse.height, winkel);
+            letztes_bild = t;
             XFlush(anzeige);
         }
 
@@ -327,16 +359,26 @@ int main(int argc, char **argv)
             }
         }
 
-        /* Warten, bis entweder X etwas meldet oder die Zeit fuer das naechste
-         * Bild um ist. Ein blosses sleep wuerde Expose-Ereignisse verschlafen
-         * und das Bild kurz leer lassen. Waehrend der Kreis laeuft, ist der
-         * Takt der der Animation, sonst der traege der Zustandspruefung. */
+        /* Warten, bis entweder X etwas meldet oder das naechste Bild faellig
+         * ist. Ein blosses sleep wuerde Expose-Ereignisse verschlafen und das
+         * Bild kurz leer lassen.
+         *
+         * Gewartet wird bis zum faelligen Zeitpunkt, nicht stur eine feste
+         * Spanne: durch die Completion-Ereignisse von oben kehrt select
+         * staendig vorzeitig zurueck. Ohne diese Rechnung begaenne die
+         * Wartezeit jedes Mal von vorn, ohne dass je ein Bild faellig wuerde. */
+        double rest = (zustand == Z_AUFWACHEN)
+                      ? (letztes_bild + KREIS_TAKT) - jetzt()
+                      : PRUEFUNG_S;
+        if (rest < 0)
+            rest = 0;
+
         fd_set lauschen;
         FD_ZERO(&lauschen);
         FD_SET(x_fd, &lauschen);
         struct timeval wartezeit = {
-            .tv_sec = 0,
-            .tv_usec = (zustand == Z_AUFWACHEN) ? KREIS_US : PRUEFUNG_US
+            .tv_sec  = (time_t)rest,
+            .tv_usec = (suseconds_t)((rest - (double)(long)rest) * 1000000)
         };
         select(x_fd + 1, &lauschen, NULL, NULL, &wartezeit);
     }

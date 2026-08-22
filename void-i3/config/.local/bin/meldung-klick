@@ -48,6 +48,15 @@ GRUND_WEGGEKLICKT = 2
 # schliessen, sonst nichts.
 OHNE_FENSTER = {"osd", "akku-wache", "netz-ton", "benachrichtigungen", "melde-ton", ""}
 
+# Meldungen von claude-warte-blinken tragen den Absender "claude". Dahinter
+# steckt aber kein Programm mit eigener Fensterklasse, sondern eine Sitzung IM
+# Terminal -- gesucht werden muss das Alacritty-Fenster, das gerade wartet.
+# Ohne diesen Sonderfall greift unten die unschaerfste Stufe der Suche
+# ("Name irgendwo im Fenstertitel") und der Klick landet bei einem
+# Chrome-Fenster, in dem claude.ai offen ist.
+CLAUDE_APP = "claude"
+CLAUDE_WARTEZEICHEN = "\u2733"   # ✳ -- dasselbe Zeichen wie in claude-warte-blinken
+
 # Rechtsklick raeumt in dunst ALLE Meldungen weg (close_all), und jede davon
 # meldet ebenfalls Grund 2. Kommt mehr als eine Schliessung dicht hintereinander,
 # war es also das Aufraeumen und kein gezielter Klick -- dann wird nicht
@@ -195,6 +204,13 @@ def suche(app):
     liste = fenster()
     if not liste:
         return None
+    if schluessel(app) == CLAUDE_APP:
+        for f in liste:
+            if (schluessel(f["class"]) == "alacritty"
+                    and (f["titel"] or "").startswith(CLAUDE_WARTEZEICHEN)):
+                return f
+        return None                 # nichts wartet mehr: Klick schliesst nur
+
     gesucht = [schluessel(app)]
     dazu = aus_desktopdatei(app)
     if dazu and schluessel(dazu) not in gesucht:

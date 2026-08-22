@@ -276,6 +276,24 @@ Dauerblinken auslösen, und das fällt weit unangenehmer auf. Zum Nachmessen
 nimmt der Dienst `CLAUDE_BLINK_LOG=/tmp/blink.log` und schreibt dort jedes
 `neu:`, `gesehen:` und `erledigt:` mit.
 
+Zum Blinken kommt ein **Ton**: derselbe Übergang schickt eine Meldung per
+`notify-send -a claude`, und die dunstrc hängt daran über `[ton-bei-meldung]`
+von allein `melde-ton`. Der Ton muss also nirgends aufgerufen werden — genau
+so, wie `melde-ton` es im eigenen Kopf beschreibt. Nebenbei landet die Meldung
+im Verlauf hinter der Glocke: kommt man nach längerer Zeit zurück, steht dort
+noch, was angestanden hat.
+
+Ein **Klick auf diese Meldung springt zur wartenden Sitzung**. Dafür braucht
+`meldung-klick` einen Sonderfall, denn hinter dem Absender „claude" steckt kein
+Programm mit eigener Fensterklasse, sondern eine Sitzung *im* Terminal: gesucht
+wird das Alacritty-Fenster mit `✳` im Titel. Ohne den Sonderfall greift die
+unschärfste Stufe der Fenstersuche („Name irgendwo im Fenstertitel") und der
+Klick landet bei einem Chrome-Fenster, in dem claude.ai offen ist.
+
+Der erste Durchlauf nach dem Start nimmt den Zustand nur auf, ohne etwas
+auszulösen — sonst gälte nach jedem `i3-msg restart` jede bereits wartende
+Sitzung als frische Frage, und es klingelte für alle auf einmal.
+
 ## Benachrichtigungen
 
 ### Wie eine Meldung aussieht

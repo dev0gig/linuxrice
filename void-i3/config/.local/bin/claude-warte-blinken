@@ -26,6 +26,7 @@ Laeuft als Daemon, gestartet per exec_always aus der i3-Config.
 """
 import os
 import signal
+import subprocess
 import threading
 import time
 
@@ -56,6 +57,14 @@ TAKT = 0.6
 # Ab wann gilt man als anwesend. Kleiner Wert: schon eine Mausbewegung oder ein
 # Tastendruck raeumt das Blinken weg. Sekunden.
 ANWESEND_UNTER = 5.0
+
+# Absendername der Meldung. Er entscheidet ueber die dunst-Regeln: alles auf
+# msg_urgency "normal" bekommt dort ~/.local/bin/melde-ton angehaengt, der Ton
+# kommt also von selbst und muss hier nicht aufgerufen werden. Genau so ist es
+# gedacht -- melde-ton sagt im eigenen Kopf, dass es nicht von Hand gerufen
+# wird. Nebenbei landet die Meldung im Verlauf hinter der Glocke: kommt man
+# nach laengerer Zeit zurueck, steht dort noch, was angestanden hat.
+MELDUNG_APP = "claude"
 
 # Zum Nachmessen: CLAUDE_BLINK_LOG=/tmp/blink.log claude-warte-blinken
 LOGDATEI = os.environ.get("CLAUDE_BLINK_LOG")
@@ -124,7 +133,27 @@ def titel_setzen(i3, con_id, hervorgehoben):
     i3.command(f'[con_id={con_id}] title_format "{fmt}"')
 
 
-def pruefen(i3, d):
+def melden(thema):
+    """Benachrichtigung ueber dunst -- den Ton haengt dessen Regel selbst an.
+
+    Popen statt run: der Dienst darf hier nicht stehenbleiben, sonst haengt
+    im selben Moment das Blinken.
+    """
+    try:
+        subprocess.Popen(
+            ["notify-send", "-a", MELDUNG_APP, "-u", "normal",
+             "Claude wartet", thema],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError as fehler:
+        log(f"notify-send ging nicht: {fehler}")
+
+
+def thema_aus_titel(name):
+    """Fenstertitel ohne das fuehrende Zustandszeichen."""
+    return (name or "").lstrip(WARTEZEICHEN).strip() or "Sitzung wartet"
+
+
+def pruefen(i3, d, erststart=False):
     """Merker nachfuehren: neue Fragen aufnehmen, gesehene wieder streichen."""
     with _lock:
         idle = leerlauf(d)
@@ -138,9 +167,14 @@ def pruefen(i3, d):
 
             # Nur der Wechsel zaehlt: gerade eben hat Claude noch gearbeitet
             # und wartet jetzt -- das ist der Moment, in dem etwas ansteht.
-            if frage and not vorher:
+            # Beim allerersten Durchlauf wird der Zustand nur aufgenommen.
+            # Sonst gaelte jede beim Start schon wartende Sitzung als frische
+            # Frage -- nach jedem "i3-msg restart" haette es fuer jede offene
+            # Sitzung geklingelt.
+            if frage and not vorher and not erststart:
                 _merker.add(con.id)
                 log(f"neu: {con.id} {con.name!r}")
+                melden(thema_aus_titel(con.name))
 
             # Gesehen: das Fenster liegt vorne UND es kam gerade eine Eingabe.
             # Der Fokus allein reicht nicht -- im gefragten Fall (weggegangen,
@@ -218,7 +252,7 @@ def main():
     i3.on("shutdown::restart", aufraeumen)
     signal.signal(signal.SIGTERM, lambda *_: (aufraeumen(i3), i3.main_quit()))
 
-    pruefen(i3, d)
+    pruefen(i3, d, erststart=True)
     i3.main()
 
 

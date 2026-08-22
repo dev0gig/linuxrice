@@ -73,7 +73,7 @@ static const double KREIS_MITTE_Y = 0.338;   /* Anteil der Hoehe */
 static const double KREIS_RADIUS  = 0.045;
 static const double KREIS_DICKE   = 0.0055;
 static const double KREIS_BOGEN   = 1.7;     /* Radiant, knapp ein Viertel */
-static const double KREIS_PERIODE = 2.2;     /* Sekunden je Umdrehung */
+static const double KREIS_PERIODE = 6.0;     /* Sekunden je Umdrehung */
 static const long   KREIS_US      = 40000;   /* 25 Bilder je Sekunde */
 
 /* Nach so vielen Sekunden faellt die Anzeige von selbst auf das

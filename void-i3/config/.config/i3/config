@@ -480,7 +480,7 @@ hide_edge_borders both
 # weg, sobald der Titel auf "Alacritty" zurueckfaellt.  "border normal 0"
 # heisst: Titelleiste ja, Rahmen an den Seiten nein.
 #
-# Die anderen Terminals (odin-term, vitals-dashboard) laufen unter eigenen
+# Die anderen Terminals (remote-term, vitals-dashboard) laufen unter eigenen
 # Klassen und sind darum nicht betroffen.
 # Titel mittig -- linksbuendig klebt er sonst in der Ecke ueber dem Text,
 # in der Mitte liest er sich wie eine Ueberschrift der Sitzung.

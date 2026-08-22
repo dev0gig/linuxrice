@@ -71,63 +71,98 @@ case "$zustand" in
     *)       meldung="Unlock with fingerprint"; farbe="$HELL"    ;;
 esac
 
-# ---- Groessen und Hoehen, alles aus der Bildhoehe abgeleitet, damit es auf
+# ---- Aussehen
+#
+# Die Schrift steht ohne Kasten direkt auf dem Wallpaper. Damit sie dort
+# lesbar bleibt, wird das Bild weich gezeichnet und deutlich abgedunkelt, und
+# jede Zeile bekommt zusaetzlich einen dunklen Schatten. Das ersetzt die
+# Flaeche, die hier frueher stand -- ein Rechteck in #1e1e1e mit grauem
+# Rahmen. Es hat den Text sicher lesbar gemacht, lag aber als harte Kante
+# mitten im Bild.
+#
+# Der Weichzeichner laeuft ueber Verkleinern und wieder Vergroessern statt
+# ueber -blur in voller Groesse: -blur mit einem Radius, der bei 1080 Zeilen
+# ueberhaupt auffiele, braucht mehrere Sekunden. Das Ergebnis ist hier nicht
+# zu unterscheiden, es soll ja nur Unschaerfe sein.
+ABDUNKLUNG=45
+SCHATTEN='#000000'
+
+# ---- Senkrechte Anordnung, alles aus der Bildhoehe abgeleitet, damit es auf
 #      jeder Aufloesung gleich aussieht.
 #
-# Die Schrift steht nicht direkt auf dem Wallpaper: darauf ist sie je nach
-# Bild kaum zu lesen. Stattdessen liegt in der Mitte eine Flaeche in genau der
-# Sprache deiner rofi-Fenster -- #1e1e1e mit 2px Rahmen in #6e6e6e, eckig.
-# Sie reicht bewusst bis unter die Bildmitte: dort setzt xsecurelock spaeter
-# das Passwortfeld hin, und das soll in derselben Flaeche stehen und nicht
-# halb daneben.
-FLAECHE='#1e1e1e'
-RAHMEN='#6e6e6e'
-
-# Die Hoehen sind nicht frei gewaehlt, sondern um die Anmeldemaske herum
-# gelegt. xsecurelock zeichnet sie mittig; auf einem 1920x1080-Testschirm
-# nachgemessen (Differenz zweier Aufnahmen, mit und ohne Maske) liegt sie bei
-# x 755..1167, y 480..569 -- also 44,4 % bis 52,7 % der Hoehe. Alles Eigene
-# muss darueber bleiben, sonst uebermalt die Maske das Symbol.
+# xsecurelock zeichnet die Anmeldemaske mittig an eine feste Stelle, die sich
+# nicht verschieben laesst -- auth_x11 kennt keine Umgebungsvariable dafuer.
+# Auf einem 1920x1080-Testschirm nachgemessen (Differenz zweier Aufnahmen,
+# mit und ohne Maske) liegt sie bei y 480..569, also 44,4 % bis 52,7 %.
 #
-# Die Flaeche reicht bis 58 %: die Maske liegt dann vollstaendig darin, mit
-# Luft fuer die Fehlerzeile, die xsecurelock nach einem falschen Passwort
-# zusaetzlich einblendet. Ihre Hintergrundfarbe ist dieselbe wie die der
-# Flaeche, die Naht ist also unsichtbar.
-FLAECHE_BIS_PROZENT=58
-
-fl_breite=$(( breite * 42 / 100 ))
-fl_links=$((  (breite - fl_breite) / 2 ))
-fl_rechts=$(( fl_links + fl_breite ))
-fl_oben=$((   hoehe * 15 / 100 ))
-fl_unten=$((  hoehe * FLAECHE_BIS_PROZENT / 100 ))
-
-gr_name=$((   hoehe * 100 / 2700 ))   # 1080 -> 40
-gr_rechner=$((hoehe * 100 / 4500 ))   # 1080 -> 24
-gr_symbol=$(( hoehe * 100 / 1130 ))   # 1080 -> 95
+# Darum stehen Symbol und Hinweis dicht DARUEBER, Name und Rechnername
+# DARUNTER: die Maske gehoert mitten in die Gruppe hinein statt an ihr
+# unteres Ende, und nur so liegt das Ganze um die Bildmitte. Die
+# naheliegende Reihenfolge mit dem Namen ganz oben draengt alles ins obere
+# Drittel, weil unterhalb der Maske dann nichts mehr steht.
+#
+# Zwei Stolpersteine beim Nachstellen:
+#
+# Erstens ist die y-Angabe von -annotate bei -gravity north die OBERKANTE der
+# Tinte, nicht die Grundlinie. Nachgemessen mit -trim: "-pointsize 130
+# -annotate +0+200" auf leerer Flaeche liefert Tinte ab genau y 200.
+#
+# Zweitens fuellt die Fingerabdruck-Glyphe ihr Geviert fast ganz aus -- 130
+# Punkt sind hier rund 130 Pixel hoch, viel mehr als die 36 Punkt des Namens
+# (32 Pixel). Wer das verwechselt, setzt das Symbol in die Maske hinein.
+#
+# Kanten bei 1080 Zeilen: Symbol 300..431, Meldung 445..470, dann die Maske
+# 480..569, darunter Name 600..632 und Rechner 645..661.
+gr_symbol=$(( hoehe * 100 / 830  ))   # 1080 -> 130
 gr_meldung=$((hoehe * 100 / 4000 ))   # 1080 -> 27
+gr_name=$((   hoehe * 100 / 3000 ))   # 1080 -> 36
+gr_rechner=$((hoehe * 100 / 4500 ))   # 1080 -> 24
 
-y_name=$((    hoehe * 18   / 100 ))
-y_rechner=$(( hoehe * 23   / 100 ))
-y_symbol=$((  hoehe * 28   / 100 ))
-y_meldung=$(( hoehe * 375  / 1000 ))
+y_symbol=$((  hoehe * 278  / 1000 ))
+y_meldung=$(( hoehe * 412  / 1000 ))
+y_name=$((    hoehe * 556  / 1000 ))
+y_rechner=$(( hoehe * 597  / 1000 ))
+
+# Versatz des Schattens, ebenfalls aus der Hoehe abgeleitet.
+versatz=$(( hoehe / 540 ))            # 1080 -> 2
+[ "$versatz" -lt 1 ] && versatz=1
+
+y_symbol_s=$((  y_symbol  + versatz ))
+y_meldung_s=$(( y_meldung + versatz ))
+y_name_s=$((    y_name    + versatz ))
+y_rechner_s=$(( y_rechner + versatz ))
 
 if [ -n "$wallpaper" ] && [ -f "$wallpaper" ]; then
-    grundlage="$wallpaper -resize ${breite}x${hoehe}^ -gravity center -extent ${breite}x${hoehe} -fill black -colorize 25%"
+    klein_b=$(( breite / 8 ))
+    klein_h=$(( hoehe  / 8 ))
+    grundlage="$wallpaper -resize ${breite}x${hoehe}^ -gravity center -extent ${breite}x${hoehe}
+               -resize ${klein_b}x${klein_h}! -blur 0x2 -resize ${breite}x${hoehe}!
+               -fill black -colorize ${ABDUNKLUNG}%"
 else
     # Kein Wallpaper gefunden: einfarbig wie der i3-Hintergrund.
     grundlage="-size ${breite}x${hoehe} xc:#161616"
 fi
 
+# Jede Zeile wird zweimal gesetzt: erst der Schatten, um den Versatz nach
+# rechts unten geschoben, dann der Text darueber. Ohne ihn verschluckt ein
+# heller Bildausschnitt die duennen Buchstaben der Red Hat Mono trotz
+# Abdunklung.
+#
 # shellcheck disable=SC2086  -- $grundlage soll in Woerter zerfallen
 magick $grundlage \
-    -fill "$FLAECHE" -stroke "$RAHMEN" -strokewidth 2 \
-    -draw "rectangle $fl_links,$fl_oben $fl_rechts,$fl_unten" \
-    -stroke none \
     -gravity north \
-    -font "$TEXTSCHRIFT_KRAEFTIG" -pointsize "$gr_name"    -fill "$HELL"    -annotate +0+"$y_name"    "$benutzer" \
-    -font "$TEXTSCHRIFT"          -pointsize "$gr_rechner" -fill "$GEDIMMT" -annotate +0+"$y_rechner" "$rechner" \
-    -font "$SYMBOLSCHRIFT"        -pointsize "$gr_symbol"  -fill "$farbe"   -annotate +0+"$y_symbol"  "$GLYPHE" \
-    -font "$TEXTSCHRIFT"          -pointsize "$gr_meldung" -fill "$farbe"   -annotate +0+"$y_meldung" "$meldung" \
+    -font "$SYMBOLSCHRIFT" -pointsize "$gr_symbol" \
+        -fill "$SCHATTEN" -annotate +"$versatz"+"$y_symbol_s" "$GLYPHE" \
+        -fill "$farbe"    -annotate +0+"$y_symbol"            "$GLYPHE" \
+    -font "$TEXTSCHRIFT" -pointsize "$gr_meldung" \
+        -fill "$SCHATTEN" -annotate +"$versatz"+"$y_meldung_s" "$meldung" \
+        -fill "$farbe"    -annotate +0+"$y_meldung"            "$meldung" \
+    -font "$TEXTSCHRIFT_KRAEFTIG" -pointsize "$gr_name" \
+        -fill "$SCHATTEN" -annotate +"$versatz"+"$y_name_s" "$benutzer" \
+        -fill "$HELL"     -annotate +0+"$y_name"            "$benutzer" \
+    -font "$TEXTSCHRIFT" -pointsize "$gr_rechner" \
+        -fill "$SCHATTEN" -annotate +"$versatz"+"$y_rechner_s" "$rechner" \
+        -fill "$GEDIMMT"  -annotate +0+"$y_rechner"            "$rechner" \
     "$ziel" 2>/dev/null
 
 echo "$ziel"

@@ -395,7 +395,9 @@ bindsym $mod+Shift+0 move container to workspace number $ws10
 bindsym $mod+Shift+c reload
 # restart i3 inplace (preserves your layout/session, can be used to upgrade i3)
 bindsym $mod+Shift+r restart
-# Abmelden: fuehrt auf dasselbe Menue wie F12, das fragt selbst nach.
+# Abmelden: fuehrt auf dasselbe Menue wie F12. Die Kachel laeuft sofort los,
+# eine Rueckfrage gibt es dort nicht mehr -- rofi braucht zum Aktivieren
+# ohnehin schon einen Doppelklick.
 # Vorher stand hier der i3-nagbar -- der konnte nur abmelden und sah nicht aus
 # wie der Rest.
 bindsym $mod+Shift+e exec --no-startup-id ~/.local/bin/i3-sitzung

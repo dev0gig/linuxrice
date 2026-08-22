@@ -7,8 +7,11 @@
 #
 # Das Menue ist ein Icon-Raster wie der App-Drawer auf Super+Space (Theme:
 # ~/.config/rofi/sitzung.rasi) und zeigt genau drei Kacheln: Abmelden,
-# Neustart, Herunterfahren. Alle drei koennen Arbeit vernichten, darum fragt
-# jede noch einmal nach -- die Rueckfrage bleibt bewusst eine schmale Liste.
+# Neustart, Herunterfahren. Die Auswahl laeuft sofort los. Hier stand frueher
+# eine Ja/Nein-Rueckfrage, die ist weg: rofi aktiviert eine Kachel ohnehin
+# erst auf Doppelklick (me-accept-entry ist auf MouseDPrimary voreingestellt,
+# ein einzelner Klick markiert nur). Aus Versehen loest also niemand aus, und
+# die zweite Frage war nur ein Klick mehr fuer denselben Schutz.
 #
 # Sperren und Bereitschaft stehen nicht im Raster, die Funktionen gibt es aber
 # weiter: "i3-sitzung sperren" haengt an $mod+l und wird ausserdem von
@@ -50,12 +53,6 @@ zeilen() {
     printf 'Abmelden\0icon\037system-log-out\n'
     printf 'Neustart\0icon\037system-reboot\n'
     printf 'Herunterfahren\0icon\037system-shutdown\n'
-}
-
-# Rueckfrage: schmale Liste im Standardthema. -no-show-icons, weil hier
-# keine Symbole mitgegeben werden und sonst links eine leere Spalte bliebe.
-frage_nach() {
-    [ "$(printf 'Nein\nJa\n' | rofi -dmenu -i -no-show-icons -p "$1" -lines 2)" = "Ja" ]
 }
 
 # ---------------------------------------------------------------- Sperren
@@ -242,13 +239,13 @@ auswahl=$(zeilen | rofi -dmenu -i -theme "$RASTER")
 
 case "$auswahl" in
     Abmelden)
-        frage_nach "Abmelden?" && i3-msg exit
+        i3-msg exit
         ;;
     Neustart)
-        frage_nach "Neustart?" && sudo reboot
+        sudo reboot
         ;;
     Herunterfahren)
-        frage_nach "Herunterfahren?" && sudo poweroff
+        sudo poweroff
         ;;
     *)
         # Abbruch mit Escape: rofi liefert eine leere Zeile

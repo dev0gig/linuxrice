@@ -174,6 +174,21 @@ ein Punkt, und die Farbe wechselt im 0,6-Sekunden-Takt zwischen Warnrot und
 dem Grau der inaktiven Flächen. Beim Hinschalten ist es sofort vorbei, i3
 löscht das Flag dann selbst.
 
+**In den ersten 25 Sekunden nach dem i3-Start blinkt nichts.** Der Autostart
+legt Chrome und die drei Terminals auf Flächen, die gerade nicht sichtbar
+sind; jedes dieser Fenster bittet beim Öffnen um den Fokus, und i3 macht
+daraus dasselbe `urgent`-Flag — die halbe Leiste fing also an zu blinken,
+bevor überhaupt jemand am Rechner saß. Fenster, die in dieser Karenz `urgent`
+werden, merkt sich das Skript und lässt sie still, auch über die Karenz
+hinaus: ihr Flag steht ja weiter, bis man die Fläche einmal besucht. Danach
+zählen sie wieder wie jedes andere Fenster. Gemessen wird die Karenz an der
+Laufzeit des **i3-Prozesses** (PID aus dem Namen des IPC-Sockets, Startzeit
+aus `/proc/PID/stat`), nicht an der des Skripts — sonst legte jedes
+`i3-msg restart` das Blinken für 25 Sekunden lahm. Der Knopf steht in dieser
+Zeit trotzdem rot: das färbt i3bar selbst aus dem Flag, und löschen lässt es
+sich nur durch einen Besuch der Fläche — ein `urgent`-Kommando wie in sway
+kennt i3 4.25 nicht.
+
 Das Blinken steckt in `i3-workspace-names` und nicht in einem eigenen Dienst:
 der Name der Fläche ist der einzige Hebel, mit dem sich ein Knopf in i3bar
 umfärben lässt (i3bar rendert ihn mit Pango-Markup, `bar { colors }` kennt nur

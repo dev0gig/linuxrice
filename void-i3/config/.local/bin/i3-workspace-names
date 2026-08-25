@@ -13,6 +13,10 @@ bittet dann per _NET_ACTIVE_WINDOW um den Fokus; i3 gibt ihn nicht her
 den Fokus) und setzt stattdessen das urgent-Flag.  In der Leiste wurde die
 Flaeche dadurch bisher nur still rot -- das uebersieht man leicht.
 
+Waehrend der ersten Sekunden nach dem Start von i3 blinkt nichts: da meldet
+sich der Autostart selbst zum Fokus an, und das ist keine Nachricht, die
+jemanden erreichen muss (siehe KARENZ weiter unten).
+
 Warum das Blinken hier drinsteckt und nicht in einem eigenen Dienst: es gibt
 nur EINEN Weg, einen Knopf in der Leiste umzufaerben, naemlich den Namen der
 Arbeitsflaeche (i3bar rendert ihn mit Pango-Markup).  Ein zweiter Dienst
@@ -77,6 +81,26 @@ PUNKT = "\U000f09de"
 # und seinem Normalzustand.
 BLINK_FARBEN = ("#fb4934", "#555555")
 
+# ---- Karenz beim Hochfahren ----
+# Gleich nach dem Start melden sich die Autostart-Fenster (Chrome und die drei
+# Alacritty-Fenster) auf ihren zugewiesenen, noch unsichtbaren Flaechen zum
+# Fokus an. i3 gibt ihn nicht her und setzt stattdessen urgent -- die Leiste
+# fing dadurch an zu blinken, bevor ueberhaupt jemand am Rechner sass.
+# Aufmerksam machen soll das Blinken aber nur, wenn waehrend der Arbeit
+# wirklich etwas hereinkommt.
+#
+# In den ersten KARENZ Sekunden nach dem i3-Start werden urgente Fenster
+# darum in _stumm vermerkt und still gestellt. Das muss ueber die Karenz
+# hinaus gelten: ihr urgent-Flag steht ja weiter, bis man die Flaeche besucht
+# -- sonst finge das Blinken mit dem Ende der Karenz einfach an. Sobald das
+# Flag weg ist, faellt das Fenster wieder heraus und blinkt kuenftig normal.
+#
+# Der Knopf selbst bleibt in dieser Zeit rot: das faerbt i3bar aus dem
+# urgent-Flag heraus, und loeschen laesst sich das Flag nur durch einen
+# Besuch der Flaeche -- ein "urgent"-Kommando wie in sway kennt i3 4.25 nicht.
+KARENZ = 25
+_stumm = set()
+
 # Der Blinktakt und das Umbenennen bei Fenster-Ereignissen laufen in zwei
 # Threads. _phase gehoert dem Blinker, gelesen wird sie von beiden -- beide
 # bauen daraus denselben Namen, es kann also nicht flackern. Das Lock haelt
@@ -133,6 +157,51 @@ def label(con):
     return base.lower()
 
 
+def sekunden_seit_i3_start(i3):
+    """Wie lange laeuft i3 schon? Im Zweifel unendlich lange.
+
+    Die PID steht im Namen des IPC-Sockets (".../ipc-socket.1433"), die
+    Startzeit in Feld 22 von /proc/PID/stat -- in Uhr-Ticks seit dem Boot,
+    also gegen /proc/uptime zu rechnen.
+
+    Bewusst nicht die Laufzeit dieses Skripts: es startet per exec_always auch
+    bei jedem "i3 reload" neu, und ein Reload mitten in der Arbeit darf das
+    Blinken nicht stilllegen. Laesst sich die Zeit nicht ermitteln, gilt i3
+    als lange gelaufen -- dann blinkt es wie eh und je, das ist der
+    harmlosere der beiden Fehler.
+    """
+    try:
+        pid = int(str(i3.socket_path).rsplit(".", 1)[1])
+        with open(f"/proc/{pid}/stat") as fh:
+            felder = fh.read().rsplit(") ", 1)[1].split()
+        with open("/proc/uptime") as fh:
+            uptime = float(fh.read().split()[0])
+        return uptime - int(felder[19]) / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError):
+        return float("inf")
+
+
+def blinkt(ws, startphase, gesehen):
+    """Soll diese Flaeche blinken?
+
+    Gezaehlt wird pro Fenster, nicht pro Flaeche: nur die Fenster, die in der
+    Karenz urgent wurden, sind still. Meldet sich spaeter ein anderes Fenster
+    auf derselben Flaeche, blinkt sie sehr wohl.
+
+    "gesehen" sammelt alle gerade urgenten Fenster ein -- rename() wirft
+    danach alles andere aus _stumm, damit die Menge nicht mitwaechst.
+    """
+    urgente = [con.id for con in ws.leaves() if con.urgent]
+    if ws.urgent and not urgente:
+        # urgent an der Flaeche, aber an keinem Blatt: praktisch kommt das
+        # nicht vor, die Nummer dient dann als Ersatz-Kennung.
+        urgente = [f"ws{ws.num}"]
+    gesehen.update(urgente)
+    if startphase:
+        _stumm.update(urgente)
+    return any(kennung not in _stumm for kennung in urgente)
+
+
 def zusammensetzen(num, rest, urgent):
     """Baut den Namen aus Nummer und Programmteil -- blinkend, wenn urgent.
 
@@ -156,6 +225,8 @@ def zusammensetzen(num, rest, urgent):
 
 def rename(i3):
     with _lock:
+        startphase = sekunden_seit_i3_start(i3) < KARENZ
+        gesehen = set()
         for ws in i3.get_tree().workspaces():
             # Reihenfolge beibehalten, aber jedes Programm nur einmal nennen
             names = []
@@ -177,13 +248,15 @@ def rename(i3):
             else:
                 rest = ""                   # leere Flaeche: nur die Nummer
 
-            new = zusammensetzen(num, rest, ws.urgent)
+            new = zusammensetzen(num, rest, blinkt(ws, startphase, gesehen))
 
             if new != ws.name:
                 # Doppelte Anfuehrungszeichen im Namen wuerden das Kommando zerlegen
                 old_q = ws.name.replace('"', r'\"')
                 new_q = new.replace('"', r'\"')
                 i3.command(f'rename workspace "{old_q}" to "{new_q}"')
+
+        _stumm.intersection_update(gesehen)
 
 
 def blinker():
@@ -196,7 +269,9 @@ def blinker():
     global _phase
     i3 = i3ipc.Connection()
     while True:
-        if any(ws.urgent for ws in i3.get_tree().workspaces()):
+        # blinkt() liest hier nur (startphase=False, Sammelmenge zum
+        # Wegwerfen) -- gepflegt wird _stumm allein in rename().
+        if any(blinkt(ws, False, set()) for ws in i3.get_tree().workspaces()):
             _phase ^= 1
             rename(i3)
             _wecker.wait(BLINK_TAKT)

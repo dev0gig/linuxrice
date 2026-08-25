@@ -1,0 +1,62 @@
+#!/bin/sh
+# led-start -- die beiden Tasten-LEDs nach dem Hochfahren nachziehen.
+#
+# Gerufen wird das einmal aus der i3-Config. Frueher standen dort direkt
+# "mikro-led auto" und "ton-led auto" -- beide liefen aber ins Leere: i3
+# startet PipeWire in derselben Config ein paar Zeilen weiter oben, der
+# Server ist im Moment des Aufrufs also noch gar nicht da. pactl liefert
+# dann nichts, beide Skripte lesen daraus "nicht stumm" und loeschen die
+# LEDs, obwohl vielleicht stumm geschaltet ist. Genau das war das Symptom:
+# nach dem Hochfahren blieben F5 und F8 dunkel.
+#
+# Zwei Wartezeiten stecken darin:
+#   1. Bis PipeWire ueberhaupt eine echte Standard-Senke hat. "auto_null"
+#      zaehlt nicht -- das ist die Ausweich-Senke, die WirePlumber anlegt,
+#      solange es die Karte noch nicht kennt (oder haengt).
+#   2. Danach zieht WirePlumber die gespeicherten Mute-Zustaende aus
+#      ~/.local/state/wireplumber/default-routes nach, und zwar erst, wenn
+#      die Karte erscheint -- also noch einmal ein Stueck spaeter. Darum
+#      wird nicht einmal gesetzt, sondern in den ersten 20 Sekunden noch
+#      ein paar Mal nachgezogen. Beide Aufrufe sind idempotent.
+#
+# Kein Dauerdienst: waehrend der Arbeit setzt ~/.local/bin/osd die LEDs bei
+# jedem Tastendruck selbst. Auch keine PID-Datei -- das Skript ist nach
+# gut 20 Sekunden fertig, und zwei Laeufe nach einem i3-Reload wuerden sich
+# gegenseitig nur denselben Zustand schreiben.
+
+PFAD="$(dirname "$0")"
+
+setzen() {
+    "$PFAD/mikro-led" auto
+    "$PFAD/ton-led" auto
+}
+
+# Eine benutzbare Standard-Senke UND -Quelle da? Ohne laufenden Server
+# schlaegt pactl fehl, die Ausgabe ist dann leer.
+bereit() {
+    [ "$(pactl get-default-sink 2>/dev/null)" != auto_null ] &&
+    pactl get-sink-mute   @DEFAULT_SINK@   2>/dev/null | grep -q '^Mute:' &&
+    pactl get-source-mute @DEFAULT_SOURCE@ 2>/dev/null | grep -q '^Mute:'
+}
+
+# Hoechstens 60 s warten. Laeuft die Zeit ab, wird trotzdem gesetzt: dann
+# stimmt die LED eben mit dem ueberein, was pactl gerade hergibt -- besser
+# als gar nichts zu tun.
+i=0
+while ! bereit; do
+    i=$((i + 1))
+    [ "$i" -gt 120 ] && break
+    sleep 0.5
+done
+
+# Eine Zeile zum Nachsehen, wie lange PipeWire beim Hochfahren gebraucht hat
+# -- der Wert ist der Grund, warum es dieses Skript gibt. XDG_RUNTIME_DIR ist
+# tmpfs, die Notiz ist beim naechsten Start also von selbst wieder weg.
+echo "$(date +%H:%M:%S) auf PipeWire gewartet: $((i / 2)) s, Senke: $(pactl get-default-sink 2>/dev/null)" \
+    >> "${XDG_RUNTIME_DIR:-/tmp}/led-start.log"
+
+setzen
+for wartezeit in 2 3 5 10; do
+    sleep "$wartezeit"
+    setzen
+done

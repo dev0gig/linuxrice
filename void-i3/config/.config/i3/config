@@ -127,12 +127,18 @@ exec_always --no-startup-id ~/.local/bin/netz-ton
 # passende Fenster ueber i3. Beendet seinen Vorgaenger per PID-Datei.
 exec_always --no-startup-id ~/.local/bin/meldung-klick
 
-# Die beiden LEDs in F8 (Mikrofon) und F5 (Ton) einmal an den tatsaechlichen
+# Die beiden LEDs in F8 (Mikrofon) und F5 (Ton) an den tatsaechlichen
 # Mute-Zustand angleichen. Noetig, weil der Codec sie beim Booten in seinem
 # Ruhezustand laesst -- sie blieben sonst dunkel, obwohl vielleicht stumm
 # geschaltet ist.
-exec_always --no-startup-id ~/.local/bin/mikro-led auto
-exec_always --no-startup-id ~/.local/bin/ton-led auto
+#
+# Hier stand frueher direkt "mikro-led auto" und "ton-led auto". Das lief zu
+# frueh: PipeWire startet weiter oben in dieser Datei, ist in diesem Moment
+# also noch nicht ansprechbar, und die gespeicherten Mute-Zustaende zieht
+# WirePlumber sogar erst nach dem Erscheinen der Karte nach. Beide Skripte
+# lasen darum "nicht stumm" und loeschten die LEDs. led-start wartet auf
+# eine benutzbare Standard-Senke und zieht danach noch ein paar Mal nach.
+exec_always --no-startup-id ~/.local/bin/led-start
 
 # Bluetooth so hochkommen lassen, wie es zuletzt stand. bluez tut das nicht
 # von sich aus: "AutoEnable=false" in /etc/bluetooth/main.conf laesst den

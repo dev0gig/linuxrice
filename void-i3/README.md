@@ -631,6 +631,18 @@ lässt sich die Rücksicht mit `medien_halten=0` in derselben Datei.
   `-combi-modes drun,run` bringt rofi zwar zum Laufen, wirft aber jedes Mal
   einen Parse-Fehler samt rotem `i3-nagbar`. Lösung: das ganze Kommando in
   Anführungszeichen.
+* **Die LEDs in F5/F8 beim Hochfahren.** In der i3-Config standen früher
+  direkt `mikro-led auto` und `ton-led auto`. Beide liefen ins Leere: i3
+  startet PipeWire ein paar Zeilen weiter oben in derselben Datei, der Server
+  antwortet also noch nicht, und die gespeicherten Mute-Zustände zieht
+  WirePlumber sogar erst nach dem Erscheinen der Karte aus
+  `~/.local/state/wireplumber/default-routes` nach. `pactl` lieferte nichts,
+  beide Skripte lasen daraus „nicht stumm" und löschten die LEDs — nach dem
+  Hochfahren blieben F5 und F8 dunkel, obwohl stumm geschaltet war. Jetzt
+  wartet `~/.local/bin/led-start` auf eine benutzbare Standard-Senke
+  (`auto_null` zählt nicht, das ist die Ausweich-Senke) und zieht in den
+  ersten 20 Sekunden noch ein paar Mal nach. Wie lange PipeWire tatsächlich
+  gebraucht hat, steht danach in `$XDG_RUNTIME_DIR/led-start.log`.
 * **`i3-msg reload` startet `i3status` nicht neu.** Die Leiste zeigt weiter
   die alte Ausgabe; erst `i3-msg restart` startet i3bar samt i3status neu
   (und behält dabei Fenster und Layout).

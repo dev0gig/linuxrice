@@ -1,0 +1,105 @@
+#!/bin/bash
+# Einheitlicher tmux-Manager fuer den Void-Laptop.
+# Aufruf:
+#   tmux-menu local
+#   tmux-menu remote benutzer@host
+set -u
+
+MODUS="${1:-local}"
+ZIEL="${2:-}"
+ESC="$(printf '\033')"
+
+titel() {
+  if [ "$MODUS" = remote ]; then printf 'TMUX — ODIN'; else printf 'TMUX — LOKAL'; fi
+}
+run_capture() {
+  if [ "$MODUS" = remote ]; then ssh "$ZIEL" "$@"; else bash -lc "$*"; fi
+}
+run_tty() {
+  if [ "$MODUS" = remote ]; then ssh -t "$ZIEL" "$@"; else bash -lc "$*"; fi
+}
+pause() { printf '\n[Enter] zurück '; read -r _; }
+hilfe() {
+  clear
+  cat <<'HILFE'
+TMUX — SPICKZETTEL
+------------------------------
+SESSION
+Ctrl+B  D       Session detach — läuft weiter
+
+FENSTER
+Ctrl+B  C       Neues Fenster
+Ctrl+B  N       Nächstes Fenster
+Ctrl+B  P       Voriges Fenster
+Ctrl+B  W       Fensterübersicht
+
+PANES
+Ctrl+B  %       Vertikal teilen
+Ctrl+B  "       Horizontal teilen
+Ctrl+B  Pfeil   Pane wechseln
+Ctrl+B  X       Pane schließen
+
+BEFEHLE
+tmux ls         Sessions anzeigen
+tmux new -s X   Neue Session X
+tmux attach -t X
+                Session X öffnen
+HILFE
+  pause
+}
+
+[ "$MODUS" = local ] || [ "$MODUS" = remote ] || { echo "Aufruf: tmux-menu local | tmux-menu remote benutzer@host" >&2; exit 2; }
+if [ "$MODUS" = remote ] && [ -z "$ZIEL" ]; then echo "Remote-Ziel fehlt." >&2; exit 2; fi
+command -v tmux >/dev/null 2>&1 || [ "$MODUS" = remote ] || { echo "tmux ist lokal nicht installiert." >&2; exit 1; }
+
+while true; do
+  clear
+  titel; printf '\n------------------------------\n'
+  mapfile -t SESSIONS < <(run_capture "tmux list-sessions -F '#{session_name}|#{session_windows}|#{?session_attached,attached,detached}' 2>/dev/null" || true)
+  if [ "${#SESSIONS[@]}" -eq 0 ]; then
+    printf '\nKeine aktiven Sessions.\n'
+  else
+    printf '\nAKTIVE SESSIONS\n\n'
+    i=1
+    for s in "${SESSIONS[@]}"; do
+      IFS='|' read -r name windows state <<<"$s"
+      printf ' %d   %-16s %s Fenster   %s\n' "$i" "$name" "$windows" "$state"
+      i=$((i+1))
+    done
+  fi
+  printf '\n [1-9]  Session öffnen\n [N]    Neue Session\n [K]    Session beenden\n [H]    tmux-Spickzettel\n [R]    Sessions neu laden\n [Q]    Normale Shell\n\n Auswahl: '
+  read -rsn1 w; printf '\n'
+  case "$w" in
+    [1-9])
+      idx=$((w-1)); [ "$idx" -lt "${#SESSIONS[@]}" ] || continue
+      name="${SESSIONS[$idx]%%|*}"
+      run_tty "tmux attach-session -t '$name'" || true
+      ;;
+    n|N)
+      printf 'Name der neuen Session: '; read -r name
+      case "$name" in ""|*[!A-Za-z0-9._-]*) printf 'Nur Buchstaben, Zahlen, Punkt, _ und - verwenden.\n'; sleep 2; continue;; esac
+      run_tty "tmux new-session -s '$name'" || true
+      ;;
+    k|K)
+      [ "${#SESSIONS[@]}" -gt 0 ] || continue
+      printf '\nWelche Session beenden?\n\n'
+      i=1
+      for s in "${SESSIONS[@]}"; do
+        IFS='|' read -r sname windows state <<<"$s"
+        printf ' %d   %-16s %s Fenster   %s\n' "$i" "$sname" "$windows" "$state"; i=$((i+1))
+      done
+      printf '\nNummer: '; read -r nr
+      case "$nr" in *[!0-9]*|'') continue;; esac
+      idx=$((nr-1)); [ "$idx" -ge 0 ] && [ "$idx" -lt "${#SESSIONS[@]}" ] || continue
+      selected="${SESSIONS[$idx]}"; IFS='|' read -r name _windows _state <<<"$selected"
+      printf 'Session "%s" wirklich beenden? [j/N] ' "$name"; read -rsn1 ok; printf '\n'
+      [ "$ok" = j ] || [ "$ok" = J ] || continue
+      run_capture "tmux kill-session -t '$name'" || true
+      ;;
+    h|H) hilfe ;;
+    r|R) ;;
+    q|Q|"$ESC")
+      if [ "$MODUS" = remote ]; then exec ssh "$ZIEL"; else exec "${SHELL:-/bin/bash}" -l; fi
+      ;;
+  esac
+done

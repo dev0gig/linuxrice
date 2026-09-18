@@ -17,7 +17,7 @@
 # den tty-Login ein. Es ist mehrfach ausfuehrbar.
 #
 # Aufruf als normaler Benutzer (fragt selbst nach sudo):
-#     sh void-i3/fingerabdruck/einrichten.sh
+#     sh laptop-void-i3/fingerabdruck/einrichten.sh
 #
 # Danach von Hand:  fprintd-enroll   (11 Beruehrungen), dann fprintd-verify.
 #

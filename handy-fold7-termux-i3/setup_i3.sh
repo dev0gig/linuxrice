@@ -12,7 +12,7 @@ set -e
 # Es laufen genau zwei Programme in der Sitzung: xterm und Firefox.
 #
 # Aufruf:
-#   curl -fsSL https://raw.githubusercontent.com/dev0gig/linuxrice/main/termux-i3-minimal/setup_i3.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/dev0gig/linuxrice/main/handy-fold7-termux-i3/setup_i3.sh | bash
 #
 # Getestet auf: Samsung Galaxy Z Fold 7 (Snapdragon / Adreno 830)
 # ============================================================
@@ -286,7 +286,7 @@ echo "=== [4/8] i3-Konfiguration schreiben ==="
 mkdir -p "$(dirname "$I3CONF")"
 cat > "$I3CONF" <<'I3EOF'
 # ~/.config/i3/config
-# Erzeugt von setup_i3.sh (linuxrice/termux-i3-minimal).
+# Erzeugt von setup_i3.sh (linuxrice/handy-fold7-termux-i3).
 #
 # Grundgedanke: EIN Fenster pro Arbeitsflaeche, immer bildschirmfuellend.
 # Kein Rahmen, keine Titelleiste, keine Statusleiste.
@@ -577,7 +577,7 @@ fi
 
 cat > "$MENU" <<'MENUEOF'
 #!/bin/bash
-# Startmenue. Erzeugt von setup_i3.sh (linuxrice/termux-i3-minimal).
+# Startmenue. Erzeugt von setup_i3.sh (linuxrice/handy-fold7-termux-i3).
 # Den SSH-Befehl bitte in ~/.termux-menu.conf anpassen, nicht hier —
 # diese Datei wird beim naechsten Setup ueberschrieben.
 
@@ -891,7 +891,7 @@ if [ -n "$FFPROFIL" ] && [ -d "$FFDIR/$FFPROFIL" ]; then
   # jedem Start — der Preis ist, dass Aenderungen ueber die Oberflaeche nur
   # bis zum naechsten Start halten. Zum Rueckgaengigmachen: Datei loeschen.
   {
-    printf '// Erzeugt von setup_i3.sh (linuxrice/termux-i3-minimal).\n'
+    printf '// Erzeugt von setup_i3.sh (linuxrice/handy-fold7-termux-i3).\n'
     printf '// Diese Werte werden bei JEDEM Firefox-Start neu gesetzt.\n'
     printf '// Rueckgaengig machen: diese Datei loeschen.\n\n'
     printf '// Vertikale Tabs. Seit Firefox 136 eingebaut, kein Add-on noetig.\n'

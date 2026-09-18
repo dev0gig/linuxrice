@@ -7,7 +7,7 @@
 #     sh void-i3/setup.sh
 #
 # Oder ohne Klon -- xbps-fetch liegt auf jedem Void bei, curl und git nicht:
-#     xbps-fetch -o setup.sh https://raw.githubusercontent.com/dev0gig/linuxrice/main/void-i3/setup.sh
+#     xbps-fetch -o setup.sh https://raw.githubusercontent.com/dev0gig/linuxrice/main/laptop-void-i3/setup.sh
 #     sh setup.sh
 # Das Skript holt sich das Repo dann selbst.
 #

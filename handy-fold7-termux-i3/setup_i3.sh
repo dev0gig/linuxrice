@@ -119,7 +119,7 @@ HILFE
 tmux_manager() {
   while true; do
     clear
-    printf 'TMUX — ODIN\n------------------------------\n'
+    printf 'TMUX — ODIN (clientseitig)\n------------------------------\n'
     if [ -z "$ZIEL" ]; then printf 'Kein Server konfiguriert.\n'; pause; return; fi
 
     mapfile -t SESSIONS < <(ssh "$ZIEL" "tmux list-sessions -F '#{session_name}|#{session_windows}|#{?session_attached,attached,detached}' 2>/dev/null" || true)
@@ -140,7 +140,7 @@ tmux_manager() {
     printf ' [K]    Session beenden\n'
     printf ' [H]    tmux-Spickzettel\n'
     printf ' [R]    Sessions neu laden\n'
-    printf ' [Q]    Zurück\n'
+    printf ' [Q]    Zurück zur Termux-Auswahl\n'
     printf '\n Auswahl: '
     read -rsn1 w; printf '\n'
     case "$w" in

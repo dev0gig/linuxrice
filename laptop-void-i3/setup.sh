@@ -388,7 +388,7 @@ gut "Antworten in $ANTWORTEN gemerkt"
 schritt "Pakete"
 
 # Grundlage: Xorg ohne Display-Manager, i3, Terminal, Browser.
-PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils
+PAKETE="xorg-minimal xorg-fonts xrdb setxkbmap xinput xdg-utils tmux
         mesa-dri $GPU_PAKET
         i3 i3status i3lock rofi dmenu picom feh clipmenu
         alacritty xterm pcmanfm flatpak
@@ -1128,7 +1128,7 @@ else
     warn "i3 meldet etwas an der Konfiguration:"
     i3 -C -c "$HOME/.config/i3/config" 2>&1 | sed 's/^/      /'
 fi
-for s in "$HOME"/.local/bin/vitals-btop "$HOME"/.local/bin/wallpaper "$HOME/.config/i3/wallpaper.sh"; do
+for s in "$HOME"/.local/bin/vitals-btop "$HOME"/.local/bin/wallpaper "$HOME"/.local/bin/tmux-menu "$HOME"/.local/bin/remote-shell "$HOME/.config/i3/wallpaper.sh"; do
     [ -f "$s" ] && { sh -n "$s" && info "ok: $(basename "$s")"; }
 done
 

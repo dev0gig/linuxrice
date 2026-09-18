@@ -1,76 +1,33 @@
 # linuxrice
 
-Linux-Arbeitsumgebungen zum Nachbauen. Die `termux-*`-Ordner sind vier
-Anläufe auf dem Samsung Galaxy Z Fold 7 — über Termux, ohne Root,
-chronologisch; nur der erste in dieser Liste ist aktuell. Daneben steht mit
-`void-i3` das Setup eines gewöhnlichen Notebooks.
+Linux-Arbeitsumgebungen zum Nachbauen. Dieses Repository enthält bewusst nur die zwei aktuell verwendeten Setups, klar nach Gerät getrennt.
 
-## 🖥️ Notebook
+## 📱 Handy — Samsung Galaxy Z Fold 7
 
-### [`void-i3`](void-i3/)
+### [`handy-fold7-termux-i3`](handy-fold7-termux-i3/)
 
-Void Linux mit i3, ohne Display-Manager und ohne Desktop-Umgebung. Ein
-Skript richtet nach der Installation alles ein — Pakete, Dienste, Schriften,
-Tastatur, Touchpad und vier feste Arbeitsflächen:
+Android → Termux + Termux:X11 + i3, ohne Root. Minimaler Desktop für das Fold 7 mit Terminal und Firefox.
+
+Ein Befehl auf einem frischen Termux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dev0gig/linuxrice/main/handy-fold7-termux-i3/setup_i3.sh | bash
+```
+
+## 💻 Laptop — Void Linux
+
+### [`laptop-void-i3`](laptop-void-i3/)
+
+Void Linux mit i3 auf dem Laptop, ohne Display-Manager und ohne Desktop-Umgebung. Das Setup richtet Pakete, Dienste, Schriften, Tastatur, Touchpad und die i3-Arbeitsumgebung ein.
 
 ```sh
-xbps-fetch -o setup.sh https://raw.githubusercontent.com/dev0gig/linuxrice/main/void-i3/setup.sh
+xbps-fetch -o setup.sh https://raw.githubusercontent.com/dev0gig/linuxrice/main/laptop-void-i3/setup.sh
 sh setup.sh
 ```
 
-Arbeitsfläche 4 zeigt btop über die volle Fläche. Bedienen lässt es sich dort
-ganz normal — nur schließen nicht: die Fenstertaste ist für diese Fläche
-ausgenommen und ein beendetes btop startet sofort wieder.
+## Struktur
 
-## ✅ In Benutzung — Termux
+- `handy-fold7-termux-i3/` → aktuelles Smartphone-Setup
+- `laptop-void-i3/` → aktuelles Laptop-Setup
 
-### [`termux-i3-minimal`](termux-i3-minimal/)
-
-**Der aktuelle Stand (seit 16.8.2026).** i3 statt Desktop-Umgebung. In der
-Sitzung laufen genau zwei Programme: ein Terminal und Firefox. Kein Panel,
-kein Compositor, kein Theme-Dienst, kein Launcher, kein Wallpaper — und kein
-einziger Hintergrunddienst.
-
-Ein Befehl auf einem frischen Termux richtet alles ein:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/dev0gig/linuxrice/main/termux-i3-minimal/setup_i3.sh | bash
-```
-
-Der Zuschnitt kommt aus dem tatsächlichen Nutzungsverhalten: Das Terminal ist
-im Wesentlichen ein SSH-Fenster zum Server, die eigentliche Arbeit passiert
-dort. Ein Desktop drumherum bringt dafür nichts.
-
-## 📦 Archiv
-
-Diese Ordner bleiben wegen ihrer Fehlersuchen stehen, sind aber nicht mehr in
-Benutzung.
-
-### [`termux-xfce-gpu-desktop`](termux-xfce-gpu-desktop/)
-
-XFCE nativ in Termux, mit GPU-Beschleunigung über Zink/turnip. Lief ein Woche
-im Alltag. Enthält zwei Untersuchungen, die weiterhin gelten und aus dem
-i3-Setup verlinkt sind:
-
-- **Warum Firefox trotz Turnip auf Software rendert** — komplette
-  Ausschlussliste. Kurzfassung: Firefox spricht EGL, unter Termux-X11
-  funktioniert nur GLX. Deshalb ist `backdrop-filter: blur()` auf diesem Gerät
-  dauerhaft langsam, unabhängig vom Fenstermanager.
-- **Warum die Panel-Config nach jedem Neustart weg war** — der Dienst
-  `xfconfd` hält alle Einstellungen im Speicher und kippt sie beim Beenden
-  über die Dateien. Der Hauptgrund für den Wechsel zu i3.
-
-### [`termux-wayland-labwc`](termux-wayland-labwc/)
-
-Machbarkeitsanalyse: Wayland statt X11, um Browsern doch noch die GPU
-zugänglich zu machen. **Grafisch erfolgreich, bedienbar gescheitert** — zwei
-Wege getestet, beide verworfen. Tastatur und Maus werden nicht erkannt, ein
-seit über einem Jahr offener Fehler im Termux-Paket.
-
-Festgehalten für den Fall, dass sich das ändert: Der Rest des Weges ist
-erprobt und dokumentiert.
-
-### [`termux-proot-debian-xfce-nordic`](termux-proot-debian-xfce-nordic/)
-
-Der erste Anlauf: vollständiges Debian im proot-Container mit XFCE im
-Nordic-Look. Zu schwer und ohne Zugriff auf die GPU.
+Veraltete Termux-Prototypen wurden aus dem aktuellen Repository entfernt. Ihre Historie bleibt über Git erhalten.

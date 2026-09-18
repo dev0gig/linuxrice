@@ -1,7 +1,7 @@
 # Security- und Qualitäts-Audit — `void-i3`
 
-Prüfgegenstand: `void-i3/setup.sh` (1187 Zeilen, POSIX sh), `void-i3/fingerabdruck/einrichten.sh`
-(193 Zeilen), alles unter `void-i3/system/` (wird nach `/` kopiert) und die privilegierten Helfer
+Prüfgegenstand: `laptop-void-i3/setup.sh` (1187 Zeilen, POSIX sh), `laptop-void-i3/fingerabdruck/einrichten.sh`
+(193 Zeilen), alles unter `laptop-void-i3/system/` (wird nach `/` kopiert) und die privilegierten Helfer
 unter `void-i3/config/.local/bin/`.
 
 Maßstab: was ein DevOps-/Security-Team vor einem Rollout verlangen würde. Der Kontext ist ein

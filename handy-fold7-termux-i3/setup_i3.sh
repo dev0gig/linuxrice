@@ -207,7 +207,7 @@ skip {next}
 cat >> "$TPROPS.neu" <<'EOF'
 
 # >>> setup_i3.sh
-extra-keys = [['ESC','TAB',{macro:'ESC [ Z',display:'S-TAB'},'ALT','-',{macro:'CTRL b %',display:'V|'},'UP',{macro:'CTRL b "',display:'H-'}],['HOME','END','|',{macro:'e x i t ENTER',display:'EXIT'},'DEL','LEFT','DOWN','RIGHT']]
+extra-keys = [['ESC','TAB',{macro:'ESC [ Z',display:'S-TAB'},'ALT','-',{macro:'CTRL b %',display:'V|'},'UP',{macro:'CTRL b "',display:'H-'}],['HOME','END','|',{macro:'e x i t ENTER',display:'EXIT'},{macro:'CTRL b d',display:'DETACH'},'LEFT','DOWN','RIGHT']]
 # <<< setup_i3.sh
 EOF
 mv "$TPROPS.neu" "$TPROPS"

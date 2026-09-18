@@ -89,20 +89,29 @@ tmux_hilfe() {
   cat <<'HILFE'
 TMUX — SPICKZETTEL
 ------------------------------
-Ctrl+B  D       Session verlassen (läuft weiter)
+
+SESSION
+Ctrl+B  D       Session detach — läuft weiter
+
+FENSTER
 Ctrl+B  C       Neues Fenster
 Ctrl+B  N       Nächstes Fenster
 Ctrl+B  P       Voriges Fenster
 Ctrl+B  W       Fensterübersicht
+
+PANES
+V|              Vertikal teilen
+H-              Horizontal teilen
 Ctrl+B  Pfeil   Pane wechseln
 Ctrl+B  X       Pane schließen
 
-V|              Pane vertikal teilen
-H-              Pane horizontal teilen
-
+BEFEHLE
 tmux ls         Sessions anzeigen
-tmux new -s X   Session X erstellen
+tmux new -s X   Neue Session X
 tmux attach -t X
+                Session X öffnen
+
+Auf dem Fold: DETACH = Ctrl+B D
 HILFE
   pause
 }
@@ -126,7 +135,13 @@ tmux_manager() {
       done
     fi
 
-    printf '\n [1-9] Öffnen   [N] Neu   [K] Beenden\n [H] Hilfe       [R] Neu laden   [Q] Zurück\n\n Auswahl: '
+    printf '\n [1-9]  Session öffnen\n'
+    printf ' [N]    Neue Session\n'
+    printf ' [K]    Session beenden\n'
+    printf ' [H]    tmux-Spickzettel\n'
+    printf ' [R]    Sessions neu laden\n'
+    printf ' [Q]    Zurück\n'
+    printf '\n Auswahl: '
     read -rsn1 w; printf '\n'
     case "$w" in
       [1-9])

@@ -1,6 +1,6 @@
-# Termux i3 Minimal
+# Handy Fold 7 — Termux i3 Minimal
 
-**Stand: 16.8.2026 — Nachfolger von [`termux-xfce-gpu-desktop`](../termux-xfce-gpu-desktop/).**
+**Stand: 16.8.2026 — aktuelles Handy-Setup für das Samsung Galaxy Z Fold 7.**
 
 **XFCE ist abgeschafft.** Der Umstieg lief über ein komplett frisches Termux:
 App-Daten löschen, neu installieren, dieses Setup einmal laufen lassen. i3 ist
@@ -20,7 +20,7 @@ Handy.
 Ein Befehl auf einem frischen Termux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dev0gig/linuxrice/main/termux-i3-minimal/setup_i3.sh | bash
+curl -fsSL https://raw.githubusercontent.com/dev0gig/linuxrice/main/handy-fold7-termux-i3/setup_i3.sh | bash
 ```
 
 Das Skript installiert alles, schreibt die i3-Konfiguration, das Startskript und
@@ -139,7 +139,7 @@ Das ist der eigentliche Punkt dieses Ordners, darum ausführlich:
 - **`xfconfd` und die ganze XFCE-Maschinerie.** Der größte Ärger des alten Setups
   war ein Dienst, der Einstellungen im Speicher hält, sie beim Beenden über die
   Dateien kippt und dadurch die Panel-Konfiguration bei jedem Neustart zerlegt hat
-  (die komplette Erklärung steht im [Nachbarordner](../termux-xfce-gpu-desktop/#warum-die-panel-config-früher-nach-jedem-neustart-weg-war)).
+  (die frühere XFCE-Variante wurde inzwischen aus dem aktuellen Repository entfernt; sie bleibt in der Git-Historie erhalten).
   i3 liest eine Textdatei beim Start. Kein Dienst, keine Vorlage, keine
   `killall`-Choreografie in exakter Reihenfolge.
 - **Panel / `i3bar`.** Es läuft ohnehin alles bildschirmfüllend — eine Leiste

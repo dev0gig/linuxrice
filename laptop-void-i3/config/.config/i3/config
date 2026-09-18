@@ -49,8 +49,8 @@ font pango:Red Hat Mono, Symbols Nerd Font Mono 11
 # exec --no-startup-id nm-applet
 
 # ---- Autostart: feste Belegung der Arbeitsflaechen 1 bis 4 ----
-#   1: browser   2: lokales Terminal
-#   3: SSH-Sitzung   4: vitals (btop, volle Flaeche)
+#   1: browser   2: lokaler tmux-Manager
+#   3: Odin/SSH-tmux-Manager   4: vitals (btop, volle Flaeche)
 #
 # Ab 5 aufwaerts sind die Flaechen frei und werden nach dem laufenden
 # Programm benannt.
@@ -69,7 +69,7 @@ assign [class="remote-term"]      number 3
 assign [class="vitals-dashboard"] number 4
 
 exec --no-startup-id ~/.local/bin/chrome
-exec --no-startup-id alacritty --class autostart-term
+exec --no-startup-id alacritty --class autostart-term -e ~/.local/bin/tmux-menu local
 exec --no-startup-id alacritty --class remote-term -e ~/.local/bin/remote-shell
 exec --no-startup-id alacritty --class vitals-dashboard -e ~/.local/bin/vitals-btop
 

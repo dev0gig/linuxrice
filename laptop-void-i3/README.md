@@ -1,4 +1,4 @@
-# void-i3
+# Laptop — Void Linux i3
 
 Void Linux mit i3 auf einem Notebook (HP ENVY x360, 1920x1080) — im Gegensatz
 zu den `termux-*`-Ordnern also ein gewöhnlicher Rechner, kein Telefon.
@@ -49,7 +49,7 @@ bricht `setup.sh` sofort ab.
 Nach einer frischen Void-Installation (Basissystem, noch kein Xorg):
 
 ```sh
-xbps-fetch -o setup.sh https://raw.githubusercontent.com/dev0gig/linuxrice/main/void-i3/setup.sh
+xbps-fetch -o setup.sh https://raw.githubusercontent.com/dev0gig/linuxrice/main/laptop-void-i3/setup.sh
 sh setup.sh
 ```
 

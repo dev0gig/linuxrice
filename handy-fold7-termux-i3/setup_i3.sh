@@ -142,11 +142,22 @@ tmux_manager() {
         ;;
       k|K)
         [ "${#SESSIONS[@]}" -gt 0 ] || continue
-        printf 'Nummer der Session: '; read -r nr
+        printf '\nWelche Session beenden?\n\n'
+        i=1
+        for s in "${SESSIONS[@]}"; do
+          IFS='|' read -r sname windows state <<<"$s"
+          printf ' %d   %-16s %s Fenster   %s\n' "$i" "$sname" "$windows" "$state"
+          i=$((i+1))
+        done
+        printf '\nNummer: '
+        read -r nr
         case "$nr" in *[!0-9]*|'') continue;; esac
-        idx=$((nr-1)); [ "$idx" -lt "${#SESSIONS[@]}" ] || continue
-        name="${SESSIONS[$idx]%%|*}"
-        printf 'Session "%s" wirklich beenden? [j/N] ' "$name"; read -rsn1 ok; printf '\n'
+        idx=$((nr-1))
+        [ "$idx" -ge 0 ] && [ "$idx" -lt "${#SESSIONS[@]}" ] || continue
+        selected="${SESSIONS[$idx]}"
+        IFS='|' read -r name _windows _state <<<"$selected"
+        printf 'Session "%s" wirklich beenden? [j/N] ' "$name"
+        read -rsn1 ok; printf '\n'
         [ "$ok" = j ] || [ "$ok" = J ] || continue
         ssh "$ZIEL" "tmux kill-session -t '$name'" || true
         ;;

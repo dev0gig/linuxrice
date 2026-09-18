@@ -133,11 +133,12 @@ tmux_manager() {
         idx=$((w-1))
         [ "$idx" -lt "${#SESSIONS[@]}" ] || continue
         name="${SESSIONS[$idx]%%|*}"
-        ssh -t "$ZIEL" "tmux attach-session -t \"\$1\"" _ "$name" || true
+        ssh -t "$ZIEL" "tmux attach-session -t '$name'" || true
         ;;
       n|N)
         printf 'Name der neuen Session: '; read -r name
-        [ -n "$name" ] && ssh -t "$ZIEL" "tmux new-session -s \"\$1\"" _ "$name" || true
+        case "$name" in ""|*[!A-Za-z0-9._-]*) printf 'Nur Buchstaben, Zahlen, Punkt, _ und - verwenden.\n'; sleep 2; continue;; esac
+        ssh -t "$ZIEL" "tmux new-session -s '$name'" || true
         ;;
       k|K)
         [ "${#SESSIONS[@]}" -gt 0 ] || continue
@@ -147,7 +148,7 @@ tmux_manager() {
         name="${SESSIONS[$idx]%%|*}"
         printf 'Session "%s" wirklich beenden? [j/N] ' "$name"; read -rsn1 ok; printf '\n'
         [ "$ok" = j ] || [ "$ok" = J ] || continue
-        ssh "$ZIEL" "tmux kill-session -t \"\$1\"" _ "$name" || true
+        ssh "$ZIEL" "tmux kill-session -t '$name'" || true
         ;;
       h|H) tmux_hilfe ;;
       r|R) ;;
